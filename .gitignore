@@ -1,0 +1,15 @@
+# Build output.
+/forge
+/bin/
+
+# Coverage and profiling artefacts. Anchored to the module root so that test
+# fixtures keep their extensions.
+/cover.out
+/coverage.out
+/*.prof
+*.test
+
+# Editor and OS noise.
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,64 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - misspell
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - nolintlint
+    - unconvert
+    - usestdlibvars
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: errorf
+        - name: context-as-argument
+        - name: receiver-naming
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+  exclusions:
+    generated: lax
+    rules:
+      # Generated output is checked by the golden suite, not by the linter.
+      - path: 'zz_forge_.*\.go'
+        linters:
+          - errcheck
+          - revive
+          - staticcheck
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/okian/forge
+  exclusions:
+    generated: lax
+    paths:
+      # Generated output is formatted by the emitter, whose grouping of imports
+      # is its own business.
+      - 'zz_forge_.*\.go'

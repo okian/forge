@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Superseding a pull request run is a saving; superseding a main-branch run
+  # would drop the only signal a merged commit ever gets.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: gofmt
+        run: make fmt-check
+
+      - name: build
+        run: go build ./...
+
+      - name: go vet
+        run: make vet
+
+      - name: test
+        run: make test
+
+      - name: coverage floor
+        run: make cover
+
+      - name: upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+          if-no-files-found: ignore
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      # The version lives in the Makefile so that the linter CI runs and the
+      # linter a contributor runs cannot drift apart.
+      - name: install golangci-lint
+        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(make -s golangci-version)"
+
+      - name: lint
+        run: make lint
