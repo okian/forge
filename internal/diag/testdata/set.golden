@@ -1,0 +1,10 @@
+catalog/spec.go:4:6: FRG3010: unknown option key "capacity" for layer ring
+  hint: did you mean cap?
+model/spec.go:9:1: FRG3010: unknown option key "sorted" for layer collection
+  hint: did you mean sort?
+model/spec.go:12:6: FRG2010: subject *Person is a pointer
+  Collection[Person]
+             ^^^^^^
+  hint: declare the stack over Person and let the container hold values
+model/spec.go:12:6: FRG4010: generated type PersonsSeq collides with an existing declaration
+  hint: rename it with //forge:collection seq=...

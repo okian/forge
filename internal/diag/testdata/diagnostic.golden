@@ -1,0 +1,4 @@
+model/spec.go:12:6: FRG1003: two storage layers in stack (Ring, Heap)
+  Collection[Ring[Heap[Person]]]
+                  ^^^^
+  hint: at most one Storage layer; mark Heap as Refining or drop Ring
