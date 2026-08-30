@@ -18,3 +18,7 @@
 # this module's internal/tags package directory. Re-include it here.
 /tags
 !internal/tags/
+
+# Claude Code keeps its worktrees here. A worktree is a checkout, and a
+# `git add .` in the main checkout picks one up as a gitlink.
+/.claude/worktrees/

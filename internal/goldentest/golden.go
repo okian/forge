@@ -93,7 +93,10 @@ func Compare(t T, name string, got []byte) {
 		return
 	}
 
-	want, err := os.ReadFile(path)
+	// where built this path from the test's own name under testdata, and refused
+	// every component that could climb out of it. Nothing caller-supplied is
+	// left in it to sanitise.
+	want, err := os.ReadFile(path) //nolint:gosec // where already held the path inside testdata
 	if os.IsNotExist(err) {
 		record(t, path, got)
 		t.Errorf("%s had not been recorded, and now holds what this run produced; read it and run again", path)

@@ -234,21 +234,14 @@ func TestUpdatingRewritesWhatWasRecorded(t *testing.T) {
 
 // moveTo runs the rest of a test from another directory, since where a golden
 // lives is decided relative to the package that reads it.
+//
+// t.Chdir moves back when the test ends, and refuses to run under t.Parallel —
+// which is the guarantee that matters here, because the working directory is
+// process-wide and one test's move would otherwise be another's surprise.
 func moveTo(t *testing.T, dir string) {
 	t.Helper()
 
-	was, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("reading the working directory: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("moving to %s: %v", dir, err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(was); err != nil {
-			t.Fatalf("moving back to %s: %v", was, err)
-		}
-	})
+	t.Chdir(dir)
 }
 
 // asking turns rewriting on for the rest of a test.

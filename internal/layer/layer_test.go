@@ -238,8 +238,10 @@ func TestBuiltinsAreCompleteAndClassified(t *testing.T) {
 func TestStagedMarkersAreClaimedToo(t *testing.T) {
 	registry := layer.Builtins()
 
-	for _, name := range []string{"Set", "LRU", "Index", "Heap", "Sorted", "Page",
-		"Default", "Diff", "Fault", "Binary", "Atomic", "Csv"} {
+	for _, name := range []string{
+		"Set", "LRU", "Index", "Heap", "Sorted", "Page",
+		"Default", "Diff", "Fault", "Binary", "Atomic", "Csv",
+	} {
 		if _, ok := registry.Lookup(marker(name)); !ok {
 			t.Errorf("no layer claims the staged marker %s", name)
 		}

@@ -1,6 +1,7 @@
 package emit_test
 
 import (
+	"bytes"
 	"go/ast"
 	"go/build"
 	"go/parser"
@@ -169,7 +170,7 @@ func TestRenderIsByteIdentical(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render: %v", err)
 		}
-		if string(again) != string(first) {
+		if !bytes.Equal(again, first) {
 			t.Fatalf("two renderings differ:\n%s\n---\n%s", first, again)
 		}
 	}

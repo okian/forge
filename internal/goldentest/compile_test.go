@@ -55,7 +55,6 @@ func TestOutputThatCompiles(t *testing.T) {
 			"type Persons []Person\n\n" +
 			"func (p Persons) All() iter.Seq[Person] { return slices.Values(p) }\n\n" +
 			"func (p Persons) Len() int { return len(p) }\n"))
-
 	if err != nil {
 		t.Errorf("output that compiles was refused: %v", err)
 	}
@@ -168,7 +167,6 @@ func TestOutputThatReachesIntoTheStandardLibrary(t *testing.T) {
 			"\t\t\tif !yield(one) {\n\t\t\t\treturn\n\t\t\t}\n" +
 			"\t\t}\n\t}\n}\n\n" +
 			"func (p Persons) Bytes() ([]byte, error) { return json.Marshal(p) }\n"))
-
 	if err != nil {
 		t.Errorf("output importing the standard library was refused: %v", err)
 	}
@@ -256,7 +254,6 @@ func TestAFixtureThatIsNotFormatted(t *testing.T) {
 			generated("type Persons []Person\n"),
 		},
 	})
-
 	if err != nil {
 		t.Errorf("a fixture was held to gofmt: %v", err)
 	}
@@ -354,7 +351,6 @@ func TestABuildConstraintTooLateToBeOne(t *testing.T) {
 			generated("type Persons []Person\n"),
 		},
 	})
-
 	if err != nil {
 		t.Errorf("a file whose constraint comes too late was excluded: %v", err)
 	}

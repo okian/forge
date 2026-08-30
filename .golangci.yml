@@ -1,41 +1,227 @@
 version: "2"
 
 run:
-  timeout: 5m
+  # The complexity and duplication linters walk every function in the module,
+  # which costs more than the default two minutes allows on a cold cache.
+  timeout: 10m
   tests: true
 
 linters:
   default: none
   enable:
+    # Correctness.
     - errcheck
     - govet
     - ineffassign
     - staticcheck
     - unused
-    - revive
-    - misspell
+    - asasalint
+    - bidichk
     - bodyclose
+    - contextcheck
     - copyloopvar
+    - durationcheck
     - errorlint
+    - errname
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gosec
+    - makezero
+    - nilerr
+    - nilnesserr
+    - noctx
+    - predeclared
+    - reassign
+    - recvcheck
+    - wastedassign
+
+    # Complexity. A generator is a pile of switches over a type graph, which is
+    # exactly the shape that rots quietly, so the budget is written down rather
+    # than left to reviewer patience.
+    - cyclop
+    - dupl
+    - funlen
+    - gocognit
+    - maintidx
+    - nestif
+
+    # Clarity and idiom.
+    - gocritic
+    - godot
+    - iface
+    - interfacebloat
+    - intrange
+    - misspell
+    - nakedret
     - nolintlint
+    - perfsprint
+    - prealloc
+    - revive
     - unconvert
+    - unparam
     - usestdlibvars
+    - exptostd
+    - whitespace
+
+    # Tests.
+    - testableexamples
+    - thelper
+    - tparallel
+    - usetesting
 
   settings:
+    cyclop:
+      # The highest any non-test function in the tree reaches today. The gate is
+      # a ratchet: raising the number is a decision somebody makes in a diff,
+      # not something that happens by accretion.
+      max-complexity: 15
+      package-average: 0
+
+    dupl:
+      threshold: 150
+
+    exhaustive:
+      # A switch over a kind or a class is the generator's dispatch table, and a
+      # kind added without a case is the bug this catches. A default clause is
+      # accepted as deliberate coverage of the rest.
+      default-signifies-exhaustive: true
+
+    funlen:
+      # Comments are not length: this module explains itself at every turn, and
+      # a budget that counted the prose would reward deleting it.
+      lines: 65
+      statements: 40
+      ignore-comments: true
+
+    gocognit:
+      # As with cyclop: today's peak, held so it cannot drift upward unnoticed.
+      min-complexity: 21
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - opinionated
+      disabled-checks:
+        # A local named for the package it shadows reads better than a synonym
+        # invented to avoid the shadow, and the compiler catches the misuse.
+        - importShadow
+        # The model types are passed by value on purpose: they are compared,
+        # stored in maps, and must not be aliased by the layer that reads them.
+        - hugeParam
+        - rangeValCopy
+        # Both trade a reader's clarity for a writer's brevity.
+        - paramTypeCombine
+        - unnamedResult
+
+    govet:
+      enable-all: true
+      disable:
+        # Field order in this module's types follows what a reader needs to see
+        # first, and the structs are neither hot nor numerous enough for the
+        # padding to be worth the rearrangement.
+        - fieldalignment
+
+    maintidx:
+      under: 20
+
+    nestif:
+      min-complexity: 5
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    perfsprint:
+      strconcat: false
+
     revive:
+      # Every rule revive ships, minus the ones that disagree with a decision
+      # this module has already made. Turning the set on wholesale means a
+      # golangci-lint bump brings new rules in as a visible diff rather than
+      # never arriving at all.
+      enable-all-rules: true
       rules:
         - name: exported
           arguments:
             - disableStutteringCheck
-        - name: package-comments
-        - name: var-naming
-        - name: indent-error-flow
-        - name: errorf
-        - name: context-as-argument
-        - name: receiver-naming
-    nolintlint:
-      require-explanation: true
-      require-specific: true
+
+        # Covered better elsewhere: gocognit, cyclop and funlen own these
+        # budgets, and two linters reporting one function twice helps nobody.
+        - name: cognitive-complexity
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: add-constant
+          disabled: true
+
+        # Doc comments and option documentation are prose, and prose that has to
+        # fit a column budget gets worse, not shorter.
+        - name: line-length-limit
+          disabled: true
+        - name: banned-characters
+          disabled: true
+        - name: file-header
+          disabled: true
+
+        # A layer catalog is a large public vocabulary by design, and an emitter
+        # signature that takes a subject, a stack and a destination is not
+        # improved by packing three arguments into a struct.
+        - name: max-public-structs
+          disabled: true
+        - name: argument-limit
+          disabled: true
+        - name: function-result-limit
+          disabled: true
+
+        # A local named for the package it shadows: see importShadow above.
+        - name: import-shadowing
+          disabled: true
+
+        # An unexported helper spelled like the exported function it implements
+        # is this module's convention, not a mistake.
+        - name: confusing-naming
+          disabled: true
+
+        # A switch over a closed kind is exhaustive on purpose; `exhaustive`
+        # checks that it stays that way, and a default clause added only to
+        # satisfy a linter would hide the next kind somebody forgets.
+        - name: enforce-switch-style
+          disabled: true
+
+        # Two results of one type are readable when the second is an error or a
+        # documented ok, which is every case here.
+        - name: confusing-results
+          disabled: true
+
+        # A bool parameter that names a formatting choice is not control
+        # coupling; splitting it into two functions would duplicate the body.
+        - name: flag-parameter
+          disabled: true
+
+        # A method keeps its receiver's name even where its body has no use for
+        # it, so that the set of methods on a type reads as one thing.
+        - name: unused-receiver
+          disabled: true
+
+        # errcheck owns this question and answers it better. It ships the list
+        # of calls whose error is nominal — strings.Builder and bytes.Buffer
+        # writes, hash writes, fmt.Print to a stream nobody can report on —
+        # where revive's rule has none and would need that list rebuilt by hand.
+        # Worth knowing: this rule fires on Linux and is inert on macOS at the
+        # same golangci-lint version, so it was never visible in `make check`.
+        - name: unhandled-error
+          disabled: true
+
+    staticcheck:
+      checks:
+        - all
 
   exclusions:
     generated: lax
@@ -43,7 +229,16 @@ linters:
       # Generated output is checked by the golden suite, not by the linter.
       - path: 'zz_forge_.*\.go'
         linters:
+          - dupl
           - errcheck
+          - funlen
+          - gocognit
+          - gocritic
+          - godot
+          - gosec
+          - cyclop
+          - maintidx
+          - nestif
           - revive
           - staticcheck
           - unused
@@ -58,15 +253,69 @@ linters:
         linters:
           - revive
         text: 'var-naming: type Json should be JSON'
+      - path: '^forge\.go$'
+        linters:
+          - staticcheck
+        text: 'ST1003: type Json should be JSON'
+
+      # A Diagnostic is not an error being returned up a stack; it is a record a
+      # generator collects and reports in a set. Naming it DiagnosticError would
+      # describe the Go interface it happens to satisfy rather than the thing.
+      - path: 'internal/diag/diagnostic\.go$'
+        linters:
+          - errname
+
+      # Tests are held to the module's correctness rules, not to its budgets: a
+      # table-driven test earns its length and its branch count from the number
+      # of cases it covers, and shortening it would delete coverage. Nor are
+      # they an attack surface, and a fixture path a test names itself is not
+      # user input.
+      - path: '_test\.go$'
+        linters:
+          - cyclop
+          - dupl
+          - forcetypeassert
+          - funlen
+          - gocognit
+          - gosec
+          - maintidx
+          - prealloc
+          - unparam
+      - path: '_test\.go$'
+        linters:
+          - revive
+        text: 'unchecked-type-assertion'
+
+      # Redeclaring err inside an if or a loop body is the Go idiom, and in a
+      # test the outer err has already been checked by the line above.
+      - path: '_test\.go$'
+        linters:
+          - govet
+        text: 'shadow:'
+
+# Nothing is summarised away. A gate that stops at the first few complaints
+# makes a second push the only way to learn about the rest, and the divergence
+# above is the reason to see everything a run found rather than a sample.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 formatters:
   enable:
-    - gofmt
-    - goimports
+    # gofumpt is gofmt plus the rules gofmt left to taste; gci orders imports
+    # into fixed groups so that "where does this import go" is never a question
+    # asked in review.
+    - gofumpt
+    - gci
   settings:
-    goimports:
-      local-prefixes:
-        - github.com/okian/forge
+    gofumpt:
+      module-path: github.com/okian/forge
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/okian/forge)
+      custom-order: true
   exclusions:
     generated: lax
     paths:

@@ -296,7 +296,7 @@ func TestJSONAgreesWithTheStandardLibrary(t *testing.T) {
 				// could see. The boundary is deliberate and is named above.
 
 			default:
-				t.Errorf("the standard library refuses this and the grammar does not; either the grammar has to report it or the policy that refuses it has to be named")
+				t.Error("the standard library refuses this and the grammar does not; either the grammar has to report it or the policy that refuses it has to be named")
 			}
 		})
 	}

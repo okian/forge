@@ -1,6 +1,7 @@
 package goldentest_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func TestAGoldenIsAFileBesideTheTest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading %s: %v", path, err)
 	}
-	if string(got) != string(want) {
+	if !bytes.Equal(got, want) {
 		t.Errorf("%s holds %q, want %q", path, got, want)
 	}
 }
@@ -356,22 +357,14 @@ func TestCheckWithOneNameTwice(t *testing.T) {
 
 // inside runs the rest of a test from another directory, since where a golden
 // lives is decided relative to the package that reads it.
+//
+// t.Chdir moves back when the test ends, and refuses to run under t.Parallel —
+// which is the guarantee that matters here, because the working directory is
+// process-wide and one test's move would otherwise be another's surprise.
 func inside(t *testing.T, dir string) {
 	t.Helper()
 
-	was, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("reading the working directory: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("moving to %s: %v", dir, err)
-	}
-
-	t.Cleanup(func() {
-		if err := os.Chdir(was); err != nil {
-			t.Fatalf("moving back to %s: %v", was, err)
-		}
-	})
+	t.Chdir(dir)
 }
 
 // Goldens are compared rather than rewritten unless somebody asks, or a suite

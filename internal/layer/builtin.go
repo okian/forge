@@ -7,7 +7,6 @@ import (
 
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/model"
-
 	"github.com/okian/forge/internal/shape"
 )
 
@@ -160,8 +159,10 @@ var builtins = []*stub{
 			// documentation uses and the one a caller sizing a buffer from
 			// configuration needs.
 			{Key: "cap", Value: ValueInt, Doc: "how many elements the buffer holds, when that is fixed at build time rather than passed to the constructor"},
-			{Key: "overflow", Value: ValueEnum, Values: []string{"overwrite", "error"}, Default: "overwrite",
-				Doc: "what a push does when the buffer is full"},
+			{
+				Key: "overflow", Value: ValueEnum, Values: []string{"overwrite", "error"}, Default: "overwrite",
+				Doc: "what a push does when the buffer is full",
+			},
 		},
 		doc: "fixed-capacity circular buffer, so a long-running producer cannot grow memory without bound",
 	},
@@ -179,12 +180,18 @@ var builtins = []*stub{
 		origin: marker("Json"), kind: model.KindElement, stage: StageStub,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
 		options: []OptionDef{
-			{Key: "names", Value: ValueEnum, Values: []string{"asis", "snake", "camel"}, Default: "asis",
-				Doc: "how a field with no json tag is named on the wire"},
-			{Key: "omitzero", Value: ValueBool, Default: "false",
-				Doc: "omit zero-valued fields without tagging each one"},
-			{Key: "fallback", Value: ValueEnum, Values: []string{"stdlib"},
-				Doc: "encode a field forge cannot see through reflectively, and mark that it did"},
+			{
+				Key: "names", Value: ValueEnum, Values: []string{"asis", "snake", "camel"}, Default: "asis",
+				Doc: "how a field with no json tag is named on the wire",
+			},
+			{
+				Key: "omitzero", Value: ValueBool, Default: "false",
+				Doc: "omit zero-valued fields without tagging each one",
+			},
+			{
+				Key: "fallback", Value: ValueEnum, Values: []string{"stdlib"},
+				Doc: "encode a field forge cannot see through reflectively, and mark that it did",
+			},
 		},
 		doc: "streaming codec with no reflection, driven by the subject's json tags",
 	},
@@ -196,8 +203,10 @@ var builtins = []*stub{
 	{
 		origin: marker("Clone"), kind: model.KindElement, stage: StageStub,
 		options: []OptionDef{
-			{Key: "aliasing", Value: ValueEnum, Values: []string{"copy", "share"}, Default: "copy",
-				Doc: "whether a pointer, slice or map is copied or shared with the original"},
+			{
+				Key: "aliasing", Value: ValueEnum, Values: []string{"copy", "share"}, Default: "copy",
+				Doc: "whether a pointer, slice or map is copied or shared with the original",
+			},
 		},
 		doc: "deep copy over everything reachable from the subject, with an explicit aliasing policy",
 	},
@@ -231,61 +240,89 @@ var builtins = []*stub{
 		adds:  []shape.Cap{shape.Concurrent},
 		masks: []shape.Cap{shape.Streamable, shape.Indexed},
 		options: []OptionDef{
-			{Key: "encode", Value: ValueEnum, Values: []string{"snapshot", "locked"}, Default: "snapshot",
-				Doc: "whether encoding copies first or holds the lock for the length of the write"},
-			{Key: "expose", Value: ValueEnum, Values: []string{"locker"},
-				Doc: "expose the lock as a sync.Locker, which the layer exists to make unnecessary"},
+			{
+				Key: "encode", Value: ValueEnum, Values: []string{"snapshot", "locked"}, Default: "snapshot",
+				Doc: "whether encoding copies first or holds the lock for the length of the write",
+			},
+			{
+				Key: "expose", Value: ValueEnum, Values: []string{"locker"},
+				Doc: "expose the lock as a sync.Locker, which the layer exists to make unnecessary",
+			},
 		},
 		doc: "read-write lock with scoped access, replacing iteration so that re-entry cannot be written",
 	},
 
 	// Staged: the marker is declared, the layer is not in this release.
-	{origin: marker("Set"), kind: model.KindStorage, stage: StageStaged,
+	{
+		origin: marker("Set"), kind: model.KindStorage, stage: StageStaged,
 		requires: []shape.Cap{shape.Comparable}, adds: []shape.Cap{shape.Sized, shape.Streamable},
 		options: []OptionDef{{Key: "key", Value: ValueField, Doc: "field to deduplicate on, instead of the subject's content hash"}},
-		doc:     "at most one element per distinct key"},
-	{origin: marker("LRU"), kind: model.KindStorage, stage: StageStaged,
+		doc:     "at most one element per distinct key",
+	},
+	{
+		origin: marker("LRU"), kind: model.KindStorage, stage: StageStaged,
 		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Bounded, shape.Streamable},
 		options: []OptionDef{
 			{Key: "key", Value: ValueField, Doc: "field elements are keyed by"},
 			{Key: "cap", Value: ValueInt, Doc: "how many elements are held before the least recently used is evicted"},
 		},
-		doc: "bounded map with recency eviction"},
-	{origin: marker("Index"), kind: model.KindStorage, stage: StageStaged,
+		doc: "bounded map with recency eviction",
+	},
+	{
+		origin: marker("Index"), kind: model.KindStorage, stage: StageStaged,
 		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Indexed, shape.Streamable},
 		options: []OptionDef{
 			{Key: "key", Value: ValueField, Doc: "field to look elements up by"},
 			{Key: "unique", Value: ValueBool, Default: "true", Doc: "whether one key reaches at most one element"},
 		},
-		doc: "lookup structure over a declared field, turning a scan into a map access"},
-	{origin: marker("Heap"), kind: model.KindStorage, stage: StageStaged,
+		doc: "lookup structure over a declared field, turning a scan into a map access",
+	},
+	{
+		origin: marker("Heap"), kind: model.KindStorage, stage: StageStaged,
 		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Streamable},
 		options: []OptionDef{{Key: "key", Value: ValueField, Doc: "field the priority order is taken from"}},
-		doc:     "priority order by a declared key"},
-	{origin: marker("Sorted"), kind: model.KindRefining, stage: StageStaged,
+		doc:     "priority order by a declared key",
+	},
+	{
+		origin: marker("Sorted"), kind: model.KindRefining, stage: StageStaged,
 		requires: []shape.Cap{shape.Ordered},
 		options:  []OptionDef{{Key: "key", Value: ValueFields, Doc: "fields the order is maintained by"}},
-		doc:      "order maintained on insert rather than on demand"},
-	{origin: marker("Page"), kind: model.KindRefining, stage: StageStaged,
+		doc:      "order maintained on insert rather than on demand",
+	},
+	{
+		origin: marker("Page"), kind: model.KindRefining, stage: StageStaged,
 		requires: []shape.Cap{shape.Sized, shape.Ordered},
-		doc:      "offset and cursor windowing over a large collection"},
-	{origin: marker("Default"), kind: model.KindElement, stage: StageStaged,
+		doc:      "offset and cursor windowing over a large collection",
+	},
+	{
+		origin: marker("Default"), kind: model.KindElement, stage: StageStaged,
 		requires: []shape.Cap{shape.Structured},
-		doc:      "the subject's default tag values, applied before the rules that assume them"},
-	{origin: marker("Diff"), kind: model.KindElement, stage: StageStaged,
+		doc:      "the subject's default tag values, applied before the rules that assume them",
+	},
+	{
+		origin: marker("Diff"), kind: model.KindElement, stage: StageStaged,
 		requires: []shape.Cap{shape.Structured},
-		doc:      "what differs between two values, as a list of changes rather than a boolean"},
-	{origin: marker("Fault"), kind: model.KindElement, stage: StageStaged,
-		doc: "the error protocol for a subject that models a failure, requested and never inferred"},
-	{origin: marker("Binary"), kind: model.KindElement, stage: StageStaged,
+		doc:      "what differs between two values, as a list of changes rather than a boolean",
+	},
+	{
+		origin: marker("Fault"), kind: model.KindElement, stage: StageStaged,
+		doc: "the error protocol for a subject that models a failure, requested and never inferred",
+	},
+	{
+		origin: marker("Binary"), kind: model.KindElement, stage: StageStaged,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
-		doc: "compact binary codec, with an appender for callers who own the buffer"},
-	{origin: marker("Atomic"), kind: model.KindDecorator, stage: StageStaged,
+		doc: "compact binary codec, with an appender for callers who own the buffer",
+	},
+	{
+		origin: marker("Atomic"), kind: model.KindDecorator, stage: StageStaged,
 		adds: []shape.Cap{shape.Concurrent},
-		doc:  "copy-on-write publication, so a read is one atomic load"},
-	{origin: marker("Csv"), kind: model.KindTransport, stage: StageStaged,
+		doc:  "copy-on-write publication, so a read is one atomic load",
+	},
+	{
+		origin: marker("Csv"), kind: model.KindTransport, stage: StageStaged,
 		requires: []shape.Cap{shape.Structured, shape.Streamable}, adds: []shape.Cap{shape.Encodable},
-		doc: "the whole stack as CSV, mapping the subject's fields to a header row"},
+		doc: "the whole stack as CSV, mapping the subject's fields to a header row",
+	},
 }
 
 // Builtins returns a registry holding every layer forge ships.
