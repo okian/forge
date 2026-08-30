@@ -1,0 +1,19 @@
+forge — type-driven code generation for Go
+
+Usage:
+  forge <command> [flags] [packages]
+
+Commands:
+  generate   Resolve declarations and write generated files
+  check      Validate declarations and verify outputs are fresh (CI gate)
+  explain    Show the resolved stack, shapes, and methods for one declaration
+  list       List registered layers, kinds, and option schemas
+  doctor     Diagnose toolchain, build tags, and editor configuration
+  version    Print version and build info
+
+Global flags:
+  -C dir     Run as if forge had been started in dir
+  -q         Report only what went wrong
+  -v         Report what is being done
+
+Run "forge <command> -h" for command flags.
