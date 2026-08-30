@@ -2,6 +2,15 @@ package model
 
 import "strings"
 
+// MarkerPkg is the import path of the package that declares the markers a
+// declaration is written against.
+//
+// It lives here because more than one stage needs it and none of them owns it:
+// resolution recognises a marker by it, and the layer registry is keyed by
+// references built from it. Putting it in either would make the other import a
+// stage it has no business knowing about.
+const MarkerPkg = "github.com/okian/forge"
+
 // TypeRef identifies a named type by the package that declares it.
 //
 // It exists because a *types.Named is tied to the load that produced it, while

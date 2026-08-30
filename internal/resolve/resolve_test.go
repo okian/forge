@@ -200,8 +200,8 @@ func TestStackEntriesCarryOriginsOnly(t *testing.T) {
 	stack := find(t, resolved(t), "Recent").Stack
 
 	want := []model.LayerRef{
-		{Origin: model.TypeRef{Pkg: resolve.MarkerPkg, Name: "Collection"}},
-		{Origin: model.TypeRef{Pkg: resolve.MarkerPkg, Name: "Ring"}},
+		{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Collection"}},
+		{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Ring"}},
 	}
 
 	if !slices.Equal(stack, want) {
@@ -285,10 +285,10 @@ func TestTheDefaultIsTheShippedMarkerPackage(t *testing.T) {
 	found := candidates(t)
 
 	implicit, _ := resolve.Declarations(found)
-	explicit, _ := resolve.DeclarationsAgainst(resolve.MarkerPkg, found)
+	explicit, _ := resolve.DeclarationsAgainst(model.MarkerPkg, found)
 
 	if !slices.Equal(names(implicit), names(explicit)) {
-		t.Fatalf("resolving against %s gave %v, want %v", resolve.MarkerPkg, names(explicit), names(implicit))
+		t.Fatalf("resolving against %s gave %v, want %v", model.MarkerPkg, names(explicit), names(implicit))
 	}
 }
 

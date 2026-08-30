@@ -9,6 +9,9 @@ import (
 	"go/types"
 	"strings"
 	"testing"
+
+	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/model"
 )
 
 // markerPath is the import path spec files use to reach the markers.
@@ -240,6 +243,31 @@ func TestMarkerSetMatchesTheCatalog(t *testing.T) {
 	for name := range markers {
 		if scope.Lookup(name) == nil {
 			t.Errorf("marker %s is missing from the package", name)
+		}
+	}
+}
+
+// A marker nothing claims is a declaration that type-checks and then resolves
+// to a stack entry no layer answers for; a layer claiming a marker that is not
+// declared can never be reached at all. Both are silent, and each is invisible
+// to the other's own tests, so the two lists are compared here.
+func TestEveryMarkerIsClaimedByALayer(t *testing.T) {
+	registry := layer.Builtins()
+
+	for name := range markers {
+		if _, ok := registry.Lookup(model.TypeRef{Pkg: markerPath, Name: name}); !ok {
+			t.Errorf("marker %s is declared and no layer claims it", name)
+		}
+	}
+
+	for _, claimed := range registry.All() {
+		origin := claimed.Origin()
+		if origin.Pkg != markerPath {
+			t.Errorf("%s claims a marker outside the marker package", origin)
+			continue
+		}
+		if _, ok := markers[origin.Name]; !ok {
+			t.Errorf("a layer claims %s, which the marker package does not declare", origin.Name)
 		}
 	}
 }

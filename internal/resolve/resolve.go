@@ -9,10 +9,6 @@ import (
 	"github.com/okian/forge/internal/model"
 )
 
-// MarkerPkg is the import path of the package that declares the markers a
-// declaration is written against.
-const MarkerPkg = "github.com/okian/forge"
-
 // Diagnostics this package reports.
 var codeLayerArity = diag.Register(1007, "layer takes more than one type argument")
 
@@ -70,7 +66,7 @@ func (d Declaration) String() string {
 // goes — a marker written inside such a type is not a stack either, because the
 // outermost type is the one that would have to build it.
 func Declarations(candidates []discover.Candidate) ([]Declaration, diag.Set) {
-	return declarations(candidates, MarkerPkg)
+	return declarations(candidates, model.MarkerPkg)
 }
 
 // declarations resolves against an arbitrary marker package.
