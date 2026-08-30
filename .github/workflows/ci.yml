@@ -39,7 +39,7 @@ jobs:
 
       - name: cache golangci-lint
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/go/bin/golangci-lint
           key: golangci-lint-${{ runner.os }}-${{ steps.pin.outputs.golangci }}
