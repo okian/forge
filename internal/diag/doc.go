@@ -23,4 +23,14 @@
 // collisions, FRG5xxx input, output and toolchain. Codes are registered at
 // initialisation, and registering one twice panics rather than letting two
 // failures answer to the same name.
+//
+// Within the composition range the number says one thing more: a code is
+// numbered after the composition rule it enforces, so the rule that a stack
+// holds at most one storage layer reports as FRG1003 and the rule that a layer
+// takes exactly one type argument reports as FRG1007. The rules are numbered
+// and finite, so their codes are spoken for before anything claims them, and a
+// stage that enforces one rule can allocate its code without knowing which
+// stage will enforce the rest. A composition failure that is not one of the
+// numbered rules — a stack written in a form its layers cannot support — takes
+// a number above them, so the correspondence stays exact where it holds.
 package diag

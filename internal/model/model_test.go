@@ -2,6 +2,8 @@ package model_test
 
 import (
 	"go/token"
+	"go/types"
+	"slices"
 	"testing"
 
 	"github.com/okian/forge/internal/model"
@@ -145,6 +147,27 @@ func TestModelLayout(t *testing.T) {
 			want:      "Collection[?]",
 			wantSpans: []model.Span{{Offset: 0, Width: 10}},
 		},
+		"subject carrying no type": {
+			subject: &model.Model{
+				Name:    "Persons",
+				Subject: &model.Struct{},
+				Stack:   []model.LayerRef{layer("Collection", model.KindRefining)},
+			},
+			want:      "Collection[?]",
+			wantSpans: []model.Span{{Offset: 0, Width: 10}},
+		},
+		// A rendered declaration is source, not identity: the import paths that
+		// keep two instantiations apart have no place in a line an author reads.
+		"instantiated subject": {
+			subject: &model.Model{
+				Name: "Pairs",
+				Subject: instantiatedStruct(t, genericPair(t),
+					types.Typ[types.String], namedStruct(t, subjectPkg, "domain", "Person")),
+				Stack: []model.LayerRef{layer("Collection", model.KindRefining)},
+			},
+			want:      "Collection[Pair[string, Person]]",
+			wantSpans: []model.Span{{Offset: 0, Width: 10}},
+		},
 	}
 
 	for name, tc := range cases {
@@ -246,8 +269,62 @@ func TestLayoutUnderlineCountsCharactersNotBytes(t *testing.T) {
 	}
 }
 
+// A stage that renders a declaration without a model of it still has to draw
+// the same brackets, or one declaration reads two ways.
+func TestOpenStack(t *testing.T) {
+	cases := map[string]struct {
+		stack     []model.LayerRef
+		want      string
+		wantOpen  int
+		wantSpans []model.Span
+	}{
+		"nothing": {
+			stack:     nil,
+			want:      "",
+			wantSpans: []model.Span{},
+		},
+		"written entries": {
+			stack: []model.LayerRef{
+				layer("Collection", model.KindRefining),
+				layer("Ring", model.KindStorage),
+			},
+			want:      "Collection[Ring[",
+			wantOpen:  2,
+			wantSpans: []model.Span{{Offset: 0, Width: 10}, {Offset: 11, Width: 4}},
+		},
+		// The bracket count follows the text, not the entries: an inferred
+		// entry writes no bracket, so counting entries would close one too many.
+		"inferred entry": {
+			stack: []model.LayerRef{
+				layer("Collection", model.KindRefining),
+				implicitLayer("Slice", model.KindStorage),
+			},
+			want:      "Collection[",
+			wantOpen:  1,
+			wantSpans: []model.Span{{Offset: 0, Width: 10}, {Offset: 11, Width: 0}},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			text, spans, open := model.OpenStack(tc.stack)
+
+			if text != tc.want {
+				t.Errorf("text = %q, want %q", text, tc.want)
+			}
+			if open != tc.wantOpen {
+				t.Errorf("open = %d, want %d", open, tc.wantOpen)
+			}
+			if !slices.Equal(spans, tc.wantSpans) {
+				t.Errorf("spans = %+v, want %+v", spans, tc.wantSpans)
+			}
+		})
+	}
+}
+
 // Layout and Span are exported, so a caller can hand Underline a span that came
-// from somewhere other than Layout.
+// from somewhere other than Layout — and can draw one against text that never
+// belonged to a Layout at all.
 func TestLayoutUnderlineRejectsSpansOutsideTheText(t *testing.T) {
 	layout := model.Layout{
 		Text: "Collection[Person]",
@@ -255,6 +332,10 @@ func TestLayoutUnderlineRejectsSpansOutsideTheText(t *testing.T) {
 			{Offset: -1, Width: 4},
 			{Offset: 0, Width: 100},
 		},
+	}
+
+	if got, want := (model.Span{Offset: 11, Width: 6}).Underline(layout.Text), "           ^^^^^^"; got != want {
+		t.Errorf("Span.Underline() = %q, want %q", got, want)
 	}
 
 	for i := range layout.Spans {

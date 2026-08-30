@@ -271,6 +271,54 @@ func instantiatedStruct(t *testing.T, generic *types.Named, args ...types.Type) 
 	return &model.Struct{Named: named, Instantiated: true}
 }
 
+// A struct with no type yet has to hand out a types.Type that is nil, not a
+// types.Type holding a nil pointer, which is a different value and renders as a
+// panic.
+func TestStructType(t *testing.T) {
+	person := namedStruct(t, subjectPkg, "domain", "Person")
+
+	if got := (&model.Struct{Named: person}).Type(); got != person {
+		t.Errorf("Type() = %v, want %v", got, person)
+	}
+	if got := (&model.Struct{}).Type(); got != nil {
+		t.Errorf("Type() of a struct with no type = %v, want nil", got)
+	}
+
+	var missing *model.Struct
+	if got := missing.Type(); got != nil {
+		t.Errorf("Type() of a nil struct = %v, want nil", got)
+	}
+}
+
+// A rendered declaration spells its types the way its source does, while a
+// [model.TypeRef] spells them the way an identity has to, qualified by import
+// path. Confusing the two puts an import path inside a type argument in a
+// diagnostic, which is the one place a reader is least equipped to skip it.
+func TestTypeString(t *testing.T) {
+	person := namedStruct(t, subjectPkg, "domain", "Person")
+	pair := instantiatedStruct(t, genericPair(t), types.Typ[types.String], person)
+
+	cases := map[string]struct {
+		subject types.Type
+		want    string
+	}{
+		"nothing":      {nil, "?"},
+		"basic":        {types.Typ[types.Int], "int"},
+		"named":        {person, "Person"},
+		"pointer":      {types.NewPointer(person), "*Person"},
+		"slice":        {types.NewSlice(person), "[]Person"},
+		"instantiated": {pair.Named, "Pair[string, Person]"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := model.TypeString(tc.subject); got != tc.want {
+				t.Errorf("TypeString() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFieldString(t *testing.T) {
 	field := personStruct(t).Fields[1]
 	if got, want := field.String(), "Age int"; got != want {

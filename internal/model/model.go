@@ -117,72 +117,91 @@ type Layout struct {
 
 // Underline returns a line of spaces and carets that marks the i'th stack
 // entry when printed directly beneath [Layout.Text]. It returns an empty
-// string for an out-of-range index, for an entry nobody wrote, and for a span
-// that does not lie within the text.
+// string for an out-of-range index and for anything [Span.Underline] declines
+// to mark.
+func (l Layout) Underline(i int) string {
+	if i < 0 || i >= len(l.Spans) {
+		return ""
+	}
+	return l.Spans[i].Underline(l.Text)
+}
+
+// Underline returns a line of spaces and carets that marks the span when
+// printed directly beneath text. It returns an empty string for a span that
+// marks nothing, as an entry nobody wrote does, and for one that does not lie
+// within the text.
 //
 // Spans are measured in bytes, because that is what slicing the text needs,
 // while the caret line is measured in characters, because that is what lines
 // up on screen. A marker named with a non-ASCII letter is a legal Go
 // identifier, so the two are not the same count.
-func (l Layout) Underline(i int) string {
-	if i < 0 || i >= len(l.Spans) {
+func (s Span) Underline(text string) string {
+	if s.Width <= 0 || s.Offset < 0 || s.Offset+s.Width > len(text) {
 		return ""
 	}
 
-	span := l.Spans[i]
-	if span.Width <= 0 || span.Offset < 0 || span.Offset+span.Width > len(l.Text) {
-		return ""
-	}
-
-	lead := utf8.RuneCountInString(l.Text[:span.Offset])
-	width := utf8.RuneCountInString(l.Text[span.Offset : span.Offset+span.Width])
+	lead := utf8.RuneCountInString(text[:s.Offset])
+	width := utf8.RuneCountInString(text[s.Offset : s.Offset+s.Width])
 
 	return strings.Repeat(" ", lead) + strings.Repeat("^", width)
 }
 
-// Layout renders the declaration's stack the way the author wrote it, with the
-// subject innermost, and reports where each entry falls within that rendering.
+// OpenStack renders the layers of a stack down to the point where the type they
+// wrap is written — "Collection[Ring[" — and reports where each layer's name
+// falls in that rendering and how many brackets close it.
 //
 // Markers are spelled unqualified whether the declaration imported them
-// qualified or not, so the rendering is canonical rather than verbatim. An
-// entry resolution inferred contributes no text and gets a zero-width span.
+// qualified or not, so the rendering is canonical rather than verbatim. An entry
+// resolution inferred contributes no text and gets a zero-width span, since
+// nothing may point a caret at an entry nobody wrote; that is also why the
+// bracket count is returned rather than counted from the entries.
+//
+// It is exported so that one declaration renders one way wherever it is
+// rendered. [Model.Layout] closes the stack over the subject's name, and a
+// stage that has no model yet closes it over whatever it does have.
+func OpenStack(stack []LayerRef) (text string, spans []Span, open int) {
+	spans = make([]Span, len(stack))
+
+	var b strings.Builder
+	for i, ref := range stack {
+		if ref.Implicit {
+			// The entry occupies no source text, but it still has a place: the
+			// point where it would have been written had the author spelled it.
+			spans[i] = Span{Offset: b.Len()}
+			continue
+		}
+		name := ref.Origin.Name
+		spans[i] = Span{Offset: b.Len(), Width: len(name)}
+		b.WriteString(name)
+		b.WriteByte('[')
+		open++
+	}
+
+	return b.String(), spans, open
+}
+
+// Layout renders the declaration's stack the way the author wrote it, with the
+// subject innermost, and reports where each entry falls within that rendering.
 func (m *Model) Layout() Layout {
 	if m == nil {
 		return Layout{}
 	}
 
-	layout := Layout{Spans: make([]Span, len(m.Stack))}
+	text, spans, open := OpenStack(m.Stack)
 
-	var text strings.Builder
-	var open int
-	for i, ref := range m.Stack {
-		if ref.Implicit {
-			// The entry occupies no source text, but it still has a place: the
-			// point where it would have been written had the author spelled it.
-			layout.Spans[i] = Span{Offset: text.Len()}
-			continue
-		}
-		name := ref.Origin.Name
-		layout.Spans[i] = Span{Offset: text.Len(), Width: len(name)}
-		text.WriteString(name)
-		text.WriteByte('[')
-		open++
+	return Layout{
+		Text:  text + m.subjectName() + strings.Repeat("]", open),
+		Spans: spans,
 	}
-
-	text.WriteString(m.subjectName())
-	text.WriteString(strings.Repeat("]", open))
-
-	layout.Text = text.String()
-	return layout
 }
 
 // subjectName returns the name to print innermost in a rendered stack.
-func (m *Model) subjectName() string {
-	if ref := m.Subject.Ref(); !ref.IsZero() {
-		return ref.Name + ref.Args
-	}
-	return "?"
-}
+//
+// It spells the type rather than its identity: [TypeRef.Args] qualifies an
+// instantiation's arguments by import path, which is what keeps two
+// instantiations apart and exactly what a reader of a rendered declaration does
+// not want to see.
+func (m *Model) subjectName() string { return TypeString(m.Subject.Type()) }
 
 // Options is one layer's option set, as written on a declaration.
 type Options struct {

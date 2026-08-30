@@ -132,6 +132,29 @@ func packageNameQualifier(p *types.Package) string { return p.Name() }
 // that have to stay unique across packages that share a name.
 func packagePathQualifier(p *types.Package) string { return p.Path() }
 
+// noQualifier names no package at all.
+func noQualifier(*types.Package) string { return "" }
+
+// TypeString spells a type the way a rendered declaration spells it: as
+// [types.TypeString] would, with every package qualifier dropped, so that a
+// stack and the type at the bottom of it read as one line of source rather
+// than as two vocabularies. A nil type renders as a question mark, since a
+// rendering that panics is no use where renderings are reached for.
+//
+// The nil it accepts is the interface's own. A nil *types.Named handed over as
+// a types.Type is not nil at all, and is the one value here that panics rather
+// than renders — which is what [Struct.Type] exists to keep out of it.
+//
+// This is a spelling and not an identity. Two types of the same name in
+// different packages spell alike here, which is what a reader of a declaration
+// wants and what [TypeRef] exists to prevent when it is not.
+func TypeString(t types.Type) string {
+	if t == nil {
+		return "?"
+	}
+	return types.TypeString(t, noQualifier)
+}
+
 // Field is one field of the subject, or of a struct reachable from it.
 type Field struct {
 	// Name is the field's identifier. For an embedded field it is the name Go
@@ -273,6 +296,19 @@ func (s *Struct) Ref() TypeRef {
 	}
 
 	return ref
+}
+
+// Type returns the struct's type, or nil when it has none yet.
+//
+// It exists so that a caller cannot turn a struct with no type into a non-nil
+// types.Type holding a nil pointer. That value renders as a panic rather than
+// as a name, and the compiler has no warning for it, so the conversion is done
+// once here rather than at every call site that has to remember.
+func (s *Struct) Type() types.Type {
+	if s == nil || s.Named == nil {
+		return nil
+	}
+	return s.Named
 }
 
 // Local reports whether a method may be attached to the struct. When it cannot,
