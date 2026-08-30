@@ -13,3 +13,8 @@
 .DS_Store
 .idea/
 .vscode/
+
+# A bare "tags" is the usual global ignore for ctags output, and it also matches
+# this module's internal/tags package directory. Re-include it here.
+/tags
+!internal/tags/
