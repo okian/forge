@@ -1,6 +1,9 @@
 package tags
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Tag is one entry of a struct tag, parsed into the shape every consumer of
 // tags shares: a leading name followed by comma-separated options.
@@ -10,7 +13,7 @@ import "strings"
 // `validate:"required,min=3"` all decompose the same way. Whether a given
 // option is meaningful is left to whichever layer reads it.
 //
-// Splitting on commas is nearly right and not quite. Under json/v2 an option
+// Splitting on commas is nearly right and not quite. Under json/v2 the format
 // value may be single-quoted, and a quoted value may contain commas, so
 // `format:'2006-01-02, 15:04'` is one option and not two. Anything that
 // reconstructs options from [Tag.Raw] has to respect that.
@@ -19,8 +22,9 @@ type Tag struct {
 	// "validate", "forge".
 	Key string
 
-	// Raw is the tag's value exactly as written, without the surrounding
-	// quotes. It is the text a diagnostic should quote back to the author.
+	// Raw is the tag's value unquoted: the text between the quotes with its Go
+	// string escapes resolved, which is what the field really carries and what
+	// a diagnostic should quote back to the author.
 	Raw string
 
 	// Name is the leading name, before the first comma. It is empty when the
@@ -35,9 +39,10 @@ type Tag struct {
 
 	// Ignored records the conventional `-` value, which excludes the field.
 	//
-	// Only a bare `-` does this. Under json/v2 a trailing comma with nothing
-	// after it is a malformed tag rather than an escape hatch, and naming a
-	// field `-` takes a real option after the comma, as in `-,omitzero`.
+	// Only a tag that is exactly `-` does this. Under json/v2 a dash anywhere
+	// else is an ordinary name, so `-,omitzero` names the field `-` rather than
+	// hiding it, and `-,` is a malformed tag for its trailing comma rather than
+	// an escape hatch.
 	Ignored bool
 }
 
@@ -46,6 +51,11 @@ type Tag struct {
 // Both separators in circulation are accepted: json/v2 uses a colon
 // (`format:RFC3339`, `case:ignore`), while validator libraries use an equals
 // sign (`min=3`). Name and Value hold the two halves whichever was written.
+//
+// Which separator is legal depends on the key. Under json/v2 only a colon is,
+// and only after the two options that take a value at all; an equals sign there
+// is a malformed tag. Under every other key both are accepted, because there is
+// no authority saying otherwise.
 type Option struct {
 	// Name is the text before the separator, or the whole entry when there is
 	// no separator.
@@ -56,7 +66,9 @@ type Option struct {
 	Value string
 
 	// HasValue distinguishes an option written with a separator and an empty
-	// value, such as `format:`, from a bare option such as `omitzero`.
+	// value, such as `min=`, from a bare option such as `omitzero`. Only a
+	// convention leaves that distinction open: under json/v2 an option that
+	// takes a value and is given an empty one is a malformed tag.
 	HasValue bool
 
 	// Raw is the option exactly as written, quotes included.
@@ -119,8 +131,10 @@ func (t Tag) IsZero() bool {
 func (t Tag) String() string {
 	var b strings.Builder
 	b.WriteString(t.Key)
-	b.WriteString(`:"`)
-	b.WriteString(t.Raw)
-	b.WriteString(`"`)
+	b.WriteByte(':')
+	// Quoted rather than wrapped in quotes: the value is stored with its
+	// escapes resolved, so a value holding a quote would otherwise render as
+	// something that reads back as a different tag.
+	b.WriteString(strconv.Quote(t.Raw))
 	return b.String()
 }
