@@ -85,7 +85,7 @@ jobs:
       # One profile is enough to read, and the two runners produce the same one.
       - name: upload coverage profile
         if: ${{ always() && matrix.os == 'ubuntu-latest' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: cover.out
