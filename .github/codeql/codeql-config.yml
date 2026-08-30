@@ -2,12 +2,14 @@ name: forge
 
 # testdata holds packages that do not compile, on purpose: a type error the
 # loader has to report, a declaration whose generated half does not exist yet,
-# an instantiation cycle the subject builder must refuse. The go tool never
-# builds them — `go build ./...` skips any directory named testdata — but
-# CodeQL's extractor finds them anyway and type-checks each one on its own,
-# turning every fixture into a build error logged against a job that then
-# passes. Nothing under testdata is compiled into the module or shipped, so
-# there is no analysis to lose by leaving it out.
+# an instantiation cycle the subject builder must refuse. Nothing under it is
+# compiled into the module or shipped, and being wrong is what makes those
+# files useful, so there is no analysis to lose by leaving them out.
+#
+# This filters results. What keeps the fixtures out of the build in the first
+# place is the manual build mode in the workflow: paths-ignore is applied after
+# the autobuilder has already walked the tree for go.mod files and tried to
+# build each of the twelve it finds here.
 paths-ignore:
   - "**/testdata/**"
 

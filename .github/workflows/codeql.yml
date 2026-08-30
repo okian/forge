@@ -35,9 +35,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The module itself, built the way CodeQL builds Go.
+          # The module itself. Built by hand rather than by autobuild, which
+          # discovers modules by walking for go.mod and finds thirteen: the
+          # module, and twelve fixture modules under testdata that do not
+          # compile on purpose. `go build ./...` finds one, because the go tool
+          # does not descend into a directory named testdata.
           - language: go
-            build-mode: autobuild
+            build-mode: manual
           # And the workflows, which are as much a supply chain as go.mod is.
           - language: actions
             build-mode: none
@@ -56,6 +60,16 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           config-file: .github/codeql/codeql-config.yml
+
+      # Both commands together reach what autobuild reached: `go test` compiles
+      # every package and every test package, so nothing is dropped from the
+      # analysis by taking the build into our own hands. `-run` matching no test
+      # keeps it to compiling and linking.
+      - name: build
+        if: matrix.language == 'go'
+        run: |
+          go build ./...
+          go test -run='^$' -count=1 ./...
 
       - name: analyse
         uses: github/codeql-action/analyze@v4
