@@ -48,6 +48,17 @@ linters:
           - staticcheck
           - unused
 
+      # Marker names are a declaration vocabulary that users type in their own
+      # source and that matches the //forge:<layer> directives one for one:
+      # Json pairs with //forge:json, Csv with //forge:csv. Go's initialism
+      # convention would spell them JSON and CSV, which shouts inside a stack
+      # such as Collection[Ring[Json[Person]]] and no longer matches the
+      # directive. The exception is confined to the file that declares them.
+      - path: '^forge\.go$'
+        linters:
+          - revive
+        text: 'var-naming: type Json should be JSON'
+
 formatters:
   enable:
     - gofmt
