@@ -1,0 +1,29 @@
+name: dependency review
+
+# A pull request that adds a dependency says so here, in the diff, rather than
+# in a vulnerability report months later.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: review the dependency diff
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+          # Generated code imports the standard library and the subject's own
+          # dependencies, and nothing else (PRD G8). A licence that travels with
+          # a dependency into a user's build is therefore forge's problem too.
+          allow-licenses: Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MPL-2.0

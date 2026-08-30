@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  # x/tools is the package loader forge is built on, and a Go release that
+  # changes the type checker usually arrives here first.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+    labels:
+      - dependencies
+
+  # Actions pinned to a major tag still move underneath a workflow. This makes
+  # the move a pull request that CI runs against.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies

@@ -1,0 +1,63 @@
+name: codeql
+
+# This replaces code scanning's default setup rather than sitting beside it —
+# GitHub refuses results from an advanced configuration while the default one is
+# enabled. What the advanced form buys is a configuration that lives in the tree
+# where it can be reviewed, and the security-and-quality query pack rather than
+# security alone: this module's risk is as much correctness as it is security.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # The pack keeps growing, so a pattern only recognised as a problem after a
+  # commit landed is still found.
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyse:
+    name: analyse (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The module itself, built the way CodeQL builds Go.
+          - language: go
+            build-mode: autobuild
+          # And the workflows, which are as much a supply chain as go.mod is.
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: initialise
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+
+      - name: analyse
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
