@@ -2,6 +2,7 @@ package layer
 
 import (
 	"go/ast"
+	"go/token"
 	"strconv"
 	"strings"
 
@@ -61,6 +62,23 @@ type Context struct {
 type Unit struct {
 	// Decls holds the declarations to emit, in the order they should appear.
 	Decls []ast.Decl
+
+	// Comments holds every comment group from the file the declarations were
+	// parsed from, and Fset resolves the positions they all carry.
+	//
+	// The three belong together and a layer that parsed anything owes all
+	// three. A comment is not reachable from the declaration it documents — the
+	// printer finds it by position, in a list that belongs to the file — so
+	// declarations handed over without them are printed without every comment
+	// inside a function body, and printed against the wrong file set they are
+	// printed with the comments in the wrong places. Both produce Go that
+	// compiles, and the output is committed.
+	//
+	// A layer that builds its declarations rather than parsing them carries no
+	// positions and leaves both empty; a doc comment hangs off the declaration
+	// itself and travels with it.
+	Comments []*ast.CommentGroup
+	Fset     *token.FileSet
 
 	// Imports holds the import paths the declarations need. Generated code
 	// imports the standard library and the subject's own dependencies and
