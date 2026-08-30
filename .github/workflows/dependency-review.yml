@@ -16,7 +16,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: review the dependency diff
         uses: actions/dependency-review-action@v5.0.0
