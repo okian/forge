@@ -52,17 +52,24 @@ func (r TypeRef) String() string {
 // IsZero reports whether the reference names nothing.
 func (r TypeRef) IsZero() bool { return r == TypeRef{} }
 
-// Less orders references by package path, then name, then type arguments, so
-// any output built by walking a set of them is stable across runs.
-func (r TypeRef) Less(other TypeRef) bool {
-	if r.Pkg != other.Pkg {
-		return r.Pkg < other.Pkg
+// Compare orders two references by package path, then name, then type
+// arguments, reporting a negative number, zero, or a positive one — which is
+// the shape [slices.SortFunc] wants, so that sorting a set of them takes no
+// comparator of its own.
+func (r TypeRef) Compare(other TypeRef) int {
+	if c := strings.Compare(r.Pkg, other.Pkg); c != 0 {
+		return c
 	}
-	if r.Name != other.Name {
-		return r.Name < other.Name
+	if c := strings.Compare(r.Name, other.Name); c != 0 {
+		return c
 	}
-	return r.Args < other.Args
+	return strings.Compare(r.Args, other.Args)
 }
+
+// Less reports whether the reference sorts before another. [TypeRef.Compare]
+// is the primary and is what a sort should use; this is for the places where a
+// boolean reads better than a sign.
+func (r TypeRef) Less(other TypeRef) bool { return r.Compare(other) < 0 }
 
 // LayerRef is one resolved entry in a stack: the marker the declaration named,
 // the kind the registered layer reports for it, and whether the entry was

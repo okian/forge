@@ -58,16 +58,7 @@ func TestTypeRefLessOrdersByPackageThenName(t *testing.T) {
 		{Pkg: "a/pkg", Name: "Alpha"},
 	}
 
-	slices.SortFunc(refs, func(a, b model.TypeRef) int {
-		switch {
-		case a.Less(b):
-			return -1
-		case b.Less(a):
-			return 1
-		default:
-			return 0
-		}
-	})
+	slices.SortFunc(refs, model.TypeRef.Compare)
 
 	want := []string{"string", "a/pkg.Alpha", "a/pkg.Zeta", "b/pkg.Alpha"}
 	for i, ref := range refs {
@@ -79,6 +70,33 @@ func TestTypeRefLessOrdersByPackageThenName(t *testing.T) {
 	same := model.TypeRef{Pkg: "a/pkg", Name: "Alpha"}
 	if same.Less(same) {
 		t.Error("Less reports a reference as less than itself")
+	}
+}
+
+// Compare answers in the three directions a sort needs, and every part of a
+// reference has to be able to decide it: two instantiations of one generic
+// differ in nothing but their arguments.
+func TestTypeRefCompare(t *testing.T) {
+	cases := map[string]struct {
+		a, b model.TypeRef
+		want int
+	}{
+		"by package":   {model.TypeRef{Pkg: "a"}, model.TypeRef{Pkg: "b"}, -1},
+		"by name":      {model.TypeRef{Pkg: "a", Name: "Z"}, model.TypeRef{Pkg: "a", Name: "A"}, 1},
+		"by arguments": {model.TypeRef{Name: "Pair", Args: "[int]"}, model.TypeRef{Name: "Pair", Args: "[string]"}, -1},
+		"alike":        {model.TypeRef{Pkg: "a", Name: "A"}, model.TypeRef{Pkg: "a", Name: "A"}, 0},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := tc.a.Compare(tc.b)
+			if (got < 0) != (tc.want < 0) || (got > 0) != (tc.want > 0) {
+				t.Errorf("Compare() = %d, want %d", got, tc.want)
+			}
+			if reversed := tc.b.Compare(tc.a); (reversed < 0) != (got > 0) {
+				t.Errorf("Compare() disagrees with itself reversed: %d and %d", got, reversed)
+			}
+		})
 	}
 }
 

@@ -319,6 +319,51 @@ func TestTypeString(t *testing.T) {
 	}
 }
 
+// The class says how a type is written; this says what it is. A named
+// interface is ClassNamed, so a layer refusing what it cannot see through has
+// to ask the question rather than read the class.
+func TestClassifiedIsInterface(t *testing.T) {
+	empty := types.NewInterfaceType(nil, nil).Complete()
+	pkg := types.NewPackage(subjectPkg, "domain")
+	behind := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Reader", nil), empty, nil)
+
+	cases := map[string]struct {
+		subject model.Classified
+		want    bool
+	}{
+		"written in place": {model.Classified{Class: model.ClassInterface, Type: empty}, true},
+		"behind a name":    {model.Classified{Class: model.ClassNamed, Type: behind}, true},
+		"a struct":         {model.Classified{Class: model.ClassStruct, Type: types.NewStruct(nil, nil)}, false},
+		"unclassified":     {model.Classified{}, false},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := tc.subject.IsInterface(); got != tc.want {
+				t.Errorf("IsInterface() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A method name already taken is a redeclaration, which is a different question
+// from whether the type satisfies anything.
+func TestStructHasMethod(t *testing.T) {
+	subject := &model.Struct{Methods: []string{"MarshalJSONTo", "String"}}
+
+	if !subject.HasMethod("String") {
+		t.Error("HasMethod does not report a method the type declares")
+	}
+	if subject.HasMethod("UnmarshalJSONFrom") {
+		t.Error("HasMethod reports a method nobody declared")
+	}
+
+	var missing *model.Struct
+	if missing.HasMethod("String") {
+		t.Error("HasMethod on a nil struct reports a method")
+	}
+}
+
 func TestFieldString(t *testing.T) {
 	field := personStruct(t).Fields[1]
 	if got, want := field.String(), "Age int"; got != want {

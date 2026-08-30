@@ -45,9 +45,13 @@ const (
 	// ClassStruct is an unnamed struct written in place.
 	ClassStruct
 
-	// ClassInterface is an interface, including any. A statically generated
-	// codec cannot see through one, which is why it is called out rather than
-	// folded into ClassNamed.
+	// ClassInterface is an interface written in place, including any.
+	//
+	// A named interface — error, io.Reader — is ClassNamed like every other
+	// named type, because its name is what a diagnostic prints and what a
+	// method attaches to. A layer refusing what a static codec cannot see
+	// through has to refuse both, which is what [Classified.IsInterface] is
+	// for; branching on this class alone would let error straight past.
 	ClassInterface
 
 	// ClassChan is a channel. Nothing meaningful can be generated for one, so
@@ -124,6 +128,21 @@ func (c Classified) String() string {
 	return types.TypeString(c.Type, packageNameQualifier)
 }
 
+// IsInterface reports whether the type is one a statically generated codec
+// cannot see through, whether it was written in place or behind a name.
+//
+// The class alone cannot answer this. error and io.Reader are named types and
+// so are ClassNamed, which is right — the name is what a diagnostic prints —
+// and a layer that refused only ClassInterface would let both straight past to
+// generate code that cannot exist.
+func (c Classified) IsInterface() bool {
+	if c.Type == nil {
+		return false
+	}
+	_, ok := c.Type.Underlying().(*types.Interface)
+	return ok
+}
+
 // packageNameQualifier spells a type's package by name, for output a human
 // reads.
 func packageNameQualifier(p *types.Package) string { return p.Name() }
@@ -178,7 +197,7 @@ type Field struct {
 	Exported bool
 
 	// Implements lists the interfaces the field's type already satisfies,
-	// sorted by [TypeRef.Less]. A layer whose interface appears here delegates
+	// sorted by [TypeRef.Compare]. A layer whose interface appears here delegates
 	// to what is already there rather than generating a second implementation,
 	// which is how a hand-written codec stays authoritative. It is a list
 	// rather than a flag because a type may carry a JSON codec and no binary
@@ -242,10 +261,25 @@ type Struct struct {
 	Closure []*Struct
 
 	// Implements lists the interfaces the struct already satisfies, sorted by
-	// [TypeRef.Less], with the same meaning it has on a field: a layer whose
-	// interface is already implemented emits nothing rather than a duplicate
-	// method, which would not compile.
+	// [TypeRef.Compare], with the same meaning it has on a field: a layer whose
+	// interface is already implemented has an implementation to delegate to.
+	//
+	// Satisfying an interface is not the same question as colliding with a
+	// method, and this answers only the first. An author who wrote one half of
+	// a codec satisfies nothing and would still collide; a type that satisfies
+	// an interface through an embedded field has no method of its own to
+	// collide with, and may legally be given one. [Struct.Methods] is what
+	// answers the second question.
 	Implements []TypeRef
+
+	// Methods lists the names of the methods declared on the type itself, in
+	// sorted order and without the ones promoted from an embedded field.
+	//
+	// This is the collision list. Generated code may not declare a method the
+	// author already declared, whatever else that method does or does not add
+	// up to — and a promoted method is not in it, because a method declared on
+	// the type legally shadows one it embeds.
+	Methods []string
 
 	// Cyclic records that the struct reaches itself. Layers that walk the
 	// closure must terminate on this rather than recursing.
@@ -266,23 +300,27 @@ type Struct struct {
 	Pos token.Position
 }
 
-// Ref returns the struct's identity, or the zero value if it has none yet.
+// RefOf identifies a named type: the package that declares it, its name, and
+// the arguments it was instantiated with. It returns the zero value for a nil
+// type, which is what lets [Struct.Ref] delegate to it without a guard of its
+// own.
 //
 // An instantiation carries its type arguments, so that Pair[string, int] and
 // Pair[string, bool] are two identities and not one. Arguments are spelled by
-// import path, since two packages may share a name.
-func (s *Struct) Ref() TypeRef {
-	if s == nil || s.Named == nil {
+// import path, since two packages may share a name — which makes this an
+// identity and not a rendering. [TypeString] is the rendering.
+func RefOf(named *types.Named) TypeRef {
+	if named == nil {
 		return TypeRef{}
 	}
 
-	obj := s.Named.Obj()
+	obj := named.Obj()
 	ref := TypeRef{Name: obj.Name()}
 	if pkg := obj.Pkg(); pkg != nil {
 		ref.Pkg = pkg.Path()
 	}
 
-	if args := s.Named.TypeArgs(); args != nil && args.Len() > 0 {
+	if args := named.TypeArgs(); args.Len() > 0 {
 		var b strings.Builder
 		b.WriteByte('[')
 		for i := range args.Len() {
@@ -296,6 +334,14 @@ func (s *Struct) Ref() TypeRef {
 	}
 
 	return ref
+}
+
+// Ref returns the struct's identity, or the zero value if it has none yet.
+func (s *Struct) Ref() TypeRef {
+	if s == nil {
+		return TypeRef{}
+	}
+	return RefOf(s.Named)
 }
 
 // Type returns the struct's type, or nil when it has none yet.
@@ -321,6 +367,13 @@ func (s *Struct) Local() bool {
 // Satisfies reports whether the struct already implements iface.
 func (s *Struct) Satisfies(iface TypeRef) bool {
 	return s != nil && slices.Contains(s.Implements, iface)
+}
+
+// HasMethod reports whether the type declares a method under this name, which
+// is the question a layer asks before generating one: a name already taken is a
+// redeclaration, and a redeclaration does not compile.
+func (s *Struct) HasMethod(name string) bool {
+	return s != nil && slices.Contains(s.Methods, name)
 }
 
 // Field returns the field written under name, and whether the struct has one.
