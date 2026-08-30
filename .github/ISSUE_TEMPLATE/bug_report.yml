@@ -1,0 +1,61 @@
+name: Bug report
+description: Generation produced the wrong thing, or refused something it should accept.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The declaration is the reproduction. A type and the file `forge` wrote
+        for it tells us more than a description of either.
+
+  - type: textarea
+    id: declaration
+    attributes:
+      label: The declaration
+      description: The type declaration, and the subject it names.
+      render: go
+      placeholder: |
+        type Person struct {
+            Name string `json:"name"`
+            Age  int
+        }
+
+        type Persons Collection[Ring[Json[Person]]]
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: The API, the output, or the diagnostic you were after.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: >
+        The generated file, or the diagnostic and its FRG code. Paste it as it
+        came out rather than summarising it.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: forge version
+      description: The output of `forge version`.
+    validations:
+      required: true
+
+  - type: input
+    id: toolchain
+    attributes:
+      label: Go version and platform
+      description: The output of `go version`.
+      placeholder: go version go1.27.0 darwin/arm64
+    validations:
+      required: true

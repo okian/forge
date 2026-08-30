@@ -1,0 +1,57 @@
+name: Layer proposal
+description: Propose a layer for the catalog, or an option on one that exists.
+labels: ["layer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A layer earns its place by what a declaration can say once it exists.
+        Start with the declaration you want to write.
+
+  - type: textarea
+    id: declaration
+    attributes:
+      label: The declaration you want to write
+      render: go
+      placeholder: type Events Collection[Ring[Proto[Event]]]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      description: Where in a stack the layer sits.
+      options:
+        - subject
+        - element
+        - storage
+        - refining
+        - decorator
+        - transport
+        - not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: api
+    attributes:
+      label: What it adds
+      description: The methods or interfaces the layer contributes to the type.
+    validations:
+      required: true
+
+  - type: textarea
+    id: composition
+    attributes:
+      label: What it composes with
+      description: >
+        Which layers it requires beneath it, which it conflicts with, and what
+        the diagnostic should say when somebody stacks it wrongly.
+
+  - type: textarea
+    id: alternative
+    attributes:
+      label: What you do today
+      description: >
+        The hand-written code, or the other generator, this would replace.
