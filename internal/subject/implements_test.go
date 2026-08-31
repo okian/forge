@@ -130,7 +130,7 @@ func TestPredeclaredTypesAreExternal(t *testing.T) {
 func TestWithoutAFileSetPositionsAreEmpty(t *testing.T) {
 	loaded := session(t)
 
-	built, _ := subject.New(subject.Config{Module: fixtureModule}).
+	built, _ := subject.New(subject.Config{Owned: loaded.Owned()}).
 		Build(named(t, loaded, "Person"), subject.At(token.Position{}))
 
 	if built.Pos != (token.Position{}) {

@@ -354,16 +354,6 @@ func constructorFor(declared string) string {
 // lower returns a name with its first letter in lower case, and upper with it
 // in upper case. Between them they turn a declared name into the prefix its
 // helpers take and into the tail of its constructor's name.
-func lower(name string) string { return recase(name, unicode.ToLower) }
+func lower(name string) string { return model.Lower(name) }
 
-func upper(name string) string { return recase(name, unicode.ToUpper) }
-
-// recase applies a case change to a name's first rune.
-func recase(name string, to func(rune) rune) string {
-	if name == "" {
-		return name
-	}
-
-	first, width := utf8.DecodeRuneInString(name)
-	return string(to(first)) + name[width:]
-}
+func upper(name string) string { return model.Upper(name) }

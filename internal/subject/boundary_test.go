@@ -22,7 +22,7 @@ const elsewhere = "elsewhere"
 func outside(t *testing.T, loaded *load.Session) *subject.Builder {
 	t.Helper()
 
-	return subject.New(subject.Config{Fset: loaded.Fset, Module: elsewhere})
+	return subject.New(subject.Config{Fset: loaded.Fset, Owned: map[string]bool{elsewhere: true}})
 }
 
 // An external struct is followed through the fields generated code could read
@@ -105,7 +105,7 @@ func TestFieldsAnswerForTheTypeAsWritten(t *testing.T) {
 
 	built, diags := subject.New(subject.Config{
 		Fset:       loaded.Fset,
-		Module:     fixtureModule,
+		Owned:      loaded.Owned(),
 		Interfaces: []subject.Interface{stringer},
 	}).Build(named(t, loaded, "Shapes"), subject.At(token.Position{}))
 	if !diags.Empty() {
@@ -243,7 +243,7 @@ func TestAnInstantiationCycleIsReportedRatherThanFollowed(t *testing.T) {
 		t.Fatal("Start is not a named type")
 	}
 
-	built, diags := subject.New(subject.Config{Fset: loaded.Fset, Module: "cyclicfixture"}).
+	built, diags := subject.New(subject.Config{Fset: loaded.Fset, Owned: loaded.Owned()}).
 		Build(start, subject.At(token.Position{Filename: "spec.go", Line: 1, Column: 1}))
 
 	if built == nil {

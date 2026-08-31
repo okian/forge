@@ -151,6 +151,25 @@ type Unit struct {
 	// Assertions holds the compile-time claims to emit for what was generated.
 	Assertions []Assertion
 
+	// Provides holds work that belongs to something other than this
+	// declaration, keyed by what it is about.
+	//
+	// The subject, in every case there is. An element layer contributes to the
+	// subject rather than to the container, and two declarations over one
+	// subject each ask their element layers for the same thing and each get it
+	// — so what arrives is the same declarations twice, and what the package
+	// needs is one. The key says which of them are the same.
+	//
+	// Distinct from Requires, which names a helper this build knows how to
+	// write and this unit merely wants. What is here is a helper the layer has
+	// already written, because nothing else could: it depends on the subject,
+	// and the layer is what was given one.
+	//
+	// Keyed by a string rather than by a reference so that a caller can key by
+	// whatever makes two contributions the same — a subject's own name, or that
+	// and the layer's, where one subject can be contributed to twice.
+	Provides map[string]Unit
+
 	// Requires names the helper types this unit calls into and does not itself
 	// declare. Two declarations reaching one helper name it twice and it is
 	// emitted once, which is what keeps a codec for a shared subject from being

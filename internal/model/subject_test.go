@@ -391,22 +391,55 @@ func TestStructRef(t *testing.T) {
 // Whether a method can be attached to the subject decides whether an element
 // layer emits methods or standalone functions, so the predicate has to be
 // exactly right for each reason it can fail.
-func TestStructLocal(t *testing.T) {
+func TestWhereAMethodOnASubjectMayGo(t *testing.T) {
+	held := personStruct(t)
+
+	elsewhere := &model.Struct{
+		Named: namedStruct(t, subjectPkg+"/other", "other", "Person"),
+	}
+
 	cases := map[string]struct {
-		subject *model.Struct
-		want    bool
+		subject           *model.Struct
+		attachable, reach bool
 	}{
-		"local":        {personStruct(t), true},
-		"external":     {&model.Struct{Named: namedStruct(t, "other.example/lib", "lib", "Person"), External: true}, false},
-		"instantiated": {&model.Struct{Named: namedStruct(t, subjectPkg, "domain", "Pair"), Instantiated: true}, false},
-		"unresolved":   {&model.Struct{}, false},
-		"nil":          {nil, false},
+		// The package being written into, which is the only place a method on
+		// the type can be declared.
+		"in this package": {held, true, true},
+
+		// Somewhere else in the same module: out of reach from here for the
+		// language's reason, and reachable in the sense that generating into
+		// that package would work.
+		"in another package of this module": {elsewhere, false, true},
+
+		"in another module": {
+			&model.Struct{
+				Named:    namedStruct(t, "other.example/lib", "lib", "Person"),
+				External: true,
+			},
+			false, false,
+		},
+
+		// An instantiation has nowhere to put a method wherever it was
+		// declared: the type a method would attach to is the generic one.
+		"an instantiation": {
+			&model.Struct{
+				Named:        namedStruct(t, subjectPkg, "domain", "Pair"),
+				Instantiated: true,
+			},
+			false, false,
+		},
+
+		"unresolved": {&model.Struct{}, false, false},
+		"nil":        {nil, false, false},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if got := tc.subject.Local(); got != tc.want {
-				t.Errorf("Local() = %v, want %v", got, tc.want)
+			if got := tc.subject.Attachable(subjectPkg); got != tc.attachable {
+				t.Errorf("Attachable(%q) = %v, want %v", subjectPkg, got, tc.attachable)
+			}
+			if got := tc.subject.Reachable(); got != tc.reach {
+				t.Errorf("Reachable() = %v, want %v", got, tc.reach)
 			}
 		})
 	}
@@ -465,4 +498,73 @@ func TestStructString(t *testing.T) {
 	if got, want := (&model.Struct{}).String(), "<unresolved struct>"; got != want {
 		t.Errorf("String() on an unresolved struct = %q, want %q", got, want)
 	}
+}
+
+// The function a container calls to reach a subject is named after the subject,
+// and two subjects never reach one name.
+//
+// Both halves matter. Naming it after the subject is what lets two declarations
+// over one subject agree on one function; keeping two subjects apart is what
+// stops two of them being given one. The second is not obvious for an
+// instantiation, whose arguments are the only thing telling it from another
+// instantiation of the same generic — and neither can carry a method, so both
+// take this path and both are emitted.
+func TestWhatAContainerCallsToReachASubject(t *testing.T) {
+	person := &model.Struct{Named: namedStruct(t, subjectPkg, "domain", "Person")}
+
+	if got, want := model.Through(person, "encode", "JSONTo"), "encodePersonJSONTo"; got != want {
+		t.Errorf("the function is %q, want %q", got, want)
+	}
+
+	// Two instantiations of one generic, which are two types.
+	first := instantiation(t, "Pair", types.Typ[types.String], types.Typ[types.Int])
+	second := instantiation(t, "Pair", types.Typ[types.Int], types.Typ[types.String])
+
+	if a, b := model.Through(first, "encode", "To"), model.Through(second, "encode", "To"); a == b {
+		t.Errorf("Pair[string, int] and Pair[int, string] are both called %q", a)
+	}
+
+	// Nothing to name it after is no name, rather than a name made of the
+	// pieces around the hole.
+	for name, held := range map[string]*model.Struct{
+		"nothing at all": nil,
+		"unresolved":     {},
+	} {
+		if got := model.Through(held, "encode", "To"); got != "" {
+			t.Errorf("a subject that is %s is reached through %q", name, got)
+		}
+	}
+}
+
+// instantiation builds a struct standing for one instantiation of a generic,
+// which is what the arguments in a name are there to tell apart.
+//
+// A real instantiation rather than a struct with the arguments written on it,
+// because what the name is built from is what the type says its arguments are
+// — and a fixture that carried them separately would agree with the type only
+// as long as somebody kept the two in step.
+func instantiation(t *testing.T, name string, args ...types.Type) *model.Struct {
+	t.Helper()
+
+	pkg := types.NewPackage(subjectPkg, "domain")
+	obj := types.NewTypeName(token.NoPos, pkg, name, nil)
+	generic := types.NewNamed(obj, types.NewStruct(nil, nil), nil)
+
+	params := make([]*types.TypeParam, len(args))
+	for i := range args {
+		held := types.NewTypeName(token.NoPos, pkg, string(rune('A'+i)), nil)
+		params[i] = types.NewTypeParam(held, types.NewInterfaceType(nil, nil))
+	}
+	generic.SetTypeParams(params)
+
+	held, err := types.Instantiate(nil, generic, args, false)
+	if err != nil {
+		t.Fatalf("instantiating %s: %v", name, err)
+	}
+
+	named, ok := held.(*types.Named)
+	if !ok {
+		t.Fatalf("instantiating %s gave %T", name, held)
+	}
+	return &model.Struct{Named: named, Instantiated: true}
 }

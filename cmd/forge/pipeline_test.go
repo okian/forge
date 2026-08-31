@@ -121,8 +121,21 @@ func named(name string) resolve.Declaration {
 // where the answer to "may forge attach a method to this type" comes from.
 func loadedFrom(module string) *load.Session {
 	return &load.Session{
-		Fset:     token.NewFileSet(),
-		Packages: []*packages.Package{{Module: &packages.Module{Path: module, Main: true}}},
+		Fset: token.NewFileSet(),
+		Packages: []*packages.Package{{
+			PkgPath: module + "/model",
+			Module:  &packages.Module{Path: module, Main: true},
+
+			// A package of another module, reached from this one, which is
+			// what tells a set of owned packages from a module path: the two
+			// share a prefix and only one of them is the module's.
+			Imports: map[string]*packages.Package{
+				module + "/nested": {
+					PkgPath: module + "/nested",
+					Module:  &packages.Module{Path: module + "/nested"},
+				},
+			},
+		}},
 	}
 }
 

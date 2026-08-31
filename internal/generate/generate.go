@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/token"
+	"maps"
 	"slices"
 	"strconv"
 
@@ -90,6 +91,7 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		required []model.TypeRef
 		standing []emit.Section
 		imported []emit.Import
+		about    = make(map[string]layer.Unit)
 		taken    = make(map[string]string, len(requests)+len(Reserved()))
 	)
 
@@ -111,6 +113,8 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 
 		out = append(out, file)
 		required = append(required, unit.Requires...)
+
+		gather(about, unit.Provides)
 
 		// Only a declaration whose output the tag excludes needs standing in
 		// for. An inline declaration's file carries no constraint, so it is in
@@ -134,22 +138,41 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		}
 	}
 
-	held, problems := helpers(path, required, requests)
-	diags.Merge(&problems)
-
-	if !held.Empty() {
-		var sum emit.Digest
-		FingerprintShared(&sum, required, name, cfg)
-
-		content, err := render(nil, name, held, cfg, &sum)
-		if err != nil {
-			diags.AddError(err)
-		} else {
-			out = append(out, File{Name: Shared(), Content: content})
-		}
+	if file, ok := sharing(path, name, required, about, requests, cfg, &diags); ok {
+		out = append(out, file)
 	}
 
 	return out, diags
+}
+
+// sharing writes the file holding what a package's declarations have between
+// them, and reports whether there was anything to write.
+//
+// Two sources with one destination. The helpers this build knows how to write
+// and the work the layers gave the subjects are the same kind of thing — one
+// copy for the package, however many declarations wanted it — and differ only
+// in who wrote them.
+func sharing(path, name string, required []model.TypeRef, about map[string]layer.Unit,
+	requests []Request, cfg Config, diags *diag.Set,
+) (File, bool) {
+	built, problems := helpers(path, required, requests)
+	diags.Merge(&problems)
+
+	held := merge.Units(append(contributed(about), asUnit(built))...)
+	if held.Empty() {
+		return File{}, false
+	}
+
+	var sum emit.Digest
+	FingerprintShared(&sum, required, name, cfg)
+
+	content, err := render(nil, name, held, cfg, &sum)
+	if err != nil {
+		diags.AddError(err)
+		return File{}, false
+	}
+
+	return File{Name: Shared(), Content: content}, true
 }
 
 // one generates the file a single declaration asks for, and hands back what it
@@ -212,6 +235,63 @@ func collision(held *model.Model, into, first string) diag.Diagnostic {
 		WithHint("%s", "a file is named after the declaration in lower case, so two names that "+
 			"differ only in case, or only by what is added to a name the build reads, "+
 			"want one file; rename one of them")
+}
+
+// gather keeps what the layers contributed to something other than the
+// declaration, once per thing it is about.
+//
+// Two declarations over one subject each get the same contribution from their
+// element layers, and a package holding it twice does not compile. The key is
+// what says the two are the same, so the first one under a key is the one the
+// package keeps and the rest are that same answer arriving again.
+func gather(into map[string]layer.Unit, held map[string]layer.Unit) {
+	for what, one := range held {
+		if _, seen := into[what]; !seen {
+			into[what] = one
+		}
+	}
+}
+
+// contributed returns what the layers gave the package, in the order the keys
+// sort.
+//
+// Sorted, because a map is walked in whatever order it feels like and this ends
+// up as declarations in a file: two runs over one package would otherwise write
+// the same helpers in different orders and every one of them would look like a
+// change.
+func contributed(about map[string]layer.Unit) []layer.Unit {
+	out := make([]layer.Unit, 0, len(about))
+	for _, what := range slices.Sorted(maps.Keys(about)) {
+		out = append(out, about[what])
+	}
+	return out
+}
+
+// asUnit puts a merged unit back into the shape a merge takes, so that what was
+// gathered from the layers and what this build wrote can be merged together.
+func asUnit(held merge.Unit) layer.Unit {
+	var out layer.Unit
+	for _, section := range held.Sections {
+		out.Decls = append(out.Decls, section.Decls...)
+		out.Comments = append(out.Comments, section.Comments...)
+
+		// One file set between them. Every section here came from one merge,
+		// and a unit carries a single set — so sections built from different
+		// ones cannot be flattened, which is what the check below refuses to do
+		// silently.
+		if out.Fset != nil && section.Fset != nil && out.Fset != section.Fset {
+			continue
+		}
+		if section.Fset != nil {
+			out.Fset = section.Fset
+		}
+	}
+
+	out.Imports = held.Imports
+	out.Assertions = held.Assertions
+	out.Requires = held.Requires
+
+	return out
 }
 
 // declaration generates for one declaration: what its options mean, what its

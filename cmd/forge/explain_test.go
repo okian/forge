@@ -381,9 +381,15 @@ func TestExplainingSomethingUnnamed(t *testing.T) {
 	}
 }
 
-// The module being generated for decides whether forge may attach a method to a
+// Which packages the module owns decides whether forge may attach a method to a
 // type, and the stage that builds subjects is the one that needs it.
-func TestTheModuleReachesTheSubjectBuilder(t *testing.T) {
+//
+// The packages rather than the module path. They look like the same fact and
+// are not: a module with another nested inside it has packages under its own
+// path that belong to somebody else, and a prefix test counts those as the
+// module's — after which an element layer attaches a method to a type forge
+// does not own, which does not compile.
+func TestWhichPackagesTheModuleOwnsReachesTheSubjectBuilder(t *testing.T) {
 	s := &stack{
 		session:  loadedFrom("example.com/thismodule"),
 		modelled: []request{declaring("Persons", "Collection")},
@@ -397,8 +403,11 @@ func TestTheModuleReachesTheSubjectBuilder(t *testing.T) {
 		t.Fatalf("the question was not answered: %v", err)
 	}
 
-	if s.modelling.Module != "example.com/thismodule" {
-		t.Errorf("subjects were built for module %q", s.modelling.Module)
+	if !s.modelling.Owned["example.com/thismodule/model"] {
+		t.Errorf("subjects were built without the module's own package: %v", s.modelling.Owned)
+	}
+	if s.modelling.Owned["example.com/thismodule/nested"] {
+		t.Errorf("a nested module's package was counted as this one's: %v", s.modelling.Owned)
 	}
 }
 

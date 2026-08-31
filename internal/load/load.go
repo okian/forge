@@ -167,13 +167,12 @@ func (s *Session) FileName(file *ast.File) string {
 // guess at it. A workspace holding several main modules reports the first by
 // import path, which is at least the same one twice.
 //
-// It returns a path, and a path is not yet enough. Deciding whether a type is
-// one forge may attach a method to still compares import path prefixes, and a
-// module nested inside this one shares the prefix while belonging to neither
-// its build nor its ownership — so the wrong answer is available for exactly
-// the packages whose generated code would not compile. Closing that means
-// asking per package rather than per path, which is a change to the stage that
-// asks.
+// It returns a path, which answers who the module is and not which packages are
+// its own. Those are different questions and the second one is what decides
+// whether forge may attach a method to a type: a module nested inside this one
+// shares its path prefix and belongs to somebody else. [Session.Owned] answers
+// that one, and is what the stage building subjects asks — this is for naming
+// the module, which is all anything else wants it for.
 //
 // A package in no module at all — GOPATH mode, or a directory outside one —
 // reports nothing rather than guessing, since every type it holds is then
@@ -188,6 +187,54 @@ func (s *Session) Module() string {
 		}
 	}
 	return ""
+}
+
+// Owned returns the import paths of every loaded package that belongs to the
+// module being generated for.
+//
+// The exact answer to a question a prefix cannot answer. Membership looks like
+// a string test — a package under the module path is the module's — and a
+// module with another nested inside it breaks that: the nested module's
+// packages share the prefix and belong to somebody else. The difference matters
+// because it decides whether a layer may attach a method, and attaching one to
+// a type in a module forge does not own is a compile error in generated code
+// rather than a mislabel.
+//
+// Every loaded package rather than the roots, since a subject may be declared
+// in a package the roots merely import — and whether *that* package is the
+// module's is the question being asked about it.
+//
+// Every main module, where a workspace has more than one. They are all being
+// built together and are all the author's to change, so a type in any of them
+// is one forge could reach by generating into its package — which is the
+// question this is asked in aid of.
+func (s *Session) Owned() map[string]bool {
+	out := make(map[string]bool)
+	if s == nil {
+		return out
+	}
+
+	seen := make(map[string]bool)
+
+	var walk func(pkg *packages.Package)
+	walk = func(pkg *packages.Package) {
+		if pkg == nil || seen[pkg.PkgPath] {
+			return
+		}
+		seen[pkg.PkgPath] = true
+
+		if pkg.Module != nil && pkg.Module.Main {
+			out[pkg.PkgPath] = true
+		}
+		for _, one := range pkg.Imports {
+			walk(one)
+		}
+	}
+
+	for _, pkg := range s.Packages {
+		walk(pkg)
+	}
+	return out
 }
 
 // Package returns the loaded package with the given import path.

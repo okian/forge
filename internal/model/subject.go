@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/okian/forge/internal/tags"
 )
@@ -285,9 +287,14 @@ type Struct struct {
 	// closure must terminate on this rather than recursing.
 	Cyclic bool
 
-	// External records that the struct is declared outside this module. No
-	// method can be attached to it, so element layers emit standalone functions
-	// in the local package instead.
+	// External records that the struct is declared outside this module.
+	//
+	// It is about the module rather than about the package, and so is not on
+	// its own the question a layer asks: Go lets a method be declared only in
+	// the package that declares the type, and a subject two packages along in
+	// the same module is as unreachable as one in somebody else's module. What
+	// External adds over that is why: a type this module owns could be reached
+	// by generating into its package, and one it does not never could.
 	External bool
 
 	// Instantiated records that the struct is an instantiation of a generic
@@ -357,11 +364,129 @@ func (s *Struct) Type() types.Type {
 	return s.Named
 }
 
-// Local reports whether a method may be attached to the struct. When it cannot,
-// element layers emit package-level functions instead, and callers above the
-// subject never see the difference.
-func (s *Struct) Local() bool {
-	return s != nil && s.Named != nil && !s.External && !s.Instantiated
+// Attachable reports whether a method may be declared on the struct from the
+// package given. When it cannot, element layers emit package-level functions
+// instead, and callers above the subject never see the difference.
+//
+// The package rather than the module, because that is the language's rule: a
+// method belongs to the file that declares it, and the type has to be declared
+// there too. A subject in another package of the same module is out of reach
+// for the same reason one in another module is, and the only difference between
+// them is whether generating into that package would help.
+//
+// An instantiation is out of reach wherever it was declared. Go has nowhere to
+// put a method on Pair[string, int]: the type it would attach to is the generic
+// one, and the method would then be on every instantiation.
+func (s *Struct) Attachable(pkg string) bool {
+	return s != nil && s.Named != nil && !s.Instantiated && s.Ref().Pkg == pkg
+}
+
+// Reachable reports whether generating into the struct's own package could
+// attach a method to it, which is the question of whose module it is.
+//
+// It is what tells "this needs a function beside it" from "this could have had
+// a method if forge wrote into another of your packages". The first is a fact
+// about the language, the second is a fact about what forge has been asked to
+// generate, and a diagnostic that confused them would send somebody looking for
+// a fix that is not there.
+func (s *Struct) Reachable() bool {
+	return s != nil && s.Named != nil && !s.Instantiated && !s.External
+}
+
+// Through names the package-level function a container calls to reach what an
+// element layer contributes to a subject.
+//
+// The point of it is that the caller does not have to know which way the layer
+// had to emit. A subject in the package being written gets a method and this
+// function calls it; a subject anywhere else gets the work in this function
+// itself. Either way the container above writes one call, so the choice is
+// invisible from above and a subject that moves between packages changes what
+// forge emits and nothing that reads it.
+//
+// Unexported in the package it lands in, because it is plumbing rather than
+// API: the only callers are the methods forge generates beside it, and a name
+// in somebody's public surface is a name they then cannot take.
+//
+// Named after the subject, and this only names it. Two declarations over one
+// subject reach the same name and each of their layers writes the same
+// function, which a package cannot hold twice — keeping one is what
+// [layer.Unit].Provides is for, and nothing here does it. A layer that emits
+// this as its own declarations rather than handing them over as the subject's
+// will produce a package that does not compile the moment a second declaration
+// names the same subject.
+//
+// Type arguments are part of the name, because they are part of the subject.
+// Pair[string, int] and Pair[int, string] are two types, neither of them one a
+// method can be attached to, so both take this path — and a name reading only
+// Pair would give them one function between them.
+func Through(of *Struct, verb, what string) string {
+	if of == nil {
+		return ""
+	}
+
+	ref := of.Ref()
+	if ref.Name == "" {
+		return ""
+	}
+
+	return verb + Upper(ref.Name) + identifier(ref.Args) + what
+}
+
+// identifier turns a type's arguments into something that can be part of a
+// name, keeping every distinct spelling distinct.
+//
+// Letters and digits kept and everything else dropped, with the letter after
+// each run of dropped characters raised. What comes out of [string,int] is
+// StringInt, and out of a qualified argument a longer thing nobody would have
+// chosen — which is the right trade, because the alternative to ugly is two
+// instantiations sharing one function.
+func identifier(args string) string {
+	var (
+		b     strings.Builder
+		start = true
+	)
+
+	for _, r := range args {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			if start {
+				r = unicode.ToUpper(r)
+				start = false
+			}
+			b.WriteRune(r)
+		default:
+			start = true
+		}
+	}
+	return b.String()
+}
+
+// Upper returns a name with its first letter in upper case, and Lower with it
+// in lower case.
+//
+// Between them they are how every name forge builds out of another one is
+// spelled: a constructor named after the type it builds, a helper prefixed with
+// the declaration it belongs to, a function named after a subject. Here rather
+// than in each of those, because four copies of one rule is four places for it
+// to stop being one rule — and this package is beneath all of them.
+//
+// By rune rather than by byte, since a name may begin with one that is not one
+// byte long and cutting it in half produces something that is not a name at
+// all.
+func Upper(name string) string { return recase(name, unicode.ToUpper) }
+
+// Lower returns a name with its first letter in lower case. See [Upper] for why
+// the pair is here.
+func Lower(name string) string { return recase(name, unicode.ToLower) }
+
+// recase applies a case change to a name's first rune.
+func recase(name string, to func(rune) rune) string {
+	if name == "" {
+		return name
+	}
+
+	first, width := utf8.DecodeRuneInString(name)
+	return string(to(first)) + name[width:]
 }
 
 // Satisfies reports whether the struct already implements iface.

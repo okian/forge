@@ -65,7 +65,7 @@ func builder(t *testing.T, loaded *load.Session, interfaces ...subject.Interface
 
 	return subject.New(subject.Config{
 		Fset:       loaded.Fset,
-		Module:     fixtureModule,
+		Owned:      loaded.Owned(),
 		Interfaces: interfaces,
 	})
 }
@@ -115,8 +115,8 @@ func TestFieldsAreModelledInDeclarationOrder(t *testing.T) {
 		t.Errorf("Person is external=%v instantiated=%v cyclic=%v, want all false",
 			person.External, person.Instantiated, person.Cyclic)
 	}
-	if !person.Local() {
-		t.Error("Person is not local, so nothing could attach a method to it")
+	if !person.Attachable(person.Ref().Pkg) {
+		t.Errorf("Person is declared in %s and no method could be attached to it there", person.Ref().Pkg)
 	}
 }
 
@@ -278,8 +278,8 @@ func TestExternalTypesAreRecordedButNotFollowed(t *testing.T) {
 	}
 
 	stdlib := external.Closure[0]
-	if !stdlib.External || stdlib.Local() {
-		t.Errorf("time.Time is external=%v local=%v", stdlib.External, stdlib.Local())
+	if !stdlib.External || stdlib.Reachable() {
+		t.Errorf("time.Time is external=%v reachable=%v", stdlib.External, stdlib.Reachable())
 	}
 	if len(stdlib.Closure) != 0 {
 		t.Errorf("time.Time's closure is %v, want nothing followed", closureNames(stdlib))
@@ -372,7 +372,7 @@ func TestInstantiationsAreRecorded(t *testing.T) {
 	if !pair.Instantiated {
 		t.Error("Pair[string, Unit] is not marked instantiated")
 	}
-	if pair.Local() {
+	if pair.Attachable(pair.Ref().Pkg) {
 		t.Error("Pair[string, Unit] reports that a method could attach to it")
 	}
 	// The instantiation's fields are substituted, so the model describes the
@@ -438,8 +438,9 @@ func TestAnInstantiatedSubjectSaysSo(t *testing.T) {
 	if !diags.Empty() {
 		t.Fatalf("Pair[string, Unit] does not model clean:\n%s", diags.Render())
 	}
-	if !built.Instantiated || built.Local() {
-		t.Errorf("instantiated=%v local=%v, want true and false", built.Instantiated, built.Local())
+	if !built.Instantiated || built.Attachable(built.Ref().Pkg) {
+		t.Errorf("instantiated=%v attachable=%v, want true and false",
+			built.Instantiated, built.Attachable(built.Ref().Pkg))
 	}
 }
 
@@ -451,7 +452,44 @@ func TestANamedScalarIsASubject(t *testing.T) {
 	if len(celsius.Fields) != 0 {
 		t.Errorf("fields = %v, want none", fieldNames(celsius))
 	}
-	if !celsius.Local() {
+	if !celsius.Attachable(celsius.Ref().Pkg) {
 		t.Error("Celsius reports that no method could attach to it")
+	}
+}
+
+// Where a method may go is a question about the package, not about the module.
+//
+// The two look alike for the ordinary subject — declared beside the declaration
+// that names it — and come apart for one in a second package of the same
+// module. Go lets a method be declared only in the package declaring the type,
+// so that subject is as out of reach as one in somebody else's module; what the
+// module still decides is whether generating into its package would help, which
+// is a different answer and a different fix.
+func TestWhereAMethodOnASubjectMayGo(t *testing.T) {
+	elsewhere := build(t, "Person")
+	if elsewhere.Ref().Pkg == "" {
+		t.Fatal("the subject records no package, so nothing can say where a method would go")
+	}
+
+	// Its own package, which is where a method on it would have to be declared.
+	if !elsewhere.Attachable(elsewhere.Ref().Pkg) {
+		t.Errorf("no method could be attached to %s in %s", elsewhere.Ref().Name, elsewhere.Ref().Pkg)
+	}
+
+	// And anywhere else, including another package of the same module.
+	// Including one the subject's own package is a prefix of, since a prefix
+	// is exactly the test this is not.
+	for _, from := range []string{
+		fixtureModule + "/somewhere", "other.example/lib",
+		elsewhere.Ref().Pkg + "/inner",
+	} {
+		if elsewhere.Attachable(from) {
+			t.Errorf("a method on %s was thought declarable from %s", elsewhere.Ref().Name, from)
+		}
+	}
+
+	// Reachable all the same, because this module owns the package it is in.
+	if !elsewhere.Reachable() {
+		t.Errorf("%s is in this module and is reported as beyond reach", elsewhere.Ref().Name)
 	}
 }

@@ -37,6 +37,15 @@ type Unit struct {
 	// twice and it is emitted once, which is the whole point of naming it
 	// rather than emitting it.
 	Requires []model.TypeRef
+
+	// Provides holds what the layers contributed to something other than the
+	// declaration, keyed by what it is about and merged so that one key holds
+	// one answer.
+	//
+	// Carried rather than folded into the sections, because where it goes is
+	// not this stage's to decide: two declarations of one package can both
+	// provide it, and only the stage that sees the whole package knows that.
+	Provides map[string]layer.Unit
 }
 
 // Empty reports whether the unit would write nothing.
@@ -60,37 +69,69 @@ func Units(units ...layer.Unit) Unit {
 	var out Unit
 
 	for _, unit := range units {
-		// Cloned rather than aliased: a layer hands its declarations over and
-		// is done with them, but sharing the backing array makes that a
-		// convention rather than a fact, and a layer that reused its slice
-		// would be editing what was merged.
-		section := emit.Section{
-			Decls:    slices.Clone(unit.Decls),
-			Comments: slices.Clone(unit.Comments),
-			Fset:     unit.Fset,
-		}
-		if !section.Empty() {
-			out.Sections = append(out.Sections, section)
-		}
-
-		for _, one := range unit.Imports {
-			if one.Path != "" && !slices.Contains(out.Imports, one) {
-				out.Imports = append(out.Imports, one)
-			}
-		}
-
-		for _, assertion := range unit.Assertions {
-			if !slices.Contains(out.Assertions, assertion) {
-				out.Assertions = append(out.Assertions, assertion)
-			}
-		}
-
-		for _, required := range unit.Requires {
-			if !required.IsZero() && !slices.Contains(out.Requires, required) {
-				out.Requires = append(out.Requires, required)
-			}
-		}
+		take(&out, unit)
 	}
 
 	return out
+}
+
+// take folds one layer's unit into the merge.
+//
+// Everything but the declarations is deduplicated, because everything but the
+// declarations is a name rather than a thing: two layers importing one package
+// import it once, and two requiring one helper get one. The declarations are
+// kept whole and in order, since two layers writing methods of the same name is
+// a collision to report rather than a duplicate to drop.
+func take(u *Unit, unit layer.Unit) {
+	// Cloned rather than aliased: a layer hands its declarations over and is
+	// done with them, but sharing the backing array makes that a convention
+	// rather than a fact, and a layer that reused its slice would be editing
+	// what was merged.
+	section := emit.Section{
+		Decls:    slices.Clone(unit.Decls),
+		Comments: slices.Clone(unit.Comments),
+		Fset:     unit.Fset,
+	}
+	if !section.Empty() {
+		u.Sections = append(u.Sections, section)
+	}
+
+	for _, one := range unit.Imports {
+		if one.Path != "" && !slices.Contains(u.Imports, one) {
+			u.Imports = append(u.Imports, one)
+		}
+	}
+
+	for _, assertion := range unit.Assertions {
+		if !slices.Contains(u.Assertions, assertion) {
+			u.Assertions = append(u.Assertions, assertion)
+		}
+	}
+
+	for _, required := range unit.Requires {
+		if !required.IsZero() && !slices.Contains(u.Requires, required) {
+			u.Requires = append(u.Requires, required)
+		}
+	}
+
+	provided(u, unit.Provides)
+}
+
+// provided keeps what a unit contributed to something other than the
+// declaration, once per thing it is about.
+//
+// The first answer under a key wins and the rest are the same answer: what a
+// key means is that two contributions are about the same thing, and two layers
+// contributing differently about one thing is a disagreement this cannot
+// resolve and the package will not compile with either way of resolving it.
+func provided(u *Unit, held map[string]layer.Unit) {
+	for about, one := range held {
+		if _, taken := u.Provides[about]; taken {
+			continue
+		}
+		if u.Provides == nil {
+			u.Provides = make(map[string]layer.Unit)
+		}
+		u.Provides[about] = one
+	}
 }

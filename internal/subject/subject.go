@@ -4,7 +4,6 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
-	"strings"
 
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/model"
@@ -58,18 +57,22 @@ type Config struct {
 	// no field-level diagnostic can point anywhere.
 	Fset *token.FileSet
 
-	// Module is the import path of the module being generated for. A type
-	// declared outside it is recorded as external, because no method can be
-	// attached to it from here.
+	// Owned holds the import paths of the packages belonging to the module
+	// being generated for. A type declared anywhere else is recorded as
+	// external, because no method can be attached to it from here.
 	//
-	// Membership is decided by import path prefix, which is right for every
-	// module that has no other module nested inside it. One that does has a
-	// wrong answer available: a type in the nested module shares the prefix, is
-	// counted as local, and an element layer will try to attach a method to it
-	// — in a package of a module forge does not own, which is a compile error
-	// in generated code rather than a harmless mislabel. The load knows the
-	// exact answer, and this should be taking it from there.
-	Module string
+	// A set rather than a module path to compare prefixes against. Membership
+	// looks like a prefix test and is not one: a module with another nested
+	// inside it has packages that share its path and belong to somebody else,
+	// and counting one of those as the module's own would have an element layer
+	// attach a method to a type it does not own — a compile error in generated
+	// code rather than a mislabel. The load answers it exactly, and this takes
+	// the answer from there.
+	//
+	// An empty set means nobody said, and everything is taken to be local. It
+	// is what a caller with no load has, and the direction that leaves a
+	// diagnostic about a method rather than silence about a subject.
+	Owned map[string]bool
 
 	// Interfaces are the interfaces to record on every type that already
 	// implements one. An empty list records nothing, which is honest: no
@@ -605,12 +608,10 @@ func (b *Builder) external(named *types.Named) bool {
 		// be attached to those either, from here or from anywhere.
 		return true
 	}
-	if b.cfg.Module == "" {
+	if len(b.cfg.Owned) == 0 {
 		return false
 	}
-
-	path := pkg.Path()
-	return path != b.cfg.Module && !strings.HasPrefix(path, b.cfg.Module+"/")
+	return !b.cfg.Owned[pkg.Path()]
 }
 
 // externalType answers the same question for the type of a field, which may be

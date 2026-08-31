@@ -101,10 +101,6 @@ type resolved struct {
 	// they will emit into.
 	Session *load.Session
 
-	// Module is the import path of the module being generated for, which is
-	// what decides whether a type is one forge may attach a method to.
-	Module string
-
 	// Candidates are every declaration discovery found, in the order it found
 	// them, whether or not each went on to resolve or to be modelled.
 	//
@@ -180,14 +176,12 @@ func (p pipeline) follow(env *environment, cfg load.Config) (resolved, error) {
 	found.Diagnostics.Merge(&problems)
 	env.progress("resolved %d stacks", len(declarations))
 
-	found.Module = session.Module()
-
 	// What the subject builder said stays on the declarations it said it about,
 	// rather than being merged here as well: a diagnostic in both would be
 	// reported twice by a verb that reads both.
 	requests, _ := p.modelling.Model(subject.Config{
-		Fset:   session.Fset,
-		Module: found.Module,
+		Fset:  session.Fset,
+		Owned: session.Owned(),
 	}, declarations)
 	found.Requests = requests
 	env.progress("modelled %d subjects", modelled(requests))
