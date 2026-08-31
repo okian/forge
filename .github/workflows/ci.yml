@@ -82,6 +82,21 @@ jobs:
       - name: coverage floor
         run: make cover
 
+      # Reporting, not gating: `make cover` above already refuses anything under
+      # the floor, and it refuses it on the runner rather than after a round
+      # trip to a third party. So fail_ci_if_error stays at its default — a
+      # Codecov outage should not turn a module red that its own gate passed.
+      - name: upload coverage to codecov
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: okian/forge
+          # Naming the profile beats searching for it: the search would also
+          # find the fixture modules under testdata.
+          files: ./cover.out
+          disable_search: true
+
       # One profile is enough to read, and the two runners produce the same one.
       - name: upload coverage profile
         if: ${{ always() && matrix.os == 'ubuntu-latest' }}

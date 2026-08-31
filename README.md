@@ -2,8 +2,8 @@
 
 [![ci](https://github.com/okian/forge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/okian/forge/actions/workflows/ci.yml)
 [![codeql](https://github.com/okian/forge/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/okian/forge/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/okian/forge/branch/main/graph/badge.svg)](https://codecov.io/gh/okian/forge)
 [![go reference](https://pkg.go.dev/badge/github.com/okian/forge.svg)](https://pkg.go.dev/github.com/okian/forge)
-[![go report card](https://goreportcard.com/badge/github.com/okian/forge)](https://goreportcard.com/report/github.com/okian/forge)
 [![go version](https://img.shields.io/github/go-mod/go-version/okian/forge?logo=go&label=go)](go.mod)
 [![licence](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
