@@ -60,9 +60,13 @@ func TestDeclarationsPicksOutTheRightShapes(t *testing.T) {
 
 	got := names(candidates)
 	// Ordered by package import path first, then by file and position within it.
+	//
+	// Sessions is in another generator's output, which forge reads: only what
+	// forge itself wrote is passed over, and the file declaring Seq is the one
+	// here that qualifies.
 	want := []string{
 		"Items",
-		"Numbers", "Trailing", "People", "Persons", "Recent", "Undirected",
+		"Numbers", "Trailing", "Sessions", "People", "Persons", "Recent", "Undirected",
 		"First", "Second", "Detached", "Spaced", "Blocked",
 	}
 
@@ -312,5 +316,43 @@ func TestTrailingDirectiveIsAttached(t *testing.T) {
 	// Having been claimed, it is not also reported as landing on nothing.
 	if strings.Contains(diags.Render(), "cap=4") {
 		t.Errorf("an attached trailing directive was also reported as stray:\n%s", diags.Render())
+	}
+}
+
+// Forge's own output is not input. Generated code holds declarations that look
+// exactly like requests — the shared sequence view is a defined type over an
+// instantiation, which is the shape a candidate is recognised by — so a run
+// that read it back would find a declaration nobody wrote, in a file the author
+// does not edit, that the run before it created.
+//
+// The fixture carries one such file, so this fails if the rule goes away rather
+// than merely passing where nothing tries it.
+func TestForgeDoesNotReadItsOwnOutput(t *testing.T) {
+	found, _ := discover.Declarations(loadFixture(t))
+
+	for _, one := range found {
+		if strings.HasPrefix(filepath.Base(one.Pos.Filename), "zz_forge_") {
+			t.Errorf("%s was found in %s, which forge wrote", one.Name, one.Pos.Filename)
+		}
+	}
+
+	if slices.Contains(names(found), "Seq") {
+		t.Errorf("the shared view was read back as a declaration; found %v", names(found))
+	}
+}
+
+// Only what forge wrote, and not everything that says it was generated.
+//
+// Another generator's output may legitimately hold a declaration written
+// against these markers — generating a schema and then generating from it is an
+// ordinary arrangement — so refusing every file carrying the convention's line
+// would break that, silently, for anybody who had built it. The narrowness is
+// the deliberate half of the rule, and it is the half a reader reaching for
+// go/build's own predicate would remove.
+func TestSomebodyElsesGeneratedCodeIsStillRead(t *testing.T) {
+	found, _ := discover.Declarations(loadFixture(t))
+
+	if !slices.Contains(names(found), "Sessions") {
+		t.Errorf("a declaration in another generator's output was passed over; found %v", names(found))
 	}
 }

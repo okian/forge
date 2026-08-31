@@ -461,6 +461,22 @@ func (env *environment) progress(format string, args ...any) {
 	}
 }
 
+// announce reports what a run would have done, for somebody who asked it not to
+// do it.
+//
+// The difference from progress is who asked. Progress is for a reader who wants
+// to be told what is happening and turned it on; this is the answer to the
+// question --dry-run put, and a run that reported nothing would be
+// indistinguishable from one that found nothing to do. Still to stderr and
+// still silenced by quiet, since what a script reads is on stdout.
+func (env *environment) announce(asked bool, format string, args ...any) {
+	if asked && !env.quiet {
+		say(env.stderr, format+"\n", args...)
+		return
+	}
+	env.progress(format, args...)
+}
+
 // report writes a set of diagnostics and says whether there were any.
 //
 // To stderr, sorted, in the one rendering every diagnostic uses: a run whose

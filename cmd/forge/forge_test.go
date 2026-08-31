@@ -123,7 +123,6 @@ func TestTheVerbsThisBuildCannotFinish(t *testing.T) {
 	}{
 		{name: "check", args: []string{"./..."}},
 		{name: "doctor"},
-		{name: "generate", args: []string{"./..."}},
 		{name: "list"},
 	}
 

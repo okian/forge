@@ -11,6 +11,7 @@ import (
 	"golang.org/x/tools/go/packages"
 
 	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/model"
 )
@@ -78,6 +79,10 @@ func Declarations(session *load.Session) ([]Candidate, diag.Set) {
 
 	for _, pkg := range session.Packages {
 		for _, file := range pkg.Syntax {
+			if written(file) {
+				continue
+			}
+
 			candidates, claimed := inFile(session.Fset, pkg, file)
 			found = append(found, candidates...)
 			reportStrays(session.Fset, file, claimed, &diags)
@@ -95,6 +100,48 @@ func Declarations(session *load.Session) ([]Candidate, diag.Set) {
 	})
 
 	return found, diags
+}
+
+// written reports whether a file is one forge produced.
+//
+// Its own output is not input. Generated code holds declarations that look
+// exactly like requests — the shared sequence view is a defined type over an
+// instantiation, which is the shape a candidate is recognised by — and reading
+// them back means a run finding a declaration nobody wrote, in a file the
+// author does not edit, that the run before it created. What that produces is a
+// count that is wrong, a diagnostic pointing into generated code, and one more
+// of these every time the catalog grows a helper.
+//
+// Forge's own marker rather than the general convention. Another generator's
+// output may legitimately hold a declaration written against these markers —
+// generating a schema and then generating from it is an ordinary arrangement —
+// and refusing to read those would break it silently. What is refused is only
+// what forge itself wrote, which is what forge itself will overwrite.
+func written(file *ast.File) bool {
+	if file == nil {
+		return false
+	}
+
+	// Before the package clause, which is where the go command's own rule puts
+	// it and where the emitter writes it. A line further down is a comment
+	// inside somebody's code that happens to read alike.
+	for _, group := range file.Comments {
+		if group.Pos() > file.Package {
+			break
+		}
+		for _, line := range group.List {
+			// Trailing space is ignored, as the reader of a generated header
+			// ignores it: a file forge wrote is read back after anything at all
+			// may have reformatted it, and a rule that answered differently
+			// from the one in the emitter would make a file forge's for one
+			// stage and somebody else's for the next.
+			if strings.TrimRight(line.Text, " \t") == emit.Generated {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // inFile returns the candidates declared in one file, and the offsets of the

@@ -47,7 +47,7 @@ func (s *Session) collect(pkg *packages.Package) {
 	empty := len(pkg.GoFiles) == 0 && pkg.Name == ""
 
 	for _, err := range pkg.Errors {
-		if unusedImport.MatchString(err.Msg) && err.Kind == packages.TypeError {
+		if caused(err) {
 			continue
 		}
 
@@ -63,6 +63,37 @@ func (s *Session) collect(pkg *packages.Package) {
 
 		s.add(diag.New(code, s.position(err.Pos), "%s", message).WithHint("%s", hint))
 	}
+}
+
+// Broken reports whether a package failed to build.
+//
+// Not the same question as whether it carries errors, and the difference is
+// forge's own doing: a package is loaded with its function bodies stripped, so
+// every import used only inside one reports as unused. A caller reading the
+// errors go/packages carries would find every package holding generated code
+// broken, which is the opposite of the answer.
+//
+// Exported because it is asked outside this package — a report about a
+// generated file left behind is only worth making about a package that will not
+// compile — and because answering it anywhere else would mean a second copy of
+// the rule that decides which errors are forge's own.
+func Broken(pkg *packages.Package) bool {
+	if pkg == nil {
+		return false
+	}
+
+	for _, err := range pkg.Errors {
+		if !caused(err) {
+			return true
+		}
+	}
+	return false
+}
+
+// caused reports whether a load error is one forge's own way of loading
+// produces rather than one a build would have raised.
+func caused(err packages.Error) bool {
+	return unusedImport.MatchString(err.Msg) && err.Kind == packages.TypeError
 }
 
 // add records a diagnostic unless an identical one has already been recorded.

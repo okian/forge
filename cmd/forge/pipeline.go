@@ -105,8 +105,19 @@ type resolved struct {
 	// what decides whether a type is one forge may attach a method to.
 	Module string
 
-	// Requests are the declarations, in the order discovery found them, which
-	// is by package, then file, then position.
+	// Candidates are every declaration discovery found, in the order it found
+	// them, whether or not each went on to resolve or to be modelled.
+	//
+	// Kept beside the requests rather than folded into them, because the two
+	// answer different questions. A verb acting on a declaration wants the ones
+	// that survived; a verb asking what a package contains — which file belongs
+	// to which declaration, say — wants every one that was written, since a
+	// declaration whose marker was misspelled is still a declaration in the
+	// package and the file generated for it is still its file.
+	Candidates []discover.Candidate
+
+	// Requests are the declarations that resolved, in the order discovery found
+	// them, which is by package, then file, then position.
 	Requests []request
 
 	// Diagnostics holds what is wrong with the packages rather than with any
@@ -162,6 +173,7 @@ func (p pipeline) follow(env *environment, cfg load.Config) (resolved, error) {
 
 	candidates, problems := p.discovering.Discover(session)
 	found.Diagnostics.Merge(&problems)
+	found.Candidates = candidates
 	env.progress("found %d declarations", len(candidates))
 
 	declarations, problems := p.resolving.Resolve(candidates)
