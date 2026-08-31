@@ -189,7 +189,7 @@ var builtins = []*stub{
 				Doc: "omit zero-valued fields without tagging each one",
 			},
 			{
-				Key: "fallback", Value: ValueEnum, Values: []string{"stdlib"},
+				Key: "fallback", Scope: ScopeField, Value: ValueEnum, Values: []string{"stdlib"},
 				Doc: "encode a field forge cannot see through reflectively, and mark that it did",
 			},
 		},

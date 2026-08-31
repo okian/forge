@@ -171,10 +171,56 @@ func (k ValueKind) String() string {
 	return valueKindNames[k]
 }
 
+// Scope says what an option is written about.
+type Scope uint8
+
+const (
+	// ScopeDeclaration is the ordinary case: the option is written above the
+	// declaration and applies to the whole of it.
+	ScopeDeclaration Scope = iota
+
+	// ScopeField is an option written above one field of the subject, applying
+	// to that field alone.
+	//
+	// It exists for the questions a layer can only answer per field. A codec
+	// asked to fall back on reflection for one field it cannot see through is
+	// the case that forces it: written on the declaration, the option would
+	// either name a field in its value — a second grammar, with a second way to
+	// misspell a field — or turn reflection on for every field at once, which
+	// is the opposite of marking a boundary.
+	//
+	// A field-scoped option is written where the field is, which is where the
+	// author is looking when they decide the field needs one and where a reader
+	// finds it without knowing to look elsewhere. That places it in the
+	// subject's own source, so the stage that walks fields is the stage that
+	// collects it; validating what is written above a *declaration* — which is
+	// what this package does — refuses it and says where it belongs.
+	ScopeField
+)
+
+// scopeNames gives each scope the spelling a diagnostic uses.
+var scopeNames = [...]string{
+	ScopeDeclaration: "declaration",
+	ScopeField:       "field",
+}
+
+// String returns the scope's lower-case name.
+func (s Scope) String() string {
+	if int(s) >= len(scopeNames) {
+		return "scope(" + strconv.Itoa(int(s)) + ")"
+	}
+	return scopeNames[s]
+}
+
 // OptionDef declares one option a layer accepts.
 type OptionDef struct {
 	// Key is the option's name, the "sort" of sort=Age.
 	Key string
+
+	// Scope says whether the option is written about the declaration or about
+	// one field of the subject. The zero value is the declaration, which is
+	// what nearly every option is about.
+	Scope Scope
 
 	// Value says what shape the option's value takes.
 	Value ValueKind
