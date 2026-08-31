@@ -1,7 +1,12 @@
 // Package compose decides whether a stack of layers is one, and works out what
 // each of them is handed.
 //
-// A stack is checked in the vocabulary of capabilities rather than in terms of
+// Two questions, in that order. The first is whether the arrangement is one a
+// stack can have: how many storage layers, where a decorator may sit, what an
+// inline declaration may name. Those follow from the kinds and are answered by
+// counting.
+//
+// The second is asked in the vocabulary of capabilities rather than in terms of
 // which layer may sit on which. A layer says what it needs and what it
 // contributes, and this asks each of them, from the subject outward, whether
 // what is beneath it is enough — so the rules do not grow with the square of

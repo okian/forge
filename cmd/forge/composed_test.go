@@ -41,6 +41,13 @@ func specialising(name string, directives []discover.Directive, markers ...strin
 	}
 }
 
+// spec puts a declaration in a file forge owns the type in, which is where a
+// stack naming a layer that cannot live with a raw underlying type belongs.
+func spec(one request) request {
+	one.Declaration.Candidate.Form = model.FormSpec
+	return one
+}
+
 // wrote is one directive above the declaration, split the way the scanner
 // splits one: the layer it addresses, and the rest of the line.
 func wrote(layer, args string) discover.Directive {
@@ -105,7 +112,10 @@ func TestExplainingAStackThatDoesNotCompose(t *testing.T) {
 	// A codec over a subject with no fields. There is nothing to generate a
 	// codec from, so the innermost layer refuses and the walk stops there,
 	// having composed one entry of the two.
-	asked := specialising("Persons", nil, "Collection", "Json")
+	// In a spec file, because an element layer is never transparent and an
+	// inline declaration naming one is refused before the stack is walked —
+	// which is a different complaint from the one under test.
+	asked := spec(specialising("Persons", nil, "Collection", "Json"))
 	asked.Model.Fields = nil
 
 	got := asking(t, []request{asked}, "-t", "Persons")
@@ -202,7 +212,10 @@ func TestExplainingSaysWhatGeneratingWouldRefuse(t *testing.T) {
 // report has a column that says it instead, and says it as pending work rather
 // than as a mistake.
 func TestExplainingALayerWhoseGeneratorIsNotWritten(t *testing.T) {
-	got := asking(t, []request{specialising("Persons", nil, "Ring")}, "-t", "Persons")
+	// A ring keeps invariants a slice operation would corrupt, so it says it is
+	// not transparent and belongs in a spec file. That is a rule about where the
+	// declaration is written rather than about the layer's generator.
+	got := asking(t, []request{spec(specialising("Persons", nil, "Ring"))}, "-t", "Persons")
 
 	if got.status != 0 {
 		t.Errorf("explaining a layer forge has not written ended with %d:\n%s", got.status, got.err)

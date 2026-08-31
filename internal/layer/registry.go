@@ -50,6 +50,19 @@ func (r *Registry) Register(l Layer) error {
 	if origin.Args != "" {
 		return fmt.Errorf("layer %T claims the instantiation %s; a layer claims the generic it was made from", l, origin)
 	}
+	// The composition rules are written entirely in kinds: which may sit where,
+	// how many of each, what an inline declaration may hold. A layer that
+	// reports none is invisible to all of them, which is worse than being
+	// refused — a container that forgot to say it was one is told there is no
+	// container beneath the decorator above it, and the complaint names the
+	// wrong layer. The zero value is the natural mistake, so it is the one worth
+	// refusing here, where the answer is a line in the layer rather than a
+	// diagnostic about somebody else's declaration.
+	if kind := l.Kind(); !kind.Valid() {
+		return fmt.Errorf("layer %T claims marker %s and reports no kind; a layer says where in a stack it may appear",
+			l, origin)
+	}
+
 	if existing, ok := r.byOrigin[origin]; ok {
 		return fmt.Errorf("marker %s is claimed by %s and by %s", origin, name(existing), name(l))
 	}

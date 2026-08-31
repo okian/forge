@@ -151,6 +151,26 @@ func TestRegistryRefusesALayerWithNoMarker(t *testing.T) {
 	}
 }
 
+// A layer that reports no kind is refused, rather than registered and then
+// ignored.
+//
+// Every rule about the shape of a stack is written in kinds — which may sit
+// where, how many of each — so a layer that reports none is invisible to all of
+// them. Worse than invisible: a container that forgot to say it was one leaves
+// a decorator above it told there is nothing beneath it to wrap, which names
+// the wrong layer to whoever wrote the declaration. The zero value is the
+// natural way to arrive here, so it is the one worth refusing where the answer
+// is a line in the layer.
+func TestRegistryRefusesALayerWithNoKind(t *testing.T) {
+	err := layer.New().Register(fake{origin: marker("Collection")})
+	if err == nil {
+		t.Fatal("a layer reporting no kind was registered")
+	}
+	if !strings.Contains(err.Error(), "kind") {
+		t.Errorf("error %q does not say what is wrong with it", err)
+	}
+}
+
 // A layer claims the generic, not one instantiation of it. Reducing the
 // reference quietly would leave the registry keyed by one form and reporting
 // another, and would hide a layer that thinks it claims Collection[Person] from

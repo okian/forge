@@ -193,11 +193,12 @@ func refused(one request, catalog *layer.Registry) diag.Set {
 // declared type would appear to have the collection's methods and none of the
 // container's, and a reader counting on that would find four more in the file.
 //
-// A stack that does not compose is explained as it was written. Composition
-// stops at the layer that refused, so what it has built by then is the inner
-// part of the stack and nothing else — an answer that showed it would have
-// dropped the layers above without saying so, which is the half of the
-// declaration somebody in trouble is usually asking about.
+// A stack that does not compose is explained as it was written, which is the
+// only rendering there is: a stack refused for its shape composes nothing at
+// all, and one refused by a layer composes as far as that layer and stops. An
+// answer built on either would drop the layers above without saying so, and
+// those are the half of the declaration somebody in trouble is usually asking
+// about.
 //
 // What composition said is dropped here and not lost: [refused] composes the
 // same declaration through the generator and reports every word of it. Saying

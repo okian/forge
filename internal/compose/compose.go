@@ -146,10 +146,15 @@ func (c Composed) Stack() []model.LayerRef {
 // the declaration means and does not say, and reports what does not hold
 // together.
 //
-// It returns what it managed either way. A layer that refuses the stack beneath
-// it is a declaration that will not generate, and the caller reports that — but
-// the steps below the refusal were composed correctly and a report about them
-// is still worth having.
+// A layer that refuses the stack beneath it is a declaration that will not
+// generate, and the caller reports that — but the steps below the refusal were
+// composed correctly, so they come back with it and a report about them is
+// still worth having.
+//
+// A stack whose shape is wrong comes back empty instead. Nothing about it was
+// worked out: the shape is what decides what each layer is handed, and half a
+// walk over an arrangement that is not a stack describes something the author
+// did not write.
 func Compose(decl Declaration, cat Catalog) (Composed, diag.Set) {
 	var diags diag.Set
 
@@ -171,6 +176,16 @@ func Compose(decl Declaration, cat Catalog) (Composed, diag.Set) {
 	// renders no text and gets a span of no width, so the two renderings read
 	// alike and only the offsets differ.
 	layout := model.LayoutOf(stack, decl.Subject.Type())
+
+	// The shape of the stack before anything is asked of the layers in it. What
+	// a layer needs of the one beneath it has an answer either way, and over a
+	// stack that is arranged wrongly the answer is a consequence: a stack with
+	// two storage layers has one of them refusing what it was handed, which is
+	// true and is a second complaint about one mistake.
+	if broken := validate(stack, layers, decl, layout); !broken.Empty() {
+		diags.Merge(&broken)
+		return Composed{}, diags
+	}
 
 	out := Composed{Steps: make([]Step, 0, len(stack))}
 	below := shape.Subject(decl.Subject)
