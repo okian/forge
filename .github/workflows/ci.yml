@@ -86,9 +86,16 @@ jobs:
       # the floor, and it refuses it on the runner rather than after a round
       # trip to a third party. So fail_ci_if_error stays at its default — a
       # Codecov outage should not turn a module red that its own gate passed.
+      #
+      # Pinned to a commit rather than to v7, because this is the one action
+      # here that GitHub does not publish: a tag is a moving reference its owner
+      # can repoint, and this step is handed a token. The others resolve to
+      # immutable releases under actions/ and github/, where the tag cannot move
+      # under a run. Dependabot reads the trailing comment and keeps both halves
+      # current, so the pin costs a review rather than an upgrade.
       - name: upload coverage to codecov
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: okian/forge
