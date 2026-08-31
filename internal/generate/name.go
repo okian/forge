@@ -50,6 +50,15 @@ func Named(declared string) string {
 	return name + ".go"
 }
 
+// Prefix returns what every generated file's name begins with.
+//
+// Exported so that a caller looking for forge's output in a directory asks for
+// the convention rather than spelling it again. A second spelling is one that
+// agrees until somebody changes this one, and what it would then find is
+// nothing — silently, since a search that matches no files looks exactly like a
+// directory with no generated files in it.
+func Prefix() string { return prefix }
+
 // Shared names the file holding what several declarations in a package share.
 func Shared() string { return shared }
 

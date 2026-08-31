@@ -2,6 +2,7 @@
 //
 // forge v1.2.3
 // markers v1.2.3
+// go go1.27.0
 // inputs 2cfd5b501e44e97a
 
 package model

@@ -374,7 +374,7 @@ func TestEveryCommandExplainsItself(t *testing.T) {
 // A command with no flags of its own says so by leaving the heading out, rather
 // than printing one with nothing under it.
 func TestACommandWithNoFlags(t *testing.T) {
-	got := forge("doctor", "-h")
+	got := forge("version", "-h")
 
 	if strings.Contains(got.out, "Flags:") {
 		t.Errorf("a command with no flags printed a flag heading:\n%s", got.out)
@@ -419,7 +419,7 @@ func TestEveryCommandTakesTheFlagsItIsDocumentedFor(t *testing.T) {
 		"check":    nil,
 		"explain":  {"t", "json"},
 		"list":     {"json"},
-		"doctor":   nil,
+		"doctor":   {"write-editor-config"},
 		"version":  nil,
 	}
 

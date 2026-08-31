@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/emit"
@@ -20,6 +21,13 @@ import (
 var (
 	codeStale   = diag.Register(5004, "generated file is out of date")
 	codeMissing = diag.Register(5005, "declaration has no generated file")
+
+	// codeToolingMoved is staleness of a narrower kind: the declaration is
+	// unchanged and what wrote the file has moved under it. Its own code
+	// because it is its own urgency — the file still describes the source
+	// beside it, so a reader deciding whether to stop what they are doing
+	// wants to be able to tell this apart at a glance.
+	codeToolingMoved = diag.Register(5007, "generated file was written by different tooling")
 )
 
 // check validates declarations and verifies that what was generated is fresh.
@@ -157,48 +165,103 @@ func stale(diags *diag.Set, pkg packaged, req generated.Request, cfg generated.C
 		return
 	}
 
-	var sum emit.Digest
-	generated.Fingerprint(&sum, req, pkg.name, cfg)
-
-	if said := staleness(recorded, sum.String(), cfg); said != "" {
-		diags.Add(diag.New(codeStale, req.Model.Pos, "%s is %s", name, said).
-			WithHint("%s", "run forge generate"))
+	said, moved := staleness(recorded, req, pkg.name, cfg)
+	if said == "" {
+		return
 	}
+
+	code, hint := codeStale, "run forge generate"
+	if moved {
+		code = codeToolingMoved
+		hint = "run forge generate when convenient; nothing about the declaration has changed"
+	}
+
+	diags.Add(diag.New(code, req.Model.Pos, "%s is %s", name, said).WithHint("%s", hint))
 }
 
-// staleness says how a file is out of date, or nothing.
+// staleness says how a file is out of date, and whether the only thing that
+// changed is which tooling made it.
 //
-// The fingerprint answers it: it covers the declaration, the subject, the
-// options and all three versions, so a file whose fingerprint matches was made
-// from these inputs by this build and a file whose fingerprint differs was not.
+// The fingerprint answers the first part: it covers the declaration, the
+// subject, the options and all three versions, so a file whose fingerprint
+// matches was made from these inputs by this build and a file whose fingerprint
+// differs was not.
 //
-// A file with no fingerprint at all is reported rather than passed over, and
-// the reason is that forge writes one into every file it produces. So a file
-// that says forge wrote it and records none is a file that differs from what
-// forge writes — by that line at least, and by however much else was lost with
-// it. Saying "this cannot tell" and moving on would turn the check off for that
-// file permanently, since nothing else would ever ask about it again; saying so
-// and asking for a regenerate costs one command and settles it.
+// That leaves "differs how", which matters because two very different things
+// land in one answer. A declaration somebody edited and a forge somebody
+// upgraded both move the fingerprint, and only one of them is a file that no
+// longer describes the source beside it. Telling them apart is why the header
+// records all three versions: the fingerprint is recomputed a second time
+// against the ones the file recorded, and a file that matches *then* is one
+// whose declaration has not changed at all.
 //
-// The versions are what is left to say something *specific* with, and are worth
-// saying where they differ: a file from an older forge or written against older
-// markers is a different problem from one that was merely edited, and a reader
-// deciding whether to worry wants to know which.
-func staleness(recorded emit.Header, inputs string, cfg generated.Config) string {
-	if recorded.Inputs != "" {
-		if recorded.Inputs == inputs {
-			return ""
-		}
-		return "not what these inputs produce"
+// A file with no fingerprint is reported rather than passed over, because forge
+// writes one into every file it produces. So a file that says forge wrote it
+// and records none already differs from what forge writes — by that line at
+// least, and by however much else went with it. Saying "this cannot tell" and
+// moving on would turn the check off for that file for good, since nothing else
+// would ever ask about it again.
+func staleness(recorded emit.Header, req generated.Request, pkg string, cfg generated.Config) (said string, tooling bool) {
+	if recorded.Inputs == "" {
+		return "missing the fingerprint forge writes into every file, so what it holds cannot be compared", false
 	}
 
-	switch {
-	case recorded.Forge != "" && recorded.Forge != cfg.Forge:
-		return "from forge " + recorded.Forge + " and records nothing to compare, and this is " + cfg.Forge
-	case recorded.Markers != "" && recorded.Markers != cfg.Markers:
-		return "written against markers " + recorded.Markers + " and records nothing to compare"
+	var sum emit.Digest
+	generated.Fingerprint(&sum, req, pkg, cfg)
+
+	if recorded.Inputs == sum.String() {
+		return "", false
 	}
-	return "missing the fingerprint forge writes into every file, so what it holds cannot be compared"
+
+	// Again, against what the file says made it. Anything the header does not
+	// record is left as it is, which is the safe direction: a version this
+	// cannot substitute is one the answer stays "something changed" for.
+	was := cfg
+	for _, held := range []struct {
+		recorded string
+		into     *string
+	}{
+		{recorded.Forge, &was.Forge},
+		{recorded.Markers, &was.Markers},
+		{recorded.Toolchain, &was.Toolchain},
+	} {
+		if held.recorded != "" {
+			*held.into = held.recorded
+		}
+	}
+
+	var then emit.Digest
+	generated.Fingerprint(&then, req, pkg, was)
+
+	if recorded.Inputs == then.String() {
+		return "unchanged, and was written by " + moved(recorded, cfg), true
+	}
+	return "not what these inputs produce", false
+}
+
+// moved names the tooling that differs, and only that.
+//
+// Only that, because the point of the sentence is which thing changed. Printing
+// all three versions twice would bury the one that moved in five that did not,
+// and the one that moved is the whole of what a reader is being told.
+func moved(recorded emit.Header, cfg generated.Config) string {
+	var said []string
+	for _, one := range []struct{ what, was, now string }{
+		{"forge", recorded.Forge, cfg.Forge},
+		{"markers", recorded.Markers, cfg.Markers},
+		{"go", recorded.Toolchain, cfg.Toolchain},
+	} {
+		if one.was != "" && one.was != one.now {
+			said = append(said, one.what+" "+one.was+" rather than "+one.now)
+		}
+	}
+
+	if len(said) == 0 {
+		// The fingerprint matched under what the file recorded and the versions
+		// are the same, which means something the header does not record moved.
+		return "tooling this cannot name"
+	}
+	return strings.Join(said, ", ")
 }
 
 // counting says how many declarations were compared against their files, so

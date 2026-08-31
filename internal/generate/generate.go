@@ -375,9 +375,10 @@ func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emi
 		Imports:  unit.Imports,
 		Sections: unit.Sections,
 		Header: emit.Header{
-			Forge:   cfg.Forge,
-			Markers: cfg.Markers,
-			Inputs:  sum.String(),
+			Forge:     cfg.Forge,
+			Markers:   cfg.Markers,
+			Toolchain: cfg.Toolchain,
+			Inputs:    sum.String(),
 		},
 	}
 	if held != nil {
@@ -408,9 +409,10 @@ func renderStubs(pkg string, sections []emit.Section, imports []emit.Import, cfg
 		Imports:  reaching(sections, imports),
 		Sections: sections,
 		Header: emit.Header{
-			Forge:   cfg.Forge,
-			Markers: cfg.Markers,
-			Inputs:  sum.String(),
+			Forge:     cfg.Forge,
+			Markers:   cfg.Markers,
+			Toolchain: cfg.Toolchain,
+			Inputs:    sum.String(),
 		},
 	}
 

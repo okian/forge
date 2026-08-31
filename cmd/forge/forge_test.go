@@ -114,35 +114,26 @@ func fixtureAt(t *testing.T, parts ...string) string {
 	return where
 }
 
-// A verb this build cannot finish says which verb and why, rather than failing
-// with nothing anybody can act on.
-func TestTheVerbsThisBuildCannotFinish(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-	}{
-		{name: "doctor"},
-	}
-
-	for _, tc := range cases {
-		name, args := tc.name, tc.args
-		t.Run(name, func(t *testing.T) {
-			s := &stack{}
-			env := &environment{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, pipeline: over(s)}
-
-			cmd, ok := lookup(name)
-			if !ok {
-				t.Fatalf("%s is not a command", name)
+// No verb is unfinished, and the machinery for saying so still works.
+//
+// The list was how a build said which of its own verbs it could not do; it is
+// empty now, and the assertion that matters has turned over: every verb runs.
+// A stub added later fails this rather than shipping as a command that looks
+// like the others and does nothing — which is the failure the machinery was
+// written for, and which is only worth having if something notices.
+func TestNoVerbIsUnfinished(t *testing.T) {
+	for _, cmd := range commands {
+		t.Run(cmd.name, func(t *testing.T) {
+			held := &stack{}
+			env := &environment{
+				stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
+				dir: t.TempDir(), pipeline: over(held),
 			}
 
-			err := cmd.run(env, cmd, args)
-			if !errors.Is(err, errNotBuilt) {
-				t.Fatalf("ended with %v", err)
-			}
-			// The message names the work rather than the verb, since the verb is
-			// already on the command line the reader just typed.
-			if strings.TrimSpace(strings.TrimSuffix(err.Error(), errNotBuilt.Error())) == "" {
-				t.Errorf("nothing says what could not be done: %v", err)
+			// Whatever else a verb makes of an empty run is not the subject.
+			// What is, is that it did not decline to try.
+			if err := cmd.run(env, cmd, nil); errors.Is(err, errNotBuilt) {
+				t.Errorf("%s is a command and this build cannot do it: %v", cmd.name, err)
 			}
 		})
 	}
