@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/emit"
 	generated "github.com/okian/forge/internal/generate"
 )
 
@@ -19,7 +22,13 @@ import (
 // it again.
 func TestWhatWritingAFileDoes(t *testing.T) {
 	dir := t.TempDir()
-	file := generated.File{Name: "zz_forge_persons.go", Content: []byte("package model\n")}
+
+	// Carrying the line that says forge wrote it, because that is what forge
+	// writes and what deciding to write over one asks about.
+	file := generated.File{
+		Name:    "zz_forge_persons.go",
+		Content: []byte(emit.Generated + "\n\npackage model\n"),
+	}
 
 	// Not there: written, and reported as new.
 	if did, err := place(dir, file); err != nil || did != created {
@@ -36,7 +45,7 @@ func TestWhatWritingAFileDoes(t *testing.T) {
 	}
 
 	// There and different: written, and reported as changed.
-	file.Content = []byte("package model\n\ntype Persons []Person\n")
+	file.Content = []byte(emit.Generated + "\n\npackage model\n\ntype Persons []Person\n")
 	if did, err := place(dir, file); err != nil || did != updated {
 		t.Fatalf("writing a file that had changed gave %v, %v", did, err)
 	}
@@ -128,5 +137,73 @@ func TestWhatARunSaysItDid(t *testing.T) {
 		if got := counted(tc.changed, tc.hold); got != tc.want {
 			t.Errorf("%s reads %q, want %q", name, got, tc.want)
 		}
+	}
+}
+
+// A file that does not say forge wrote it is not written over.
+//
+// The names forge chooses are unusual and prefixed to be, but a declaration can
+// land on one somebody already used — and a generator that silently replaces
+// somebody's file has done the one thing nothing downstream recovers from.
+func TestAFileThatIsNotForgesIsNotWrittenOver(t *testing.T) {
+	dir := t.TempDir()
+	name := "zz_forge_persons.go"
+	path := filepath.Join(dir, name)
+
+	mine := []byte("package model\n\n// Mine.\nconst Mine = 1\n")
+	if err := os.WriteFile(path, mine, 0o600); err != nil {
+		t.Fatalf("making the fixture: %v", err)
+	}
+
+	file := generated.File{
+		Name:    name,
+		Content: []byte(emit.Generated + "\n\npackage model\n"),
+		Pos:     token.Position{Filename: "model/person.go", Line: 8, Column: 6},
+	}
+
+	did, err := place(dir, file)
+	if err == nil {
+		t.Fatal("somebody's own file was written over")
+	}
+	if did != unchanged {
+		t.Errorf("the write reported %v", did)
+	}
+
+	held, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("reading it back: %v", readErr)
+	}
+	if !bytes.Equal(held, mine) {
+		t.Errorf("the file holds %q", held)
+	}
+
+	// Reported as a diagnostic rather than as a failure to write, so that it
+	// points at the declaration and carries the two ways out.
+	said, ok := diag.From(err)
+	if !ok {
+		t.Fatalf("the refusal is not a diagnostic: %v", err)
+	}
+	if got := said.Render(); !strings.Contains(got, "FRG5006") ||
+		!strings.Contains(got, "rename the declaration") {
+		t.Errorf("the refusal reads:\n%s", got)
+	}
+}
+
+// An empty file is written over, because it holds nothing to lose.
+//
+// It is the shape a generated file takes when a merge or a tool truncates it,
+// and refusing would leave somebody with a file forge cannot repair and no way
+// to ask it to.
+func TestAnEmptyFileIsWrittenOver(t *testing.T) {
+	dir := t.TempDir()
+	name := "zz_forge_persons.go"
+
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("\n\n"), 0o600); err != nil {
+		t.Fatalf("making the fixture: %v", err)
+	}
+
+	file := generated.File{Name: name, Content: []byte(emit.Generated + "\n\npackage model\n")}
+	if did, err := place(dir, file); err != nil || did != updated {
+		t.Fatalf("writing over an empty file gave %v, %v", did, err)
 	}
 }

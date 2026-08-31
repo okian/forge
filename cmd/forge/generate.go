@@ -79,10 +79,18 @@ func emitting(env *environment, found resolved, hold, show bool) error {
 		changed += touched
 
 		if err != nil {
-			// Kept rather than returned. What went wrong writing one package
-			// does not make what was wrong with another one less worth saying,
-			// and an author told only about a permission would fix it and meet
-			// the rest one run later.
+			// A file forge did not write is in the way, which is a diagnostic
+			// about a directory rather than a failure to write: it points at a
+			// declaration, it carries a hint, and it belongs in the report
+			// beside everything else so that the author reads one thing.
+			if problems.AddError(err) {
+				continue
+			}
+
+			// Anything else. Kept rather than returned: what went wrong writing
+			// one package does not make what was wrong with another one less
+			// worth saying, and an author told only about a permission would
+			// fix it and meet the rest one run later.
 			failed = err
 			break
 		}

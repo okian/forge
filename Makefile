@@ -108,6 +108,25 @@ bench: ## Run the benchmarks and hold each one to its recorded budget.
 example: ## Regenerate the worked example under examples/.
 	$(GO) run -buildvcs=false ./cmd/forge generate ./examples/...
 
+# The verb compares each file's recorded fingerprint against what its
+# declaration would produce now, so it composes nothing and writes nothing.
+#
+# Not a gate, and not in `check`. Two reasons, both about this repository rather
+# than about the verb. The fingerprint records the forge version, and `go run`
+# stamps every development build (devel) — so a change to forge's own generator
+# leaves every fingerprint where it was and this would say the example is fine.
+# And the fingerprint records the Go version, while go.mod names a minimum: two
+# people on different patch releases cannot both see this pass, and the only
+# byte that differs between them is the fingerprint itself.
+#
+# What does gate it is the acceptance test in cmd/forge, which regenerates
+# through the real pipeline and compares every file, so it catches the generator
+# changing as well as the declarations. This target is for running the verb by
+# hand against real committed output.
+.PHONY: fresh
+fresh: ## Run forge check over the worked example under examples/.
+	$(GO) run -buildvcs=false ./cmd/forge check ./examples/...
+
 .PHONY: check
 check: fmt-check vet lint cover ## Run every gate CI runs.
 

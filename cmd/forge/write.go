@@ -11,6 +11,8 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/emit"
 	generated "github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/model"
 )
@@ -29,18 +31,33 @@ const (
 	updated
 )
 
+// codeForeign reports a file forge would write to that it did not write.
+//
+// A 5xxx like the orphan report beside it: what is wrong is the state of a
+// directory rather than anything anybody wrote, and what it takes to fix is a
+// deletion or a rename rather than an edit to a declaration.
+var codeForeign = diag.Register(5006, "a file forge did not write is in the way")
+
 // place puts a file where it belongs, and reports whether it had to.
 //
 // A byte-identical file is left alone rather than rewritten with the same
 // bytes. Rewriting it would change its modification time, which every build
 // cache and every watcher reads as a change — so a run that generated nothing
 // new would rebuild the world, and a second run would do it again.
+//
+// A file that does not say forge wrote it is not written over. The names forge
+// chooses are unusual and prefixed to be, but a declaration can still land on
+// one somebody already used, and the cost of guessing wrong is somebody's work
+// gone with nothing said about it — the worst thing a generator can do, and the
+// one thing no amount of care downstream recovers from.
 func place(dir string, file generated.File) (outcome, error) {
 	path := filepath.Join(dir, file.Name)
 
 	switch held, err := os.ReadFile(path); { //nolint:gosec // the path is a package directory and a name forge chose.
 	case err == nil && bytes.Equal(held, file.Content):
 		return unchanged, nil
+	case err == nil && !writable(held):
+		return unchanged, foreign(file)
 	case err == nil:
 		return updated, os.WriteFile(path, file.Content, 0o644) //nolint:gosec // generated source is read by the compiler and by people.
 	case errors.Is(err, os.ErrNotExist):
@@ -48,6 +65,35 @@ func place(dir string, file generated.File) (outcome, error) {
 	default:
 		return unchanged, err
 	}
+}
+
+// writable reports whether a file already in the way is one forge may write over.
+//
+// A file that says it is generated is, whatever else has happened to it. So is
+// an empty one: a file holding nothing has nothing to lose, and the ordinary
+// way to reach that is a tool or an editor that truncated a generated file,
+// where refusing would leave somebody with a file forge cannot repair and no
+// way to ask it to.
+func writable(held []byte) bool {
+	if len(bytes.TrimSpace(held)) == 0 {
+		return true
+	}
+
+	_, generated := emit.ReadHeader(held)
+	return generated
+}
+
+// foreign reports a file in the way that forge did not write.
+//
+// Both ways out are offered because forge cannot tell which is right. A file
+// somebody wrote wants the declaration renamed; a generated file whose header
+// was lost — truncated by a merge, stripped by a tool that rewrites the top of
+// every file — wants deleting, and regenerating puts it back.
+func foreign(file generated.File) error {
+	return diag.New(codeForeign, file.Pos,
+		"%s is already there and does not say forge wrote it", file.Name).
+		WithHint("%s", "delete it and run again if it is forge's and lost its header, "+
+			"or rename the declaration if the file is yours")
 }
 
 // identical reports whether a file already holds exactly what would be written.
