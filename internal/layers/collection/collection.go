@@ -198,7 +198,7 @@ func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, erro
 		Decls:    decls,
 		Comments: out.Comments,
 		Fset:     out.Fset,
-		Imports:  append(reached(decls, out.Imports), imported(surface.imports())...),
+		Imports:  append(emit.Reaching(decls, out.Imports), imported(surface.imports())...),
 		Requires: []model.TypeRef{seq.Ref(surface.pkg)},
 	}, nil
 }
@@ -255,51 +255,6 @@ func helpers(decls []ast.Decl, surface plan) ([]ast.Decl, error) {
 		}
 	}
 	return out, nil
-}
-
-// reached returns the template's imports that the declarations being emitted
-// still name.
-//
-// This layer emits a chosen part of its template — a collection that named no
-// order has no use for the sorting — and an import the emitted part does not
-// name is a file that does not compile. Which name each path binds is written
-// down rather than guessed, so this is exact: what is dropped is what nothing
-// left says.
-func reached(decls []ast.Decl, imports []emit.Import) []emit.Import {
-	named := qualifiers(decls)
-
-	out := make([]emit.Import, 0, len(imports))
-	for _, one := range imports {
-		if slices.Contains(named, templateImports[one.Path]) {
-			out = append(out, one)
-		}
-	}
-	return out
-}
-
-// qualifiers returns the names used to the left of a dot in these declarations.
-//
-// It over-collects: a variable called cmp and the package cmp read the same way
-// without the type information a generator does not have. Over-collecting keeps
-// an import nothing needed, which the first build of the output reports as
-// plainly as anything gets reported.
-func qualifiers(decls []ast.Decl) []string {
-	var found []string
-
-	for _, decl := range decls {
-		ast.Inspect(decl, func(n ast.Node) bool {
-			selector, is := n.(*ast.SelectorExpr)
-			if !is {
-				return true
-			}
-			if name, is := selector.X.(*ast.Ident); is && !slices.Contains(found, name.Name) {
-				found = append(found, name.Name)
-			}
-			return true
-		})
-	}
-
-	return found
 }
 
 // accounted reports a template import nothing wrote down, or nothing.

@@ -161,22 +161,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Ring"), kind: model.KindStorage, stage: layer.StageStub,
-		adds: []shape.Cap{shape.Sized, shape.Ordered, shape.Streamable, shape.Bounded},
-		options: []layer.OptionDef{
-			// Not required: a ring whose capacity is not declared takes it at
-			// construction, which is the form the worked example in the
-			// documentation uses and the one a caller sizing a buffer from
-			// configuration needs.
-			{Key: "cap", Value: layer.ValueInt, Doc: "how many elements the buffer holds, when that is fixed at build time rather than passed to the constructor"},
-			{
-				Key: "overflow", Value: layer.ValueEnum, Values: []string{"overwrite", "error"}, Default: "overwrite",
-				Doc: "what a push does when the buffer is full",
-			},
-		},
-		doc: "fixed-capacity circular buffer, so a long-running producer cannot grow memory without bound",
-	},
-	{
 		origin: marker("Json"), kind: model.KindElement, stage: layer.StageStub,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
 		options: []layer.OptionDef{

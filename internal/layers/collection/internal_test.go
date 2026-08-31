@@ -1,7 +1,6 @@
 package collection
 
 import (
-	"go/ast"
 	"go/token"
 	"go/types"
 	"slices"
@@ -189,28 +188,6 @@ func TestTheTemplateBindsWhatItSaysItDoes(t *testing.T) {
 		if _, imported := found[path]; !imported {
 			t.Errorf("%s is recorded and the template does not import it", path)
 		}
-	}
-}
-
-// An import is kept only where the emitted half still names it, since this
-// layer emits a chosen part of its template and an import nothing names is a
-// file that does not compile.
-func TestWhichImportsSurvive(t *testing.T) {
-	sorting := &ast.FuncDecl{
-		Name: ast.NewIdent("ordered"),
-		Type: &ast.FuncType{Params: &ast.FieldList{}},
-		Body: &ast.BlockStmt{List: []ast.Stmt{&ast.ExprStmt{X: &ast.CallExpr{
-			Fun: &ast.SelectorExpr{X: ast.NewIdent("cmp"), Sel: ast.NewIdent("Compare")},
-		}}}},
-	}
-
-	all := []emit.Import{{Path: "cmp", Name: "cmp"}, {Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
-
-	if got := reached([]ast.Decl{sorting}, all); !slices.Equal(got, []emit.Import{{Path: "cmp", Name: "cmp"}}) {
-		t.Errorf("kept %v, want the one the declarations name", got)
-	}
-	if got := reached(nil, all); len(got) != 0 {
-		t.Errorf("kept %v for declarations that name nothing", got)
 	}
 }
 

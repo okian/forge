@@ -2,6 +2,7 @@ package emit
 
 import (
 	"fmt"
+	"go/ast"
 	"go/build/constraint"
 	"go/format"
 	"go/token"
@@ -274,6 +275,72 @@ func (f File) renderImports(b *strings.Builder) error {
 	}
 
 	return nil
+}
+
+// Reaching returns the imports these declarations still need.
+//
+// A caller that emits a chosen part of what it generated — a template variant
+// the options did not select, a body thrown away — is left holding the import
+// set of the whole. An import nothing left names is a file that does not
+// compile, so the set has to be narrowed to what survived.
+//
+// The name an import binds is what is looked for, used to the left of a dot.
+// That is exact rather than a guess, because an import carries the name it
+// binds whether or not the name is written.
+//
+// It over-collects, and in the safe direction: a receiver called s and a
+// package called s read the same way without the type information a caller at
+// this stage does not have, so an import may be kept that nothing needed. What
+// that costs is an unused import in a file whose first build says so plainly.
+//
+// Two kinds are kept whatever the declarations say, because for those the same
+// reasoning runs the other way. An import bound to the blank name is there for
+// what loading the package does rather than for anything it offers, so no
+// declaration will ever name it and dropping it changes what the file does with
+// nothing to say so. One bound to the dot puts its names in the file's own
+// scope, where they are written without a qualifier and so are invisible to
+// this. Both would be dropped in silence, which is the failure that is worth
+// avoiding: an unused import is a build error, and a missing side effect is a
+// program that behaves differently.
+func Reaching(decls []ast.Decl, imports []Import) []Import {
+	named := Qualifiers(decls)
+
+	out := make([]Import, 0, len(imports))
+	for _, one := range imports {
+		if one.Name == "_" || one.Name == "." || named[one.Name] {
+			out = append(out, one)
+		}
+	}
+	return out
+}
+
+// Qualifiers returns the names used to the left of a dot in these declarations.
+//
+// It is the question "which packages does this code still refer to", asked
+// without type information, so the answer is the set of names that *could* be
+// a package qualifier: a receiver called s and a package called s are the same
+// text here, and telling them apart is what a type checker is for.
+//
+// Answering wide is what makes it useful. Every caller uses it to decide
+// whether something may be dropped, and a set that missed a name would drop
+// something needed — where a set that holds one too many only ever declines to
+// drop.
+func Qualifiers(decls []ast.Decl) map[string]bool {
+	named := make(map[string]bool)
+
+	for _, decl := range decls {
+		ast.Inspect(decl, func(node ast.Node) bool {
+			selector, is := node.(*ast.SelectorExpr)
+			if !is {
+				return true
+			}
+			if ident, is := selector.X.(*ast.Ident); is {
+				named[ident.Name] = true
+			}
+			return true
+		})
+	}
+	return named
 }
 
 // boundAs says what name an import is bound to, for a message that reads.

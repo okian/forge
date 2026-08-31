@@ -291,8 +291,9 @@ func TestLayersDescribeThemselves(t *testing.T) {
 	registry := layers.Builtins()
 
 	stages := map[string]layer.Stage{
-		"Ring": layer.StageStub,
-		"Csv":  layer.StageStaged,
+		"Slice": layer.StageReady,
+		"Json":  layer.StageStub,
+		"Csv":   layer.StageStaged,
 	}
 
 	for name, want := range stages {

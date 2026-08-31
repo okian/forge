@@ -60,9 +60,16 @@
         "Streamable",
         "Bounded"
       ],
-      "methods": [],
+      "methods": [
+        "Cap",
+        "Len",
+        "All",
+        "Backward",
+        "Push",
+        "AppendSeq"
+      ],
       "withdraws": [],
-      "pending": true,
+      "pending": false,
       "staged": false
     },
     {

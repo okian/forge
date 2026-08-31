@@ -74,6 +74,23 @@ type Rewrite struct {
 	// a file they did not write, about a name they never chose. The prefix is
 	// the caller's because it has to be stable: the same declaration specialised
 	// twice must produce the same helper names, or every run rewrites the file.
+	//
+	// Prefixing reaches into comments, which is what keeps a doc comment naming
+	// the thing it documents — and is a trap for a template that names a helper
+	// after an ordinary word. A helper called "at" turns "wrapping at the end"
+	// into "wrapping personsAt the end"; a constant called "capacity" rewrites
+	// every sentence about capacity. The output still compiles, so nothing
+	// downstream reports it, and what ships is generated code whose prose has
+	// been quietly mangled.
+	//
+	// Nothing here can catch it. A comment that deliberately refers to another
+	// declaration and a comment that merely uses the word are the same text, and
+	// following the first is the reason renaming reaches into comments at all —
+	// so a rule strict enough to catch "at" also refuses the cross-references
+	// this is for. What catches it in practice is the golden files, where a
+	// mangled sentence is a diff somebody reads. What avoids it is naming a
+	// template's package-level helpers so that they are not words: fixedCap,
+	// errFull and indexOf cannot damage a sentence, and at and capacity can.
 	Prefix string
 }
 

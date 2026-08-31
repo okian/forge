@@ -15,8 +15,8 @@ Step  Layer       Adds                                 Masks  Exposes
 4     Collection  —                                    —      Sized, Ordered, Structured, Encodable, Streamable, Bounded
 
 Methods
-Step  Layer       Emits    Withdraws
-1     Person      —        —
-2     Json        pending  —
-3     Ring        pending  —
-4     Collection  Seq      —
+Step  Layer       Emits                                     Withdraws
+1     Person      —                                         —
+2     Json        pending                                   —
+3     Ring        Cap, Len, All, Backward, Push, AppendSeq  —
+4     Collection  Seq                                       —

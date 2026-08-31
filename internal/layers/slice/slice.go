@@ -316,40 +316,13 @@ func droppable(decl ast.Decl, kept []ast.Decl) string {
 			" types in one group, and the rest are not the author's to leave out"
 	}
 
-	staying := qualifiers(kept)
-	for _, named := range qualifiers([]ast.Decl{decl}) {
-		if !slices.Contains(staying, named) {
+	staying := emit.Qualifiers(kept)
+	for named := range emit.Qualifiers([]ast.Decl{decl}) {
+		if !staying[named] {
 			return "it is the only mention of " + named + ", whose import nothing left would use"
 		}
 	}
 	return ""
-}
-
-// qualifiers returns the names used to the left of a dot in these declarations.
-//
-// It over-collects on purpose: a receiver called s and a package called s read
-// the same way here, and telling them apart needs the type information a
-// rewrite deliberately does not have. Over-collecting only ever makes the check
-// above more permissive, and what it lets through is caught by the first build
-// of the output — where an unused import is a plain error rather than something
-// subtle.
-func qualifiers(decls []ast.Decl) []string {
-	var found []string
-
-	for _, decl := range decls {
-		ast.Inspect(decl, func(n ast.Node) bool {
-			selector, is := n.(*ast.SelectorExpr)
-			if !is {
-				return true
-			}
-			if name, is := selector.X.(*ast.Ident); is && !slices.Contains(found, name.Name) {
-				found = append(found, name.Name)
-			}
-			return true
-		})
-	}
-
-	return found
 }
 
 // declares reports whether a declaration introduces the type under this name.

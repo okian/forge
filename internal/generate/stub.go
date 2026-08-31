@@ -3,7 +3,6 @@ package generate
 import (
 	"go/ast"
 	"go/token"
-	"slices"
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/merge"
@@ -187,24 +186,10 @@ func panicking(original *ast.BlockStmt) *ast.BlockStmt {
 // which the compiler would have refused, and a qualifier nothing imports is
 // left to the compiler, which is where the answer is.
 func reaching(sections []emit.Section, imports []emit.Import) []emit.Import {
-	seen := make(map[string]bool)
-
+	var decls []ast.Decl
 	for _, section := range sections {
-		for _, decl := range section.Decls {
-			ast.Inspect(decl, func(node ast.Node) bool {
-				selector, ok := node.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				if ident, ok := selector.X.(*ast.Ident); ok {
-					seen[ident.Name] = true
-				}
-				return true
-			})
-		}
+		decls = append(decls, section.Decls...)
 	}
 
-	return slices.DeleteFunc(slices.Clone(imports), func(held emit.Import) bool {
-		return !seen[held.Name]
-	})
+	return emit.Reaching(decls, imports)
 }

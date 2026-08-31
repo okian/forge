@@ -33,7 +33,7 @@ var catalog = map[string]entry{
 		adds: []shape.Cap{shape.Sized, shape.Ordered, shape.Indexed, shape.Streamable},
 	},
 	"Ring": {
-		kind: model.KindStorage, stage: layer.StageStub,
+		kind: model.KindStorage, stage: layer.StageReady,
 		adds: []shape.Cap{shape.Sized, shape.Ordered, shape.Streamable, shape.Bounded},
 	},
 	"Collection": {
