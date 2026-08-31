@@ -10,6 +10,7 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	generated "github.com/okian/forge/internal/generate"
+	"github.com/okian/forge/internal/layers"
 )
 
 // example is the worked example, from this package's directory.
@@ -124,7 +125,7 @@ func regenerating(t *testing.T) map[string][]byte {
 		t.Fatalf("the example is %d packages, want 1", len(packages))
 	}
 
-	files, problems := generated.Package(packages[0].path, packages[0].name, packages[0].requests, configured())
+	files, problems := generated.Package(packages[0].path, packages[0].name, packages[0].requests, configured(layers.Builtins()))
 	if !problems.Empty() {
 		t.Fatalf("generating the example was refused:\n%s", problems.Render())
 	}

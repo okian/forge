@@ -37,7 +37,32 @@ type Layer interface {
 
 	// Shape returns what this layer exposes to the layer above it, which is the
 	// shape beneath with whatever this layer adds — or withdraws.
-	Shape(below shape.Shape) shape.Shape
+	//
+	// The declaration is passed because a layer's surface can depend on it. A
+	// storage layer's methods are the same whatever it holds, but a layer that
+	// names its methods after the subject's fields — a projection per field, a
+	// sorted view per declared key — cannot say what it emits without knowing
+	// which fields and which keys. A decorator above it has to wrap those by
+	// name, so leaving them out of the shape would leave them unwrappable.
+	//
+	// A layer handed no declaration reports what it can without one rather than
+	// refusing: what asks that way is asking what the layer is, not what it
+	// would emit here. Three things count as none and a layer has to survive
+	// all of them — a nil context, a context carrying no model, and a model
+	// carrying no subject — because a declaration is described before its
+	// subject is known to be one and the stages in between all ask.
+	//
+	// Only the surface may be shorter for it. The capabilities a layer adds and
+	// withdraws are what the layers above are checked against, and a layer that
+	// reported them differently with and without a declaration would compose
+	// one way and be described another.
+	//
+	// Every method a layer puts on the surface carries that layer as its owner.
+	// A method of a name already there is a method wrapped rather than a second
+	// method, and the owner is what says which of the two the surface now
+	// holds: a layer that left it unset and wrapped a method would be reported
+	// as having done nothing, since the name did not change either.
+	Shape(ctx *Context, below shape.Shape) shape.Shape
 
 	// Generate returns the declarations this layer contributes.
 	Generate(ctx *Context, below shape.Shape) (Unit, error)
@@ -45,13 +70,41 @@ type Layer interface {
 
 // Context is what a layer generates against.
 type Context struct {
-	// Model is the declaration being generated for: its subject, its stack and
-	// its position.
+	// Model is the declaration being generated for: its subject, its options
+	// and its position.
+	//
+	// Its stack is the stack as the author wrote it, which is not always the
+	// stack that will be generated: a refining layer written over no storage
+	// has one filled in beneath it, and that happens after a layer has been
+	// asked what it exposes — a layer asked before the insertion cannot be
+	// handed the result of it. What is beneath a layer reaches it as the shape
+	// it is given, which is the answer to the question the stack would only be
+	// a way of guessing at.
 	Model *model.Model
 
 	// Options are the options written for this layer, already validated against
 	// its schema, so a layer reads them without checking them again.
 	Options model.Options
+}
+
+// ContextFor returns what one layer of a declaration is asked against, or nil
+// when there is no declaration to ask about.
+//
+// The options are picked out here rather than handed down whole, so that a
+// layer reads its own and cannot read another's. Every stage that asks a layer
+// anything asks through this, because a stage that picked them out itself would
+// be a second answer to the question of which options belong to which layer —
+// and the two would agree until somebody changed one.
+func ContextFor(held *model.Model, ref model.LayerRef) *Context {
+	if held == nil {
+		return nil
+	}
+
+	directive := ref.Directive()
+	if written, ok := held.OptionsFor(directive); ok {
+		return &Context{Model: held, Options: written}
+	}
+	return &Context{Model: held, Options: model.Options{Layer: directive}}
 }
 
 // Unit is what a layer contributes to a package.

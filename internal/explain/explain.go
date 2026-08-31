@@ -117,7 +117,7 @@ func Of(decl Declaration, registry *layer.Registry) Resolution {
 	// Outermost first is how the stack is stored, because that is how it was
 	// written; the walk needs the other end first.
 	for i := len(decl.Stack) - 1; i >= 0; i-- {
-		step, above := layerStep(len(out.Steps)+1, decl.Stack[i], below, registry)
+		step, above := layerStep(len(out.Steps)+1, decl.Stack[i], decl, below, registry)
 		out.Steps = append(out.Steps, step)
 		below = above
 	}
@@ -146,7 +146,7 @@ func subjectStep(decl Declaration, exposed shape.Shape) Step {
 }
 
 // layerStep describes one layer and the shape it leaves for the layer above it.
-func layerStep(number int, ref model.LayerRef, below shape.Shape, registry *layer.Registry) (Step, shape.Shape) {
+func layerStep(number int, ref model.LayerRef, decl Declaration, below shape.Shape, registry *layer.Registry) (Step, shape.Shape) {
 	step := Step{Number: number, Name: ref.Origin.Name, Kind: model.KindInvalid, Shape: names(below.Caps)}
 
 	found, ok := registry.Lookup(ref.Origin)
@@ -161,7 +161,25 @@ func layerStep(number int, ref model.LayerRef, below shape.Shape, registry *laye
 	step.Effect = summary(found)
 	step.Pending, step.Staged = unwritten(found)
 
-	above, ok := shaped(found, below)
+	// What a layer would be given decides whether it is given anything. A layer
+	// that cannot sit on the shape beneath it is never asked what it exposes, so
+	// describing it as though it had been would put a row in the table saying it
+	// adds a capability beside a diagnostic saying it is not there — and a reader
+	// would have to know which of the two to believe.
+	if asked, refuses := accepts(found, below); !asked || refuses != nil {
+		// The layer's own words, unless the layer is notional. A marker declared
+		// so that a declaration naming it type-checks has one thing worth
+		// reporting and it is not that its inputs were wrong. A layer whose
+		// generator is merely unwritten is a different case: its composition
+		// rules are in place, so the refusal is a fact it implemented and is
+		// the one the diagnostic beside it points at.
+		if !step.Staged {
+			step.Effect = refusal(refuses)
+		}
+		return step, below
+	}
+
+	above, ok := shaped(found, layer.ContextFor(decl.Model, ref), below)
 	if !ok {
 		// A layer that cannot say what it exposes has said something about
 		// itself worth printing, and the layers above it are described against
@@ -186,14 +204,43 @@ func layerStep(number int, ref model.LayerRef, below shape.Shape, registry *laye
 // one thing they do learn is in a form only forge's authors can read. Layers
 // are the part of this a third party writes, so the one that panics is the one
 // forge did not.
-func shaped(l layer.Layer, below shape.Shape) (above shape.Shape, ok bool) {
+func shaped(l layer.Layer, ctx *layer.Context, below shape.Shape) (above shape.Shape, ok bool) {
 	defer func() {
 		if recover() != nil {
 			above, ok = below, false
 		}
 	}()
 
-	return l.Shape(below), true
+	return l.Shape(ctx, below), true
+}
+
+// accepts asks a layer whether it can sit on the shape beneath it, reporting
+// whether it answered at all and what it said.
+//
+// The same guard [shaped] has, for the same reason: a layer is the part of this
+// a third party writes, and a report that ended in a stack trace would tell a
+// reader nothing about the other four layers.
+func accepts(l layer.Layer, below shape.Shape) (asked bool, refuses error) {
+	defer func() {
+		if recover() != nil {
+			asked, refuses = false, nil
+		}
+	}()
+
+	return true, l.Accepts(below)
+}
+
+// refusal is what a step says about itself when it cannot sit where it was
+// written.
+//
+// The layer's own words where it gave them. It knows what it needed and what it
+// was offered and wrote a sentence saying so; a sentence invented here would be
+// a worse one that also had to be kept in step.
+func refusal(refuses error) string {
+	if refuses == nil {
+		return "the layer could not say whether it can sit here"
+	}
+	return refuses.Error()
 }
 
 // summary is what a layer says it is for, or what forge says about a layer that
@@ -230,29 +277,32 @@ func unwritten(l layer.Layer) (pending, staged bool) {
 	return stage != layer.StageReady, stage == layer.StageStaged
 }
 
-// surface names what a layer adds to the declared type's methods and what it
+// surface names what a layer puts on the declared type's methods and what it
 // takes away.
 //
-// By name rather than by counting. A layer may replace one method with another
-// of the same name — wrapping is what a decorator does — and a count would
-// report that as nothing having happened, while a decorator that withdraws one
-// it cannot uphold would look like a layer that added nothing.
+// By name and by owner, not by counting. A count would report a decorator that
+// wrapped every method beneath it as a layer that did nothing, since the surface
+// is the same length; names alone would do the same, since a wrapper and what it
+// wraps share one. What tells them apart is who owns the method afterwards — a
+// wrapped method belongs to the layer that wrapped it — and a step that emits
+// the wrapper is a step that emits a method, which is what a reader is being
+// shown.
 func surface(above, below shape.Shape) (added, withdrawn []string) {
-	has := func(methods []shape.Method) map[string]bool {
-		out := make(map[string]bool, len(methods))
-		for _, method := range methods {
-			out[method.Name] = true
-		}
-		return out
+	held := make(map[string]shape.Method, len(below.Surface))
+	for _, method := range below.Surface {
+		held[method.Name] = method
 	}
 
-	had, now := has(below.Surface), has(above.Surface)
-
+	now := make(map[string]bool, len(above.Surface))
 	for _, method := range above.Surface {
-		if !had[method.Name] {
+		now[method.Name] = true
+
+		was, there := held[method.Name]
+		if !there || was.Owner != method.Owner {
 			added = append(added, method.Name)
 		}
 	}
+
 	for _, method := range below.Surface {
 		if !now[method.Name] {
 			withdrawn = append(withdrawn, method.Name)

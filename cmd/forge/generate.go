@@ -6,6 +6,7 @@ import (
 	"github.com/okian/forge/internal/compose"
 	"github.com/okian/forge/internal/diag"
 	generated "github.com/okian/forge/internal/generate"
+	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
 )
 
@@ -53,7 +54,7 @@ func generate(env *environment, cmd command, args []string) error {
 // Keeping them one path is what stops --dry-run and --diff from disagreeing
 // about what would happen.
 func emitting(env *environment, found resolved, hold, show bool) error {
-	cfg := configured()
+	cfg := configured(layers.Builtins())
 
 	var (
 		problems diag.Set
@@ -107,12 +108,17 @@ func emitting(env *environment, found resolved, hold, show bool) error {
 // Anything assembling it a second time would be generating against a catalog or
 // a version that the command does not use, and would agree with it right up
 // until one of them changed.
-func configured() generated.Config {
+//
+// The registry is passed in rather than read here, so that a verb which also
+// describes a stack composes it against the same catalog it generates against.
+// Two registries would answer alike today and would be the reason a report and
+// a file disagreed the day somebody registered a layer into one of them.
+func configured(catalog *layer.Registry) generated.Config {
 	self, markers, toolchain := versions()
 
 	return generated.Config{
 		Catalog: compose.Catalog{
-			Registry:       layers.Builtins(),
+			Registry:       catalog,
 			DefaultStorage: layers.DefaultStorage(),
 		},
 		Forge: self, Markers: markers, Toolchain: toolchain,

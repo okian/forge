@@ -29,7 +29,7 @@ func (f fake) Origin() model.TypeRef           { return f.origin }
 func (f fake) Kind() model.Kind                { return f.kind }
 func (f fake) OptionSchema() []layer.OptionDef { return nil }
 func (f fake) Accepts(shape.Shape) error       { return nil }
-func (f fake) Shape(below shape.Shape) shape.Shape {
+func (f fake) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	return below
 }
 
@@ -178,12 +178,12 @@ func TestALayerReportsTheShapeItExposes(t *testing.T) {
 	ring, _ := registry.Lookup(marker("Ring"))
 	guarded, _ := registry.Lookup(marker("Guarded"))
 
-	stored := ring.Shape(shape.Shape{})
+	stored := ring.Shape(nil, shape.Shape{})
 	if !stored.Caps.Has(shape.Streamable, shape.Bounded, shape.Sized, shape.Ordered) {
 		t.Errorf("Ring exposes %s", stored.Caps)
 	}
 
-	locked := guarded.Shape(stored)
+	locked := guarded.Shape(nil, stored)
 	if !locked.Caps.Has(shape.Concurrent) {
 		t.Errorf("Guarded exposes %s, want it concurrent", locked.Caps)
 	}
@@ -193,6 +193,39 @@ func TestALayerReportsTheShapeItExposes(t *testing.T) {
 	// Withdrawing is not forgetting: what the lock did not touch is still there.
 	if !locked.Caps.Has(shape.Sized) {
 		t.Errorf("Guarded exposes %s, want the rest of the stack kept", locked.Caps)
+	}
+}
+
+// A lock takes the methods away as well as the capability.
+//
+// The capability is what the layers above are checked against; the methods are
+// what a caller reaches and what a reader is shown. A lock that withdrew only
+// the first would leave the declared type listing a walk that a caller could
+// still call, over data the lock exists to protect — and the shape saying so is
+// the only place anything would notice before the race did.
+func TestALockTakesTheWalkAwayAndNotOnlyTheCapability(t *testing.T) {
+	registry := layers.Builtins()
+
+	storage, _ := registry.Lookup(marker("Slice"))
+	guarded, _ := registry.Lookup(marker("Guarded"))
+
+	stored := storage.Shape(nil, shape.Shape{})
+	if !slices.Contains(stored.Names(), "All") {
+		t.Fatalf("the storage beneath exposes %v, and there is no walk to withdraw", stored.Names())
+	}
+
+	locked := guarded.Shape(nil, stored)
+	for _, gone := range []string{"All", "Backward", "AppendSeq"} {
+		if _, found := locked.Method(gone); found {
+			t.Errorf("Guarded exposes %v, and %s reaches the data the lock protects",
+				locked.Names(), gone)
+		}
+	}
+
+	// The cheap read is not iteration and stays, which is what makes this a
+	// withdrawal rather than a clearing.
+	if _, found := locked.Method("Len"); !found {
+		t.Errorf("Guarded exposes %v, want what it did not withdraw kept", locked.Names())
 	}
 }
 

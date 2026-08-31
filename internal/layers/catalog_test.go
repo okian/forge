@@ -181,13 +181,13 @@ func TestTheCatalogIsWhatItSaysItIs(t *testing.T) {
 			}
 
 			// What it adds: visible over a stack with nothing.
-			added := found.Shape(shape.Shape{}).Caps.All()
+			added := found.Shape(nil, shape.Shape{}).Caps.All()
 			if !slices.Equal(added, sorted(want.adds)) {
 				t.Errorf("adds %v, want %v", added, sorted(want.adds))
 			}
 
 			// What it withdraws, compared as a set for the same reason.
-			exposed := found.Shape(everything()).Caps
+			exposed := found.Shape(nil, everything()).Caps
 			masked := everything().Caps.Without(exposed.All()...).All()
 			if !slices.Equal(masked, sorted(want.masks)) {
 				t.Errorf("withdraws %v, want %v", masked, sorted(want.masks))

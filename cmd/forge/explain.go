@@ -7,10 +7,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/okian/forge/internal/compose"
+	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/discover"
 	resolution "github.com/okian/forge/internal/explain"
+	generated "github.com/okian/forge/internal/generate"
+	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/internal/options"
 )
 
 // here is the package a question is asked about when the command line names
@@ -63,30 +68,23 @@ func explain(env *environment, cmd command, args []string) error {
 		return err
 	}
 
-	// What is wrong with this declaration, and what is wrong with the package
-	// it sits in. Not what is wrong with its neighbours: a package under repair
-	// usually holds several that are nothing to do with the question, and
-	// answering a question about one of them by reporting the others is how a
-	// verb stops being worth running.
-	//
-	// The package's own faults are not the neighbours' faults, though. A type
-	// the package does not declare leaves this subject modelled from what the
-	// type-checker could still work out, and an answer built on that is worth
-	// having with the reason in view rather than presented as sound.
-	about := found.Diagnostics
-	about.Merge(&asked.Diagnostics)
-	reported := env.report(about)
+	catalog := layers.Builtins()
+
+	held := specialised(asked, catalog)
+	reported := env.report(wrong(found, asked, catalog))
+	stack := composed(asked, held, catalog)
 
 	answer := resolution.Of(resolution.Declaration{
 		Name:        asked.Declaration.Candidate.Name,
 		Package:     within(asked.Declaration.Candidate),
 		Position:    written(asked.Declaration.Candidate),
 		Form:        asked.Declaration.Candidate.Form,
-		Stack:       asked.Declaration.Stack,
+		Stack:       stack,
 		Subject:     asked.Model,
 		SubjectName: model.TypeString(asked.Declaration.Subject),
-		Layout:      model.LayoutOf(asked.Declaration.Stack, asked.Declaration.Subject),
-	}, layers.Builtins())
+		Layout:      model.LayoutOf(stack, asked.Declaration.Subject),
+		Model:       held,
+	}, catalog)
 
 	if err := write(env, answer, *document); err != nil {
 		return err
@@ -101,6 +99,159 @@ func explain(env *environment, cmd command, args []string) error {
 		return errReported
 	}
 	return nil
+}
+
+// wrong gathers everything a reader of this answer has to know before trusting
+// it.
+//
+// What is wrong with this declaration and what is wrong with the package it
+// sits in. Not what is wrong with its neighbours: a package under repair
+// usually holds several that are nothing to do with the question, and answering
+// a question about one of them by reporting the others is how a verb stops
+// being worth running.
+//
+// The package's own faults are not the neighbours' faults, though. A type the
+// package does not declare leaves this subject modelled from what the
+// type-checker could still work out, and an answer built on that is worth
+// having with the reason in view rather than presented as sound.
+//
+// And what would stop it being generated, which is the question behind the
+// question. Somebody runs this because a run refused, or because the file does
+// not hold what they expected.
+func wrong(found resolved, one request, catalog *layer.Registry) diag.Set {
+	out := found.Diagnostics
+	out.Merge(&one.Diagnostics)
+
+	refusals := refused(one, catalog)
+	out.Merge(&refusals)
+
+	return out
+}
+
+// refused says what is wrong with this declaration that would stop it being
+// generated.
+//
+// By generating it and throwing the files away, rather than by repeating the
+// checks. Everything after resolution can refuse: an option naming a field the
+// subject has not got, a stack that does not compose, a layer that cannot build
+// what it was asked for, two methods wanting one name. Each of those is
+// reported by the stage that found it, none of them by the two calls this verb
+// makes to describe a stack, and a verb that re-implemented the subset it felt
+// like reporting would drift from the generator the first time either changed.
+//
+// It is the question behind the question. Somebody runs explain because a run
+// refused, or because the file does not hold what they expected; an explanation
+// that described the declaration cheerfully while the generator refused it
+// would send them looking in the one place the fault is not.
+//
+// Two things are left out on purpose, both because they are faults of a set of
+// declarations rather than of this one. Its neighbours are not generated, so
+// nothing they are wrong about is reported here; and two declarations wanting
+// one file cannot arise from generating a declaration on its own. Somebody
+// asking about one declaration is asking about that one.
+//
+// A layer whose generator is not written is left out as well. It says forge has
+// not got there yet rather than that the author did anything wrong, and the
+// report has a column for it: a step whose work is pending is marked as pending
+// rather than blamed. Explaining a stack of markers that mostly have no
+// generator yet is what this verb is for.
+//
+// A declaration with no model generates nothing and is refused for a reason
+// already reported — the subject builder said it — so nothing is asked here.
+func refused(one request, catalog *layer.Registry) diag.Set {
+	if one.Model == nil {
+		return diag.Set{}
+	}
+
+	pkg := one.Declaration.Candidate.Pkg
+	if pkg == nil {
+		return diag.Set{}
+	}
+
+	_, problems := generated.Package(pkg.PkgPath, pkg.Name,
+		[]generated.Request{{Model: built(one), Directives: one.Declaration.Candidate.Directives}},
+		configured(catalog))
+
+	// By code rather than by wording, and the code holds because a stub reports
+	// a diagnostic rather than a plain error: an ordinary error is given a code
+	// of its own by the stage that receives it, and would come back through
+	// here as something else entirely.
+	var out diag.Set
+	for _, held := range problems.All() {
+		if held.Code != layers.NotImplemented {
+			out.Add(held)
+		}
+	}
+	return out
+}
+
+// composed returns the stack as it will be generated, which is not always the
+// stack as it was written.
+//
+// A refining layer written over no storage has one filled in beneath it, and an
+// explanation that left it out would describe a stack nothing generates: the
+// declared type would appear to have the collection's methods and none of the
+// container's, and a reader counting on that would find four more in the file.
+//
+// A stack that does not compose is explained as it was written. Composition
+// stops at the layer that refused, so what it has built by then is the inner
+// part of the stack and nothing else — an answer that showed it would have
+// dropped the layers above without saying so, which is the half of the
+// declaration somebody in trouble is usually asking about.
+//
+// What composition said is dropped here and not lost: [refused] composes the
+// same declaration through the generator and reports every word of it. Saying
+// it twice would make one fault read as two.
+//
+// A declaration with no model is not composed at all. The shape a stack is
+// checked against starts at the subject, so a subject that could not be
+// modelled makes every layer above it refuse for a reason that is not theirs.
+func composed(one request, held *model.Model, catalog *layer.Registry) []model.LayerRef {
+	written := one.Declaration.Stack
+	if held == nil {
+		return written
+	}
+
+	out, problems := compose.Compose(compose.Declaration{
+		Stack:   written,
+		Subject: one.Model,
+		Pos:     one.Declaration.Candidate.Pos,
+		Model:   held,
+	}, compose.Catalog{Registry: catalog, DefaultStorage: layers.DefaultStorage()})
+
+	if !problems.Empty() {
+		return written
+	}
+	return out.Stack()
+}
+
+// specialised builds the model a layer is asked what it exposes against, or nil
+// when the declaration has no model to build one from.
+//
+// The options are read here rather than left out, because a layer whose methods
+// are named after them cannot say what it emits without them: a collection told
+// to sort by Name puts SortedByName on the declared type, and an explanation
+// that listed only the methods every collection has would be answering a
+// simpler question than the one asked.
+//
+// What was accepted rather than what was written, because that is what a layer
+// is handed when it generates and what an explanation is describing. A refused
+// option is not generated from, and [refused] reports every one of them by
+// reading the same directives through the same reader.
+func specialised(one request, catalog *layer.Registry) *model.Model {
+	held := built(one)
+	if held == nil {
+		return nil
+	}
+
+	held.Options, _ = options.Read(options.Declaration{
+		Pos:        held.Pos,
+		Directives: one.Declaration.Candidate.Directives,
+		Stack:      held.Stack,
+		Subject:    held.Subject,
+	}, catalog)
+
+	return held
 }
 
 // write renders a resolution in whichever form was asked for.

@@ -125,22 +125,35 @@ func (Layer) Accepts(below shape.Shape) error {
 
 // Shape returns what the layer exposes to the layer above it.
 //
-// It adds no capability. What it adds is surface, and only part of that can be
-// reported: a shape is asked of a layer without the declaration, and everything
-// else this layer emits is named after the declaration's own fields and
-// options. What every collection has is the one method that does not depend on
-// either.
+// It adds no capability. What it adds is surface, and the whole of that surface
+// depends on the declaration: a projection per field, a sorted view per
+// declared sort key, a lookup per declared index key, each named after the
+// field it reads and the view named after the declared type. Given the
+// declaration this reports all of them, spelled as they will be emitted, so a
+// decorator above can wrap them and collision detection can see them.
 //
-// That method's signature is left empty rather than guessed. It returns the
-// view, which is named after the declared type, and a shape does not carry
-// that name — so a signature written here would be a rendering of something
-// the layer above cannot check and a reader would take for source.
-func (l Layer) Shape(below shape.Shape) shape.Shape {
-	return below.WithMethods(shape.Method{
-		Name:  "Seq",
-		Owner: l.Origin(),
-		Doc:   "a lazy view over the elements, named after the declared type",
-	})
+// Given no declaration it reports the one method that does not depend on one,
+// and reports it without a signature rather than guessing: the result type is
+// named after the declared type, and a rendering of a name nothing here knows
+// is a string a reader would take for source.
+//
+// Diagnostics from reading the declaration are dropped here and reported at
+// generation, which is where they belong. A shape is a description, and a
+// caller asking what a layer would emit for a declaration that cannot be
+// generated wants the description it can have rather than a second copy of the
+// reason — which the run is about to print anyway.
+func (l Layer) Shape(ctx *layer.Context, below shape.Shape) shape.Shape {
+	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
+		return below.WithMethods(shape.Method{
+			Name:  "Seq",
+			Owner: l.Origin(),
+			Doc:   "Seq returns a lazy view over the elements, named after the declared type.",
+		})
+	}
+
+	surface, _ := planned(ctx, below)
+
+	return below.WithMethods(surface.surface(l.Origin())...)
 }
 
 // Generate returns the declarations this layer contributes.

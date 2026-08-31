@@ -331,7 +331,7 @@ func (p panicking) Accepts(shape.Shape) error {
 	return nil
 }
 
-func (p panicking) Shape(below shape.Shape) shape.Shape {
+func (p panicking) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	if p.at == "shape" {
 		panic("nor this one")
 	}

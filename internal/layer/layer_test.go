@@ -25,7 +25,7 @@ func (f fake) Origin() model.TypeRef           { return f.origin }
 func (f fake) Kind() model.Kind                { return f.kind }
 func (f fake) OptionSchema() []layer.OptionDef { return f.options }
 func (f fake) Accepts(shape.Shape) error       { return f.accepts }
-func (f fake) Shape(below shape.Shape) shape.Shape {
+func (f fake) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	below.Caps = below.Caps.With(f.adds...)
 	return below
 }

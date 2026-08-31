@@ -31,7 +31,7 @@ func (d demanding) Origin() model.TypeRef {
 func (d demanding) Kind() model.Kind                { return model.KindStorage }
 func (d demanding) OptionSchema() []layer.OptionDef { return d.options }
 func (d demanding) Accepts(shape.Shape) error       { return nil }
-func (d demanding) Shape(below shape.Shape) shape.Shape {
+func (d demanding) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	return below
 }
 

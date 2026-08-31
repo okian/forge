@@ -225,7 +225,7 @@ func (exploding) Kind() model.Kind                { return model.KindRefining }
 func (exploding) OptionSchema() []layer.OptionDef { return nil }
 func (exploding) Accepts(shape.Shape) error       { return nil }
 
-func (exploding) Shape(below shape.Shape) shape.Shape { return below }
+func (exploding) Shape(_ *layer.Context, below shape.Shape) shape.Shape { return below }
 
 func (exploding) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
 	panic("this layer has no idea")

@@ -52,14 +52,14 @@ func asked(one layer.Layer, below shape.Shape) (refuses, panicked error) {
 	return one.Accepts(below), nil
 }
 
-func exposed(one layer.Layer, below shape.Shape) (above shape.Shape, panicked error) {
+func exposed(one layer.Layer, ctx *layer.Context, below shape.Shape) (above shape.Shape, panicked error) {
 	defer func() {
 		if caught := recover(); caught != nil {
 			above, panicked = below, fmt.Errorf("%T: %v", caught, caught)
 		}
 	}()
 
-	return one.Shape(below), nil
+	return one.Shape(ctx, below), nil
 }
 
 // Catalog is what composing needs to know about the layers a build ships.
@@ -92,6 +92,17 @@ type Declaration struct {
 	// Pos is where the declaration was written, which is where every
 	// diagnostic about it points.
 	Pos token.Position
+
+	// Model is the whole declaration, which is what a layer is handed when it
+	// is asked what it exposes.
+	//
+	// The three fields above are the ones composition itself reads, and they
+	// are here rather than taken from the model because composition works
+	// without one: a subject that could not be modelled still has a stack, and
+	// the rules about that stack are still worth reporting. What needs the
+	// model is the layer, and a layer whose surface depends on the declaration
+	// reports less of it when there is none.
+	Model *model.Model
 }
 
 // Step is one entry of a composed stack and what it is handed.
@@ -184,7 +195,7 @@ func Compose(decl Declaration, cat Catalog) (Composed, diag.Set) {
 			return out, diags
 		}
 
-		above, refused := exposed(layers[i], below)
+		above, refused := exposed(layers[i], layer.ContextFor(decl.Model, stack[i]), below)
 		if refused != nil {
 			diags.Add(diag.New(codeMisbehaved, decl.Pos,
 				"the %s layer failed while composing: %v", stack[i].Origin.Name, refused).

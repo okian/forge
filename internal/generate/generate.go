@@ -163,10 +163,19 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 	}, cfg.Catalog.Registry)
 	diags.Merge(&problems)
 
+	// Attached before composing rather than after, because a layer is asked
+	// what it exposes while the stack is being composed and a layer whose
+	// methods are named after its options cannot answer without them. A set
+	// that came back with problems still reaches the layer, and is meant to:
+	// the run is already going to be refused below, and a layer is written to
+	// describe what it was given rather than to check it a second time.
+	held.Options = set
+
 	composed, problems := compose.Compose(compose.Declaration{
 		Stack:   held.Stack,
 		Subject: held.Subject,
 		Pos:     held.Pos,
+		Model:   held,
 	}, cfg.Catalog)
 	diags.Merge(&problems)
 
@@ -178,7 +187,6 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 	// against and what the declaration means. It is not always what was
 	// written: a refining layer over no storage has one filled in.
 	held.Stack = composed.Stack()
-	held.Options = set
 
 	units := make([]layer.Unit, 0, len(composed.Steps))
 
@@ -192,10 +200,7 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 			continue
 		}
 
-		unit, err := generated(found, &layer.Context{
-			Model:   held,
-			Options: written(set, step.Layer),
-		}, step.Below)
+		unit, err := generated(found, layer.ContextFor(held, step.Layer), step.Below)
 		if err != nil {
 			diags.Add(refusal(err, held, step.Layer))
 			continue
@@ -225,19 +230,6 @@ func generated(one layer.Layer, ctx *layer.Context, below shape.Shape) (unit lay
 	}()
 
 	return one.Generate(ctx, below)
-}
-
-// written returns the options a directive named this layer with, and an empty
-// set for a layer no directive named.
-func written(set []model.Options, ref model.LayerRef) model.Options {
-	directive := ref.Directive()
-
-	for _, one := range set {
-		if one.Layer == directive {
-			return one
-		}
-	}
-	return model.Options{Layer: directive}
 }
 
 // refusal turns what a layer said into a diagnostic about the declaration.

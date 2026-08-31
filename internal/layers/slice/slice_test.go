@@ -154,7 +154,7 @@ func TestTheSpecFormIsGivenTheDeclarationToo(t *testing.T) {
 // is a template — and nothing but this holds them together.
 func TestTheSurfaceIsWhatIsEmitted(t *testing.T) {
 	ctx := inline()
-	exposed := slice.New().Shape(shape.Subject(ctx.Model.Subject))
+	exposed := slice.New().Shape(ctx, shape.Subject(ctx.Model.Subject))
 
 	var promised []string
 	for _, method := range exposed.Surface {
@@ -244,7 +244,7 @@ func receiverName(expr ast.Expr) (string, bool) {
 // A shape whose subject could not be modelled still has to answer, because the
 // explain command asks it about declarations that did not resolve.
 func TestASurfaceOverNoSubject(t *testing.T) {
-	exposed := slice.New().Shape(shape.Shape{})
+	exposed := slice.New().Shape(nil, shape.Shape{})
 
 	all, ok := exposed.Method("All")
 	if !ok {
@@ -339,7 +339,7 @@ func TestWhichMethodsAValueHas(t *testing.T) {
 
 	// And the surface says the same thing, since a decorator wrapping one of
 	// these has to declare the receiver it wraps.
-	exposed := slice.New().Shape(shape.Subject(ctx.Model.Subject))
+	exposed := slice.New().Shape(ctx, shape.Subject(ctx.Model.Subject))
 	for _, method := range exposed.Surface {
 		if method.Pointer != want[method.Name] {
 			t.Errorf("the surface says %s takes a pointer receiver = %v", method.Name, method.Pointer)

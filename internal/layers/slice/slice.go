@@ -130,7 +130,7 @@ func (Layer) Accepts(shape.Shape) error { return nil }
 // underlying type is the slice itself, so reaching an element by position is
 // something the language already does and a method would only be a second way
 // of writing it.
-func (l Layer) Shape(below shape.Shape) shape.Shape {
+func (l Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	below.Caps = below.Caps.With(shape.Sized, shape.Ordered, shape.Indexed, shape.Streamable)
 	return below.WithMethods(l.methods(below.Elem)...)
 }

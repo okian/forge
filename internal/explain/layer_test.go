@@ -2,6 +2,7 @@ package explain_test
 
 import (
 	"bytes"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -21,12 +22,18 @@ import (
 // it would otherwise go untried until the first generator lands, carrying
 // whatever is wrong with it into that work.
 type emitting struct {
-	name       string
-	kind       model.Kind
-	methods    []shape.Method
-	adds       []shape.Cap
-	withdraws  []string
-	collapsing bool
+	name      string
+	kind      model.Kind
+	methods   []shape.Method
+	adds      []shape.Cap
+	withdraws []string
+
+	// collapsing panics when asked what it exposes, refusing when asked whether
+	// it may sit where it was written, and unwelcoming panics when asked that.
+	// All three are answers a layer forge did not write can give.
+	collapsing  bool
+	refusing    string
+	unwelcoming bool
 }
 
 func (e emitting) Origin() model.TypeRef {
@@ -35,9 +42,18 @@ func (e emitting) Origin() model.TypeRef {
 
 func (e emitting) Kind() model.Kind                { return e.kind }
 func (e emitting) OptionSchema() []layer.OptionDef { return nil }
-func (e emitting) Accepts(shape.Shape) error       { return nil }
 
-func (e emitting) Shape(below shape.Shape) shape.Shape {
+func (e emitting) Accepts(shape.Shape) error {
+	if e.unwelcoming {
+		panic("this layer cannot say whether it can sit here")
+	}
+	if e.refusing != "" {
+		return errors.New(e.refusing)
+	}
+	return nil
+}
+
+func (e emitting) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	if e.collapsing {
 		panic("this layer cannot say what it exposes")
 	}
@@ -130,18 +146,31 @@ func TestWhatEachStepWillEmit(t *testing.T) {
 	}
 }
 
-// A layer may replace a method with one of the same name — masking is how a
-// decorator withdraws what it cannot uphold — and counting rather than naming
-// would report that as nothing having happened.
-func TestAStepThatReplacesAMethod(t *testing.T) {
+// A decorator that wraps a method is a step that emits one.
+//
+// The wrapper and what it wraps share a name, and the surface holds one entry
+// for the two — so counting reports nothing having happened and naming reports
+// nothing having happened either. What tells them apart is who owns the method
+// afterwards, and a reader looking at a decorator that wrapped four methods
+// wants to be told it emitted four rather than that it did nothing.
+func TestAStepThatWrapsAMethod(t *testing.T) {
+	storage := model.TypeRef{Pkg: model.MarkerPkg, Name: "Slice"}
+	lock := model.TypeRef{Pkg: model.MarkerPkg, Name: "Guarded"}
+
 	registry := catalog(t,
 		emitting{
 			name: "Slice", kind: model.KindStorage,
-			methods: []shape.Method{{Name: "All", Signature: "() iter.Seq[Person]"}},
+			methods: []shape.Method{
+				{Name: "All", Signature: "() iter.Seq[Person]", Owner: storage},
+				{Name: "Len", Signature: "() int", Owner: storage},
+			},
 		},
 		emitting{
-			name: "Guarded", kind: model.KindDecorator,
-			methods: []shape.Method{{Name: "All", Signature: "() iter.Seq[Person]"}, {Name: "Do", Signature: "(func())"}},
+			name: "Guarded", kind: model.KindDecorator, withdraws: []string{"All"},
+			methods: []shape.Method{
+				{Name: "Len", Signature: "() int", Owner: lock},
+				{Name: "Do", Signature: "(func())", Owner: lock},
+			},
 		},
 	)
 
@@ -152,8 +181,93 @@ func TestAStepThatReplacesAMethod(t *testing.T) {
 	got := explain.Of(decl, registry)
 
 	last := got.Steps[len(got.Steps)-1]
-	if want := "Do"; strings.Join(last.Methods, ", ") != want {
+	if want := "Len, Do"; strings.Join(last.Methods, ", ") != want {
 		t.Errorf("Guarded emits %v, want %s", last.Methods, want)
+	}
+	if want := "All"; strings.Join(last.Withdraws, ", ") != want {
+		t.Errorf("Guarded withdraws %v, want %s", last.Withdraws, want)
+	}
+}
+
+// A layer that cannot sit where it was written is described as refusing, and
+// nothing is claimed about what it would have exposed.
+//
+// The alternative is a table that says the layer adds a capability beside a
+// diagnostic saying the layer is not there, and a reader who has to know which
+// of the two to believe.
+//
+// A layer whose generator is not written yet is one of these and not an
+// exception to it. Its composition rules are in place — that is what makes it a
+// stub rather than a marker somebody declared — so the refusal is a fact it
+// implemented, and it is the fact the diagnostic beside the table points at.
+// The exception is for a layer that is notional, which the test below covers.
+func TestAStepThatCannotSitWhereItWasWritten(t *testing.T) {
+	refusing := emitting{
+		name: "Collection", kind: model.KindRefining,
+		adds:     []shape.Cap{shape.Keyed},
+		methods:  []shape.Method{{Name: "Seq", Signature: "() PersonsSeq"}},
+		refusing: "Collection needs the stack beneath it to be Streamable",
+	}
+
+	for name, held := range map[string]layer.Layer{
+		"a layer that says nothing about its stage": refusing,
+		"a layer whose generator is not written": describing{
+			emitting: refusing, stage: layer.StageStub,
+			doc: "query methods built from the subject's fields",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			registry := catalog(t,
+				emitting{name: "Slice", kind: model.KindStorage, adds: []shape.Cap{shape.Sized}},
+				held,
+			)
+
+			decl := documented()
+			decl.Stack = stack("Collection", "Slice")
+			decl.Layout.Text = "Collection[Slice[Person]]"
+
+			got := explain.Of(decl, registry)
+
+			last := got.Steps[len(got.Steps)-1]
+			if !strings.Contains(last.Effect, "Streamable") {
+				t.Errorf("the step reads %q, want the layer's own words about why it cannot sit here", last.Effect)
+			}
+			if len(last.Methods) != 0 {
+				t.Errorf("a layer that was never asked to generate is reported as emitting %v", last.Methods)
+			}
+			if slices.Contains(last.Shape, "Keyed") {
+				t.Errorf("a layer that cannot sit here exposes %v", last.Shape)
+			}
+		})
+	}
+}
+
+// A layer that panics when asked whether it can sit somewhere is reported as
+// having failed to answer, and the layers around it are still described.
+//
+// Layers are the part of this a third party writes. A report that ended in a
+// stack trace would tell a reader nothing about the other four, and would tell
+// them the one thing it did in a form only forge's authors can read.
+func TestAStepThatPanicsWhenAsked(t *testing.T) {
+	registry := catalog(t,
+		emitting{name: "Slice", kind: model.KindStorage, adds: []shape.Cap{shape.Sized}},
+		emitting{name: "Collection", kind: model.KindRefining, unwelcoming: true},
+	)
+
+	decl := documented()
+	decl.Stack = stack("Collection", "Slice")
+	decl.Layout.Text = "Collection[Slice[Person]]"
+
+	got := explain.Of(decl, registry)
+
+	if len(got.Steps) != 3 {
+		t.Fatalf("walked %d steps, want the subject and two layers", len(got.Steps))
+	}
+	if last := got.Steps[2]; last.Effect == "" {
+		t.Error("a layer that could not answer was reported with nothing at all")
+	}
+	if storage := got.Steps[1]; !slices.Contains(storage.Shape, "Sized") {
+		t.Errorf("the layer beneath the one that failed reads %v", storage.Shape)
 	}
 }
 

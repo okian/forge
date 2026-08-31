@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -196,9 +197,17 @@ type Method struct {
 	// the container, and says so here.
 	Pointer bool
 
-	// Owner identifies the layer that emits it, which is what lets two layers
-	// wanting one name be told apart — and lets the one that loses the
-	// unqualified name be named in the diagnostic rather than merely counted.
+	// Owner identifies the layer that emits it, so that a reader of a surface —
+	// a person running the explain command, a decorator deciding what to wrap —
+	// knows which layer to go and read.
+	//
+	// It is not how two layers wanting one name are told apart. A surface holds
+	// one method per name by construction, since a layer that emits a name
+	// already there has wrapped it and the wrapper is what anything above can
+	// reach; the loser is not on the surface to be named. Two layers that both
+	// mean to own a name are a collision, and the stage that finds one compares
+	// what each layer generates rather than what survived being merged into a
+	// surface — which is the only place both are still there to name.
 	Owner model.TypeRef
 
 	// Doc is the one-line summary the explain command prints beside it.
@@ -250,20 +259,67 @@ func Subject(subject *model.Struct) Shape {
 	return out
 }
 
-// WithMethods returns the shape with these methods added to its surface.
+// WithMethods returns the shape with these methods on its surface.
 //
-// It copies rather than appending in place, because a shape travels up a stack
-// by value and a caller holding an intermediate one — which is exactly what a
-// per-step explain does — would otherwise watch its copy grow methods that
-// belong to a layer above it.
+// A name already there is replaced where it stands rather than added beside
+// itself. That is what a decorator does: it wraps the method beneath it, and
+// what the layers above see is the wrapper — one method of that name, with the
+// wrapper's signature and the wrapper's owner. Appending instead would leave
+// the surface holding two, and every reader of it — collision detection, a
+// decorator above, the explain command — would answer with whichever came
+// first, which is the one that is no longer reachable.
+//
+// It copies rather than writing in place, because a shape travels up a stack by
+// value and a caller holding an intermediate one — which is exactly what a
+// per-step explain does — would otherwise watch its copy change under a layer
+// above it.
 func (s Shape) WithMethods(methods ...Method) Shape {
 	if len(methods) == 0 {
 		return s
 	}
 
-	surface := make([]Method, 0, len(s.Surface)+len(methods))
-	surface = append(surface, s.Surface...)
-	surface = append(surface, methods...)
+	surface := make([]Method, len(s.Surface), len(s.Surface)+len(methods))
+	copy(surface, s.Surface)
+
+	for _, method := range methods {
+		at := slices.IndexFunc(surface, func(held Method) bool { return held.Name == method.Name })
+		if at < 0 {
+			surface = append(surface, method)
+			continue
+		}
+		surface[at] = method
+	}
+
+	s.Surface = surface
+
+	return s
+}
+
+// Without returns the shape with these methods taken off its surface.
+//
+// This is the half of masking that capabilities cannot express, and it is not a
+// tidying-up: a lock that hands out a sequence is broken whichever side of the
+// lock the caller walks it on, so the layer that adds the lock takes the walk
+// away and offers scoped access instead. A method withdrawn here is one the
+// layers above cannot wrap, cannot claim in an interface, and will not see
+// listed — which is the whole point, since it is no longer safe to call.
+//
+// A name that is not on the surface is not an error. A decorator withdraws what
+// it cannot uphold, and whether the stack beneath it happened to have that
+// method is a fact about the stack rather than about the decorator: one written
+// over a storage with no backward walk should not have to ask before saying it
+// does not offer one.
+func (s Shape) Without(names ...string) Shape {
+	if len(names) == 0 || len(s.Surface) == 0 {
+		return s
+	}
+
+	surface := make([]Method, 0, len(s.Surface))
+	for _, method := range s.Surface {
+		if !slices.Contains(names, method.Name) {
+			surface = append(surface, method)
+		}
+	}
 	s.Surface = surface
 
 	return s

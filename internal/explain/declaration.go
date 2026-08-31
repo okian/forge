@@ -35,4 +35,16 @@ type Declaration struct {
 	// Layout is the declaration rendered with the position of each stack entry
 	// inside it, so that a report can underline one layer of a nested stack.
 	Layout model.Layout
+
+	// Model is the whole declaration, which is what a layer is handed when it
+	// is asked what it exposes. It is nil when the subject could not be
+	// modelled, and a layer given none reports the part of its surface that
+	// does not depend on one.
+	//
+	// The fields above are what this package renders and are not taken from
+	// here, because most of them are known when the model is not: a declaration
+	// whose subject was refused still has a name, a position and a stack, and
+	// explaining what forge made of it is exactly what somebody in that
+	// position is asking for.
+	Model *model.Model
 }

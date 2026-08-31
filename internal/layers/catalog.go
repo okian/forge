@@ -11,13 +11,18 @@ import (
 	"github.com/okian/forge/internal/shape"
 )
 
-// Diagnostics this package reports.
+// NotImplemented is what a layer whose generator is not written reports.
 //
 // The number is high in its range on purpose. A code is permanent, and this one
 // describes a condition that disappears as the catalog is filled in, so it
 // should not sit in the low numbers that emission and collision rules — the
 // range's real subject — will want.
-var codeNotImplemented = diag.Register(4900, "layer generates nothing yet")
+//
+// Exported because it is the one refusal that is not a fault in the
+// declaration: it says forge has not got there yet, and a verb describing a
+// stack rather than writing one has somewhere better to put that than in a list
+// of what the author did wrong.
+var NotImplemented = diag.Register(4900, "layer generates nothing yet")
 
 // stub is a layer that knows everything about itself except how to generate.
 //
@@ -42,8 +47,20 @@ type stub struct {
 	requires []shape.Cap
 	adds     []shape.Cap
 	masks    []shape.Cap
-	options  []layer.OptionDef
-	doc      string
+
+	// withdraws names the methods this layer takes off the declared type, which
+	// is the half of masking capabilities cannot express.
+	//
+	// A lock takes the walk away and offers scoped access instead, and a
+	// capability alone cannot say that: Streamable going missing tells a layer
+	// above that it may not be written against a walk, and tells nothing at all
+	// to the reader looking at a list of methods that still holds All. What is
+	// named here is what a stack that had it no longer has, so a stack that
+	// never had it is unaffected and nothing has to check first.
+	withdraws []string
+
+	options []layer.OptionDef
+	doc     string
 }
 
 // Origin identifies the marker this layer claims.
@@ -95,9 +112,16 @@ func (s *stub) Accepts(below shape.Shape) error {
 
 // Shape returns what the layer exposes upward: what was beneath it, plus what
 // it adds, minus what it takes away.
-func (s *stub) Shape(below shape.Shape) shape.Shape {
+//
+// Both halves of taking away. A capability withdrawn stops the layers above
+// being written against it; a method withdrawn stops a caller reaching it, and
+// stops it being listed as something the declared type has. A stub reports the
+// second even though it emits nothing, because what it exposes is a description
+// of the layer rather than of its output — and the description is what every
+// other stage is written against until the generator arrives.
+func (s *stub) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	below.Caps = below.Caps.With(s.adds...).Without(s.masks...)
-	return below
+	return below.Without(s.withdraws...)
 }
 
 // Generate reports that this layer has no generator yet.
@@ -111,7 +135,7 @@ func (s *stub) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 		where = ctx.Model.Pos
 	}
 
-	return layer.Unit{}, diag.New(codeNotImplemented, where,
+	return layer.Unit{}, diag.New(NotImplemented, where,
 		"layer %s generates nothing yet", s.origin.Name).
 		WithHint("%s", s.stageHint())
 }
@@ -215,6 +239,15 @@ var declared = []*stub{
 		origin: marker("Guarded"), kind: model.KindDecorator, stage: layer.StageStub,
 		adds:  []shape.Cap{shape.Concurrent},
 		masks: []shape.Cap{shape.Streamable, shape.Indexed},
+
+		// Every method that hands the caller a sequence, in either direction.
+		// One handed out from behind a lock is broken whichever side of the
+		// lock the caller walks it on: outside it races, and inside it holds
+		// the lock across whatever the caller does with each element. One
+		// handed in is broken the same way, since the lock is held for as long
+		// as whatever is producing the elements takes — and either can call
+		// back into the container and deadlock. Scoped access replaces them.
+		withdraws: []string{"All", "Backward", "AppendSeq", "Seq"},
 		options: []layer.OptionDef{
 			{
 				Key: "encode", Value: layer.ValueEnum, Values: []string{"snapshot", "locked"}, Default: "snapshot",

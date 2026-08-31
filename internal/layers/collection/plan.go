@@ -363,6 +363,46 @@ func (p plan) build() ([]ast.Decl, error) {
 	return out, nil
 }
 
+// surface is the plan as the layers above it see it: every method this layer
+// will put on the declared type, named and with its result spelled.
+//
+// Written from the plan rather than read back from what build produced, and the
+// two are held together by a test rather than by construction. Reading the
+// syntax back would report whatever the builder happened to emit — a helper it
+// keeps to itself included — where what belongs in a surface is the contract,
+// and a layer above written against a helper would break the first time one was
+// renamed.
+//
+// Every one takes a value receiver, because every one answers a question rather
+// than changing the collection.
+func (p plan) surface(owner model.TypeRef) []shape.Method {
+	out := make([]shape.Method, 0, 1+len(p.projections)+len(p.sorts)+len(p.indexes))
+
+	out = append(out, shape.Method{
+		Name: "Seq", Signature: "() " + p.view, Owner: owner,
+		Doc: fmt.Sprintf("Seq returns a lazy view over the elements, as %s.", p.view),
+	})
+
+	for _, kind := range []struct {
+		columns []column
+		doc     func(column) string
+		result  func(key string) string
+	}{
+		{p.projections, projected, func(key string) string { return "[]" + key }},
+		{p.sorts, sortedBy, func(string) string { return "[]" + p.subject.Text }},
+		{p.indexes, keyedBy, func(key string) string { return "map[" + key + "]" + p.subject.Text }},
+	} {
+		for _, one := range kind.columns {
+			out = append(out, shape.Method{
+				Name: one.method, Signature: "() " + kind.result(one.typ.Text), Owner: owner,
+				Doc: kind.doc(one),
+			})
+		}
+	}
+
+	return out
+}
+
 // The one-line summaries the generated methods carry. They say what the method
 // answers rather than how, because how is in the helper it hands the work to
 // and a reader of the generated file can see that from here.
