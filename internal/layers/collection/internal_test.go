@@ -132,11 +132,11 @@ func TestTwoGeneratedNamesThatAreOne(t *testing.T) {
 // the emitted half is pruned against — so a template that grew an import nobody
 // recorded is refused rather than carried into a file that may not name it.
 func TestATemplateThatGrewAnImport(t *testing.T) {
-	if wrong := accounted([]emit.Import{{Path: "cmp"}, {Path: "iter"}}); wrong != "" {
+	if wrong := accounted([]emit.Import{{Path: "cmp", Name: "cmp"}, {Path: "iter", Name: "iter"}}); wrong != "" {
 		t.Errorf("the template's own imports were refused: %s", wrong)
 	}
 
-	wrong := accounted([]emit.Import{{Path: "encoding/json/v2"}})
+	wrong := accounted([]emit.Import{{Path: "encoding/json/v2", Name: "json"}})
 	if wrong == "" {
 		t.Fatal("an import nothing recorded a name for was accepted")
 	}
@@ -204,9 +204,9 @@ func TestWhichImportsSurvive(t *testing.T) {
 		}}}},
 	}
 
-	all := []emit.Import{{Path: "cmp"}, {Path: "iter"}, {Path: "slices"}}
+	all := []emit.Import{{Path: "cmp", Name: "cmp"}, {Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
 
-	if got := reached([]ast.Decl{sorting}, all); !slices.Equal(got, []emit.Import{{Path: "cmp"}}) {
+	if got := reached([]ast.Decl{sorting}, all); !slices.Equal(got, []emit.Import{{Path: "cmp", Name: "cmp"}}) {
 		t.Errorf("kept %v, want the one the declarations name", got)
 	}
 	if got := reached(nil, all); len(got) != 0 {
@@ -214,7 +214,13 @@ func TestWhichImportsSurvive(t *testing.T) {
 	}
 }
 
-// A name is carried only where the spelling had to invent one, so the ordinary
+// Every import carries the name it binds, and says separately whether that name
+// has to be written.
+//
+// The name is what a later stage asks the file about — which import a qualified
+// identifier refers to — and the path does not answer it: a package may declare
+// a name that is not the last element of its path. What is written is the
+// narrower question, and only an invented name has to be, so that the ordinary
 // import reads the way somebody would have written it by hand.
 func TestWhichImportsAreNamed(t *testing.T) {
 	got := imported([]model.Import{
@@ -223,8 +229,8 @@ func TestWhichImportsAreNamed(t *testing.T) {
 	})
 
 	want := []emit.Import{
-		{Path: "time"},
-		{Path: "example.com/util/slices", Name: "slices2"},
+		{Path: "time", Name: "time"},
+		{Path: "example.com/util/slices", Name: "slices2", Aliased: true},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("carried %v, want %v", got, want)

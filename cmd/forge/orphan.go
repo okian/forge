@@ -13,6 +13,7 @@ import (
 	"github.com/okian/forge/internal/emit"
 	generated "github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/load"
+	"github.com/okian/forge/internal/model"
 )
 
 // codeOrphan reports a generated file no declaration in the package accounts
@@ -198,6 +199,13 @@ func compiled(pkg *packages.Package, name string) bool {
 // to nobody would tell an author to delete a current file, on top of the
 // refusal they are already being told about, and the refusal is what they
 // should be fixing.
+//
+// The two files no single declaration owns are claimed by the package. The
+// shared one wherever there is a declaration at all, and the file standing in
+// for what the tag excludes wherever a declaration forge owns the type of asks
+// for one — the second only then, because a package whose spec declarations
+// have all been deleted or moved inline no longer has anything to stand in for,
+// and the file left behind is exactly the leftover this is looking for.
 func accountedFor(found resolved) map[string][]string {
 	out := make(map[string][]string)
 
@@ -210,7 +218,12 @@ func accountedFor(found resolved) map[string][]string {
 		if held == nil {
 			held = []string{generated.Shared()}
 		}
-		out[one.Pkg.PkgPath] = append(held, generated.Named(one.Name))
+		held = append(held, generated.Named(one.Name))
+
+		if one.Form == model.FormSpec && !slices.Contains(held, generated.Stubs()) {
+			held = append(held, generated.Stubs())
+		}
+		out[one.Pkg.PkgPath] = held
 	}
 
 	return out

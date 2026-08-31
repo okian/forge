@@ -152,7 +152,11 @@ func TestRenderIsByteIdentical(t *testing.T) {
 			Header:  emit.Header{Forge: "v0.1.0", Inputs: "cafebabecafebabe"},
 			// Written in the order a caller happened to discover them, which is
 			// not the order they will be written in.
-			Imports: []emit.Import{{Path: "iter"}, {Path: "encoding/json/v2"}, {Path: "iter"}},
+			Imports: []emit.Import{
+				{Path: "iter", Name: "iter"},
+				{Path: "encoding/json/v2", Name: "json"},
+				{Path: "iter", Name: "iter"},
+			},
 			Sections: []emit.Section{
 				section(t, "type Persons struct{ items []Person }"),
 				section(t, "func (p *Persons) Len() int { return len(p.items) }"),
@@ -241,16 +245,43 @@ func (p *Persons) Push(v Person) {
 	}
 }
 
+// One binding written two ways is one import, and which spelling survives does
+// not depend on the order the two were found in.
+//
+// A layer binding a package to the name it already has and a layer leaving it
+// bare ask for the same import, so one of them is dropped. Which one has to be
+// decided here: the order the two arrive in is the order the layers happened to
+// run, and a file that followed it would be a function of something no
+// fingerprint records — the bytes would move while the header stood still.
+func TestWhichSpellingOfOneBindingSurvives(t *testing.T) {
+	spellings := []emit.Import{
+		{Path: "iter", Name: "iter", Aliased: true},
+		{Path: "iter", Name: "iter"},
+	}
+
+	for _, order := range [][]emit.Import{spellings, {spellings[1], spellings[0]}} {
+		out, err := emit.File{Package: "model", Imports: order}.Render()
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+
+		// Bare, which is the spelling somebody would have written by hand.
+		if want := "import \"iter\"\n"; !strings.Contains(string(out), want) {
+			t.Errorf("found in the order %v, the file does not hold %q:\n%s", order, want, out)
+		}
+	}
+}
+
 // Imports are sorted and deduplicated wherever a caller found them, because a
 // caller finds them one layer at a time and in whatever order the layers ran.
 func TestImportsAreSortedAndDeduplicated(t *testing.T) {
 	out, err := emit.File{
 		Package: "model",
 		Imports: []emit.Import{
-			{Path: "iter"},
+			{Path: "iter", Name: "iter"},
 			{Path: "encoding/json/v2", Name: "json"},
-			{Path: "iter"},
-			{Path: "encoding/json/jsontext"},
+			{Path: "iter", Name: "iter"},
+			{Path: "encoding/json/jsontext", Name: "jsontext"},
 		},
 	}.Render()
 	if err != nil {
@@ -258,7 +289,7 @@ func TestImportsAreSortedAndDeduplicated(t *testing.T) {
 	}
 
 	rendered := string(out)
-	want := "import (\n\t\"encoding/json/jsontext\"\n\tjson \"encoding/json/v2\"\n\t\"iter\"\n)"
+	want := "import (\n\t\"encoding/json/jsontext\"\n\t\"encoding/json/v2\"\n\t\"iter\"\n)"
 	if !strings.Contains(rendered, want) {
 		t.Errorf("import block is not %q:\n%s", want, rendered)
 	}
@@ -270,7 +301,7 @@ func TestOnePathImportedTwoWaysIsRefused(t *testing.T) {
 	_, err := emit.File{
 		Package: "model",
 		Decl:    "Persons",
-		Imports: []emit.Import{{Path: "iter"}, {Path: "iter", Name: "it"}},
+		Imports: []emit.Import{{Path: "iter", Name: "iter"}, {Path: "iter", Name: "it", Aliased: true}},
 	}.Render()
 
 	if err == nil {
@@ -284,7 +315,7 @@ func TestOnePathImportedTwoWaysIsRefused(t *testing.T) {
 // One import is written on one line, which is what a reader of generated code
 // expects to see and what gofmt would leave alone.
 func TestASingleImportIsWrittenInline(t *testing.T) {
-	out, err := emit.File{Package: "model", Imports: []emit.Import{{Path: "iter"}}}.Render()
+	out, err := emit.File{Package: "model", Imports: []emit.Import{{Path: "iter", Name: "iter"}}}.Render()
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -526,8 +557,13 @@ func TestImportString(t *testing.T) {
 		subject emit.Import
 		want    string
 	}{
-		"plain": {emit.Import{Path: "iter"}, `"iter"`},
-		"named": {emit.Import{Path: "encoding/json/v2", Name: "json"}, `json "encoding/json/v2"`},
+		"plain": {emit.Import{Path: "iter", Name: "iter"}, `"iter"`},
+
+		// Bound to the name it already has, and written without it: the two are
+		// the same import, and one of them reads like something a person wrote.
+		"named as its own": {emit.Import{Path: "encoding/json/v2", Name: "json"}, `"encoding/json/v2"`},
+
+		"aliased": {emit.Import{Path: "encoding/json/v2", Name: "js", Aliased: true}, `js "encoding/json/v2"`},
 	}
 
 	for name, tc := range cases {

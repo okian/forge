@@ -335,7 +335,7 @@ func All(items []int) iter.Seq[int] { return slices.Values(items) }
 
 	out, err := emit.File{
 		Package:  "model",
-		Imports:  []emit.Import{{Path: "iter"}, {Path: "slices"}},
+		Imports:  []emit.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}},
 		Sections: []emit.Section{template},
 	}.Render()
 	if err != nil {

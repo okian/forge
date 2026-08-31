@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"maps"
+	"path"
 	"slices"
 	"strconv"
 
@@ -374,19 +375,33 @@ func separate(decls []ast.Decl) (imports []emit.Import, rest []ast.Decl) {
 				continue
 			}
 
-			path, err := strconv.Unquote(imported.Path.Value)
-			if err != nil || path == "" {
+			held, err := strconv.Unquote(imported.Path.Value)
+			if err != nil || held == "" {
 				continue
 			}
 
-			one := emit.Import{Path: path}
-			if imported.Name != nil {
-				one.Name = imported.Name.Name
-			}
-			imports = append(imports, one)
+			imports = append(imports, binding(held, imported.Name))
 		}
 	}
 	return imports, rest
+}
+
+// binding returns the import a template's import specification asks for,
+// under the name it binds.
+//
+// A specification that names the package says what the binding is. One that
+// does not binds the package's own name, which is not in the specification and
+// is taken from the path — a guess in general, and not one here: these are
+// forge's own template files, whose imports forge chooses, and a template is
+// real compiling Go rather than a fragment. What keeps it true is a test over
+// the templates rather than this line, since the day a template imports
+// something whose name is not the last element of its path is the day the
+// answer stops being the same one.
+func binding(held string, named *ast.Ident) emit.Import {
+	if named != nil {
+		return emit.Import{Path: held, Name: named.Name, Aliased: true}
+	}
+	return emit.Import{Path: held, Name: path.Base(held)}
 }
 
 // names decides what every name the rewrite touches becomes.

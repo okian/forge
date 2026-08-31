@@ -206,12 +206,12 @@ func TestMergingNothing(t *testing.T) {
 func TestMergingIsDeterministic(t *testing.T) {
 	units := func() []layer.Unit {
 		first := generated(t, "// Persons holds people.\ntype Persons struct{}\n\nfunc NewPersons() *Persons { return nil }")
-		first.Imports = []emit.Import{{Path: "iter"}, {Path: "slices"}}
+		first.Imports = []emit.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
 		first.Requires = []model.TypeRef{marker("Seq")}
 		first.Assertions = []layer.Assertion{{Interface: model.TypeRef{Pkg: "io", Name: "WriterTo"}}}
 
 		second := generated(t, "func (p *Persons) Len() int {\n\t// count\n\treturn 0\n}")
-		second.Imports = []emit.Import{{Path: "slices"}, {Path: "encoding/json/jsontext"}}
+		second.Imports = []emit.Import{{Path: "slices", Name: "slices"}, {Path: "encoding/json/jsontext", Name: "jsontext"}}
 		second.Requires = []model.TypeRef{marker("Seq"), marker("View")}
 
 		return []layer.Unit{first, second}

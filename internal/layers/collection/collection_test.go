@@ -475,7 +475,7 @@ func TestFieldsFromPackagesThatWouldClash(t *testing.T) {
 	// And the template's own import is joined rather than aliased, since the
 	// storage layer beneath binds it under its own name.
 	for _, one := range unit.Imports {
-		if one.Path == "iter" && one.Name != "" {
+		if one.Path == "iter" && one.Aliased {
 			t.Errorf("iter was bound as %q, and the layers beneath bind it as iter", one.Name)
 		}
 	}

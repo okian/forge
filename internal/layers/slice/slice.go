@@ -258,11 +258,7 @@ func accounted(imports []emit.Import) string {
 func imported(spelled model.Spelling) []emit.Import {
 	out := make([]emit.Import, 0, len(spelled.Imports))
 	for _, one := range spelled.Imports {
-		bound := emit.Import{Path: one.Path}
-		if one.Aliased {
-			bound.Name = one.Name
-		}
-		out = append(out, bound)
+		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
 	return out
 }

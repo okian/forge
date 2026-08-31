@@ -26,11 +26,11 @@ import (
 // path does not say what it binds. encoding/json/v2 binds json and math/rand/v2
 // binds rand, and the last element is v2 for both.
 func TestATemplateThatGrewAnImport(t *testing.T) {
-	if wrong := accounted([]emit.Import{{Path: "iter"}, {Path: "slices"}}); wrong != "" {
+	if wrong := accounted([]emit.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}); wrong != "" {
 		t.Errorf("the template's own imports were refused: %s", wrong)
 	}
 
-	wrong := accounted([]emit.Import{{Path: "iter"}, {Path: "encoding/json/v2"}})
+	wrong := accounted([]emit.Import{{Path: "iter", Name: "iter"}, {Path: "encoding/json/v2", Name: "json"}})
 	if wrong == "" {
 		t.Fatal("an import nothing recorded a name for was accepted")
 	}

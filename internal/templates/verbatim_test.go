@@ -28,7 +28,7 @@ func TestATemplateEmittedAsItWasWritten(t *testing.T) {
 	if len(out.Decls) != 2 {
 		t.Errorf("it kept %d declarations, want the type and its method", len(out.Decls))
 	}
-	if want := []emit.Import{{Path: "iter"}}; !slices.Equal(out.Imports, want) {
+	if want := []emit.Import{{Path: "iter", Name: "iter"}}; !slices.Equal(out.Imports, want) {
 		t.Errorf("it needs %v imported, want %v", out.Imports, want)
 	}
 

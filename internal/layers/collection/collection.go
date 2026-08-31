@@ -329,16 +329,16 @@ func taken() []model.Import {
 	return out
 }
 
-// imported returns what a spelling depends on in the shape a unit carries,
-// naming only the ones the spelling had to invent a name for.
+// imported returns what a spelling depends on in the shape a unit carries.
+//
+// The name comes across whether or not it will be written. What is written is
+// decided by Aliased, and the name itself is what says which package a
+// qualified identifier in the file refers to — a question asked of the file
+// later, by anything working out which of its imports it still needs.
 func imported(needed []model.Import) []emit.Import {
 	out := make([]emit.Import, 0, len(needed))
 	for _, one := range needed {
-		bound := emit.Import{Path: one.Path}
-		if one.Aliased {
-			bound.Name = one.Name
-		}
-		out = append(out, bound)
+		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
 	return out
 }

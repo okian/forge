@@ -266,7 +266,7 @@ func TestASubjectFromAnotherPackage(t *testing.T) {
 	if !bytes.Contains(out, []byte("domain.Person")) {
 		t.Errorf("the subject is not spelled for the package it is written in:\n%s", out)
 	}
-	if !slices.Contains(unit.Imports, emit.Import{Path: "example.com/domain"}) {
+	if !slices.Contains(unit.Imports, emit.Import{Path: "example.com/domain", Name: "domain"}) {
 		t.Errorf("the unit imports %v, and none of them is the subject's package", unit.Imports)
 	}
 }
@@ -295,7 +295,7 @@ func TestASubjectWhosePackageNameIsAlreadyTaken(t *testing.T) {
 			t.Errorf("the output does not hold %q:\n%s", want, out)
 		}
 	}
-	if !slices.Contains(unit.Imports, emit.Import{Path: "example.com/util/slices", Name: "slices2"}) {
+	if !slices.Contains(unit.Imports, emit.Import{Path: "example.com/util/slices", Name: "slices2", Aliased: true}) {
 		t.Errorf("the unit imports %v, and none of them binds the subject's package", unit.Imports)
 	}
 

@@ -88,47 +88,50 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 	var (
 		out      []File
 		required []model.TypeRef
-		taken    = make(map[string]string, len(requests))
+		standing []emit.Section
+		imported []emit.Import
+		taken    = make(map[string]string, len(requests)+len(Reserved()))
 	)
+
+	// Spoken for before anything is generated, so that a declaration named
+	// after one of them collides rather than overwrites.
+	for _, held := range Reserved() {
+		taken[held] = ""
+	}
 
 	for _, req := range requests {
 		if req.Model == nil {
 			continue
 		}
 
-		into := Named(req.Model.Name)
-		if first, twice := taken[into]; twice {
-			diags.Add(diag.New(codeFileCollision, req.Model.Pos,
-				"%s and %s are both written to %s", first, req.Model.Name, into).
-				WithHint("%s", "a file is named after the declaration in lower case, so two names that "+
-					"differ only in case, or only by what is added to a name the build reads, "+
-					"want one file; rename one of them"))
+		file, unit, ok := one(req, name, cfg, taken, &diags)
+		if !ok {
 			continue
 		}
-		taken[into] = req.Model.Name
 
-		// Taken before anything composes, because composing fills in what a
-		// declaration meant and did not say — and a fingerprint of the
-		// declaration as forge understood it, rather than as it was written,
-		// would be one this run could produce and the next could not.
+		out = append(out, file)
+		required = append(required, unit.Requires...)
+
+		// Only a declaration whose output the tag excludes needs standing in
+		// for. An inline declaration's file carries no constraint, so it is in
+		// every build already, and a second copy of its methods would collide
+		// with the first.
+		if req.Model.Form == model.FormSpec {
+			standing = append(standing, stubs(req.Model, unit)...)
+			imported = append(imported, unit.Imports...)
+		}
+	}
+
+	if len(standing) > 0 {
 		var sum emit.Digest
-		Fingerprint(&sum, req, name, cfg)
+		FingerprintStubs(&sum, requests, name, cfg)
 
-		unit, problems := declaration(req, cfg)
-		diags.Merge(&problems)
-
-		if !problems.Empty() {
-			continue
-		}
-
-		content, err := render(req.Model, name, unit, cfg, &sum)
+		content, err := renderStubs(name, standing, imported, cfg, &sum)
 		if err != nil {
 			diags.AddError(err)
-			continue
+		} else {
+			out = append(out, File{Name: Stubs(), Content: content})
 		}
-
-		out = append(out, File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos})
-		required = append(required, unit.Requires...)
 	}
 
 	held, problems := helpers(path, required, requests)
@@ -147,6 +150,68 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 	}
 
 	return out, diags
+}
+
+// one generates the file a single declaration asks for, and hands back what it
+// composed to so that the package can see what several declarations share.
+//
+// The names already taken are read and written, because two declarations
+// wanting one file is a thing only the package can see. Anything reported is
+// added to the run's own set rather than returned, so that a declaration
+// refused here does not need a second path out.
+func one(req Request, name string, cfg Config, taken map[string]string, diags *diag.Set) (File, merge.Unit, bool) {
+	into := Named(req.Model.Name)
+	if first, twice := taken[into]; twice {
+		diags.Add(collision(req.Model, into, first))
+		return File{}, merge.Unit{}, false
+	}
+	taken[into] = req.Model.Name
+
+	// Taken before anything composes, because composing fills in what a
+	// declaration meant and did not say — and a fingerprint of the declaration
+	// as forge understood it, rather than as it was written, would be one this
+	// run could produce and the next could not.
+	var sum emit.Digest
+	Fingerprint(&sum, req, name, cfg)
+
+	unit, problems := declaration(req, cfg)
+	diags.Merge(&problems)
+
+	if !problems.Empty() {
+		return File{}, merge.Unit{}, false
+	}
+
+	content, err := render(req.Model, name, unit, cfg, &sum)
+	if err != nil {
+		diags.AddError(err)
+		return File{}, merge.Unit{}, false
+	}
+
+	return File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos}, unit, true
+}
+
+// collision reports a declaration whose file another declaration is already
+// being written to, or which the package keeps for itself.
+//
+// The two are the same failure and read differently. A declaration colliding
+// with another names the other, and the fix is to rename either. A declaration
+// colliding with a file the package writes for itself has nothing to be told
+// about except the name, since what it collided with is not something anybody
+// wrote — and it is the one the author is least likely to guess, because the
+// name looks ordinary and the file it wants has never been mentioned.
+func collision(held *model.Model, into, first string) diag.Diagnostic {
+	if first == "" {
+		return diag.New(codeFileCollision, held.Pos,
+			"%s would be written to %s, which the package writes for itself", held.Name, into).
+			WithHint("%s", "a package writes one file for what its declarations share and one for "+
+				"what a build with the tag needs; rename the declaration")
+	}
+
+	return diag.New(codeFileCollision, held.Pos,
+		"%s and %s are both written to %s", first, held.Name, into).
+		WithHint("%s", "a file is named after the declaration in lower case, so two names that "+
+			"differ only in case, or only by what is added to a name the build reads, "+
+			"want one file; rename one of them")
 }
 
 // declaration generates for one declaration: what its options mean, what its
@@ -325,6 +390,54 @@ func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emi
 	// about one file — the stage that decides which interfaces a declaration
 	// claims is the one that owns emitting the claims.
 	return file.Render()
+}
+
+// renderStubs writes the file standing in for a package's output under the tag.
+//
+// It carries the tag itself, which is the complement of what every file it
+// stands in for carries, so the two are never in scope together.
+//
+// No declaration is named on it, though every declaration in it belongs to one.
+// What is reported about a file points at the declaration to edit, and this
+// file has as many of those as the package has spec declarations; the shared
+// file is nameless for the same reason and this is the same kind of file.
+func renderStubs(pkg string, sections []emit.Section, imports []emit.Import, cfg Config, sum *emit.Digest) ([]byte, error) {
+	file := emit.File{
+		Package:  pkg,
+		Build:    load.SpecTag,
+		Imports:  reaching(sections, imports),
+		Sections: sections,
+		Header: emit.Header{
+			Forge:   cfg.Forge,
+			Markers: cfg.Markers,
+			Inputs:  sum.String(),
+		},
+	}
+
+	return file.Render()
+}
+
+// FingerprintStubs records what the file standing in for a package's output is
+// made from.
+//
+// Exported for the reason the other two are: generating and checking have to
+// assemble the same inputs or every check reports staleness for ever.
+//
+// What the file holds is one declaration's output for every spec declaration in
+// the package, so what it is a function of is those declarations — each one
+// exactly as its own file is fingerprinted, since the same inputs decide the
+// signatures here and the bodies there. Inline declarations are left out
+// because nothing of theirs is written here.
+func FingerprintStubs(sum *emit.Digest, requests []Request, pkg string, cfg Config) {
+	versions(sum, cfg)
+	sum.AddString("package name", pkg)
+
+	for _, req := range requests {
+		if req.Model == nil || req.Model.Form != model.FormSpec {
+			continue
+		}
+		Fingerprint(sum, req, pkg, cfg)
+	}
 }
 
 // tagged returns the build constraint a declaration's file carries.

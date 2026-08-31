@@ -14,6 +14,7 @@ import (
 const (
 	prefix = "zz_forge_"
 	shared = prefix + "shared.go"
+	stub   = prefix + "stubs.go"
 )
 
 // suffix is what is put after a declaration's name when the ordinary spelling
@@ -51,6 +52,24 @@ func Named(declared string) string {
 
 // Shared names the file holding what several declarations in a package share.
 func Shared() string { return shared }
+
+// Stubs names the file standing in for a package's output under the tag.
+//
+// The prefix is not only a convention here. A file forge writes under the tag
+// is one every other configuration leaves out of its build, and the report for
+// a file left behind by a rename recognises forge's own excluded output by this
+// name — a stub called anything else makes every package holding one look half
+// read, and turns that report off without saying so.
+func Stubs() string { return stub }
+
+// Reserved names the files a package writes that no single declaration owns.
+//
+// They are named rather than derived from a declaration, so a declaration whose
+// own name lands on one of them wants a file the package has already spoken
+// for. That is the same collision as two declarations wanting one file and is
+// reported the same way — quietly writing both would leave whichever was
+// written second, and the declaration would appear to have generated nothing.
+func Reserved() []string { return []string{shared, stub} }
 
 // Ours reports whether a file is named the way generation names one.
 //

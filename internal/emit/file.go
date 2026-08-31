@@ -33,27 +33,84 @@ type Import struct {
 	// Path is the import path.
 	Path string
 
-	// Name is the local name to import it under, empty for the package's own.
-	// It is written only when it differs, so that a generated file reads the
-	// way a hand-written one would.
+	// Name is the name the file binds the package to. It is always filled in,
+	// including where it is the package's own name and the import is written
+	// without it.
+	//
+	// Always, because it is the only thing that says what a qualified
+	// identifier in the file refers to, and that question is asked of a written
+	// file by anything that has to know which imports it still needs. Deriving
+	// it from the path is guessing: a package is free to declare a name that is
+	// not the last element of its path, and a module path ending in a version
+	// or a directory named for its contents rather than its clause both do it
+	// routinely.
 	Name string
+
+	// Aliased records that Name is not the package's own name, so a file
+	// writing this import has to bind it explicitly. It is the one bit that
+	// cannot be recovered from Path and Name together, which look alike for a
+	// package whose name is the last element of its path and for one bound to
+	// exactly that name on purpose.
+	Aliased bool
 }
 
 // String returns the import as it is written in an import block.
+//
+// The name is written only where it had to be invented, so that the ordinary
+// import reads the way somebody would have written it by hand and the one line
+// that binds a name stands out as the thing that needed saying.
 func (i Import) String() string {
-	if i.Name == "" {
+	if !i.Aliased {
 		return strconv.Quote(i.Path)
 	}
 	return i.Name + " " + strconv.Quote(i.Path)
 }
 
-// compare orders imports by path, then by the name they are bound to, so that
-// a file's import block reads the same way twice.
+// compare orders imports by path, then by the name they are bound to, and last
+// by whether that name is written, so that a file's import block reads the same
+// way twice.
+//
+// The last of those is not decoration. Two spellings of one binding are one
+// import and one of them is kept, so what decides which is whichever the sort
+// left first — and an order that called them equal would leave that to the
+// order they were found in, which is the order the layers happened to run. The
+// file would then be a function of something no fingerprint records: the bytes
+// would move while the header stood still, which is the one failure a generated
+// file cannot report about itself.
 func (i Import) compare(other Import) int {
 	if i.Path != other.Path {
 		return strings.Compare(i.Path, other.Path)
 	}
-	return strings.Compare(i.Name, other.Name)
+	if i.Name != other.Name {
+		return strings.Compare(i.Name, other.Name)
+	}
+	return compareBool(i.Aliased, other.Aliased)
+}
+
+// compareBool orders false before true.
+func compareBool(i, other bool) int {
+	switch {
+	case i == other:
+		return 0
+	case other:
+		return -1
+	default:
+		return 1
+	}
+}
+
+// same reports two imports that would be written as one.
+//
+// Whether the name was written is not part of it. Two layers reaching one
+// package, one of them binding it to the name it already has and one leaving it
+// bare, ask for the same import in two spellings — and the file needs it once.
+//
+// The one kept is the one written without the name, which is what ordering them
+// by it arranges: false sorts first and compaction keeps the first. It is the
+// spelling somebody would have written by hand, and the choice has to be made
+// somewhere rather than fall out of which layer ran first.
+func same(i, other Import) bool {
+	return i.Path == other.Path && i.Name == other.Name
 }
 
 // File is one generated file, described in the terms it will be written in.
@@ -167,24 +224,34 @@ func (f File) report(code diag.Code, cause error) diag.Diagnostic {
 func (f File) renderImports(b *strings.Builder) error {
 	imports := slices.Clone(f.Imports)
 	slices.SortFunc(imports, Import.compare)
-	imports = slices.Compact(imports)
+	imports = slices.CompactFunc(imports, same)
 
 	// One path bound to two names is two imports of it, which does not compile.
 	// Sorting has already put the pair next to each other.
-	//
-	// The mirror of it — two paths bound to one name — is not checked here and
-	// is not an oversight. An import written without a name binds whatever its
-	// package declares itself to be, which is not in the path and is not
-	// anywhere else in a file either, so answering it means resolving the
-	// packages. That belongs to the stage that assembles a file out of what
-	// every layer contributed, which is the only one that both sees them all
-	// and has a load to ask. A layer keeps its own contribution clear of the
-	// names it knows it will bind; the rest waits for that stage.
 	for i := 1; i < len(imports); i++ {
 		if imports[i].Path == imports[i-1].Path {
 			return f.report(codeImportClash, fmt.Errorf("%s is imported %s and %s",
-				imports[i].Path, boundAs(imports[i-1].Name), boundAs(imports[i].Name)))
+				imports[i].Path, boundAs(imports[i-1]), boundAs(imports[i])))
 		}
+	}
+
+	// And the mirror of it, two paths bound to one name, which is the same
+	// failure read the other way: the second binding wins and every qualified
+	// identifier meant for the first resolves to the wrong package, or to
+	// nothing.
+	//
+	// Answerable here because an import carries the name it binds rather than
+	// only the name it writes. It is checked here rather than by whatever
+	// assembled the file, because a file is the scope a name is bound in and
+	// this is what writes one — a layer sees only its own contribution, and two
+	// layers can each be blameless.
+	held := make(map[string]string, len(imports))
+	for _, one := range imports {
+		if first, taken := held[one.Name]; taken {
+			return f.report(codeImportClash, fmt.Errorf("%s and %s are both imported as %s",
+				first, one.Path, strconv.Quote(one.Name)))
+		}
+		held[one.Name] = one.Path
 	}
 
 	switch len(imports) {
@@ -210,11 +277,11 @@ func (f File) renderImports(b *strings.Builder) error {
 }
 
 // boundAs says what name an import is bound to, for a message that reads.
-func boundAs(name string) string {
-	if name == "" {
+func boundAs(held Import) string {
+	if !held.Aliased {
 		return "under its own name"
 	}
-	return "as " + strconv.Quote(name)
+	return "as " + strconv.Quote(held.Name)
 }
 
 // errNotWellFormed reports a tree the printer could not walk.

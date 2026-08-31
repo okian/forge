@@ -90,7 +90,7 @@ func TestWhatTheViewNeedsImported(t *testing.T) {
 		t.Fatalf("the view could not be read: %v", err)
 	}
 
-	want := []emit.Import{{Path: "iter"}, {Path: "slices"}}
+	want := []emit.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
 	if len(unit.Imports) != len(want) {
 		t.Fatalf("it imports %v, want %v", unit.Imports, want)
 	}
