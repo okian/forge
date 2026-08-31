@@ -183,6 +183,19 @@ type Method struct {
 	// "(v Person)" or "() iter.Seq[Person]", without the receiver.
 	Signature string
 
+	// Pointer records that the method's receiver is a pointer, so it is not in
+	// the method set of a value of the declared type.
+	//
+	// Which of the two a method takes is not a style question here. A method on
+	// a value is one an interface can ask a value for and one a caller can
+	// invoke on something they cannot take the address of, and a method on a
+	// pointer is neither — so a decorator wrapping this method has to declare
+	// the same receiver to wrap it at all, and a claim that the declared type
+	// satisfies an interface is only true for the half of the surface that
+	// takes a value. A layer emits a pointer receiver where the method changes
+	// the container, and says so here.
+	Pointer bool
+
 	// Owner identifies the layer that emits it, which is what lets two layers
 	// wanting one name be told apart — and lets the one that loses the
 	// unqualified name be named in the diagnostic rather than merely counted.

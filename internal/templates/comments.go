@@ -24,9 +24,10 @@ import (
 // standing alone in a sentence is far more often a word than a reference —
 // "the T switch", "a T-shaped hole" — so replacing it corrupts prose to fix a
 // mention that a reader would have understood either way.
-func reword(groups []*ast.CommentGroup, renamed map[string]string) {
+func reword(groups []*ast.CommentGroup, renamed map[string]string, param string) {
 	words := make(map[string]string, len(renamed))
 	maps.Copy(words, renamed)
+	delete(words, param)
 
 	for _, group := range groups {
 		for _, line := range group.List {

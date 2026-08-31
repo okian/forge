@@ -10,6 +10,7 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/merge"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shape"
@@ -36,7 +37,7 @@ func rendered(t *testing.T, merged merge.Unit) string {
 
 	out, err := emit.File{
 		Package:  "model",
-		Imports:  merged.ImportSpecs(),
+		Imports:  merged.Imports,
 		Sections: merged.Sections,
 	}.Render()
 	if err != nil {
@@ -93,23 +94,29 @@ func TestEachLayerIsItsOwnSection(t *testing.T) {
 // the order they were first asked for — not one a map decided.
 func TestUnitsDeduplicateImports(t *testing.T) {
 	merged := merge.Units(
-		layer.Unit{Imports: []string{"iter", "encoding/json/jsontext"}},
-		layer.Unit{Imports: []string{"iter", "", "slices"}},
+		layer.Unit{Imports: []emit.Import{{Path: "iter"}, {Path: "encoding/json/jsontext"}}},
+		layer.Unit{Imports: []emit.Import{{Path: "iter"}, {}, {Path: "slices"}}},
 	)
 
-	want := []string{"iter", "encoding/json/jsontext", "slices"}
+	want := []emit.Import{{Path: "iter"}, {Path: "encoding/json/jsontext"}, {Path: "slices"}}
 	if !slices.Equal(merged.Imports, want) {
 		t.Errorf("imports = %v, want %v", merged.Imports, want)
 	}
+}
 
-	specs := merged.ImportSpecs()
-	if len(specs) != len(want) {
-		t.Fatalf("ImportSpecs() gave %d, want %d", len(specs), len(want))
-	}
-	for i, path := range want {
-		if specs[i] != (emit.Import{Path: path}) {
-			t.Errorf("ImportSpecs()[%d] = %+v, want the path alone", i, specs[i])
-		}
+// One path under two names is kept as two, because it is a disagreement between
+// layers rather than a repetition — and resolving it here would resolve it in
+// favour of whichever layer generated first, silently, in a file nobody reads
+// until it fails to compile.
+func TestUnitsKeepAnImportTwoLayersDisagreeAbout(t *testing.T) {
+	merged := merge.Units(
+		layer.Unit{Imports: []emit.Import{{Path: "example.com/domain"}}},
+		layer.Unit{Imports: []emit.Import{{Path: "example.com/domain", Name: "domain2"}}},
+	)
+
+	want := []emit.Import{{Path: "example.com/domain"}, {Path: "example.com/domain", Name: "domain2"}}
+	if !slices.Equal(merged.Imports, want) {
+		t.Errorf("imports = %v, want %v", merged.Imports, want)
 	}
 }
 
@@ -199,12 +206,12 @@ func TestMergingNothing(t *testing.T) {
 func TestMergingIsDeterministic(t *testing.T) {
 	units := func() []layer.Unit {
 		first := generated(t, "// Persons holds people.\ntype Persons struct{}\n\nfunc NewPersons() *Persons { return nil }")
-		first.Imports = []string{"iter", "slices"}
+		first.Imports = []emit.Import{{Path: "iter"}, {Path: "slices"}}
 		first.Requires = []model.TypeRef{marker("Seq")}
 		first.Assertions = []layer.Assertion{{Interface: model.TypeRef{Pkg: "io", Name: "WriterTo"}}}
 
 		second := generated(t, "func (p *Persons) Len() int {\n\t// count\n\treturn 0\n}")
-		second.Imports = []string{"slices", "encoding/json/jsontext"}
+		second.Imports = []emit.Import{{Path: "slices"}, {Path: "encoding/json/jsontext"}}
 		second.Requires = []model.TypeRef{marker("Seq"), marker("View")}
 
 		return []layer.Unit{first, second}
@@ -221,7 +228,7 @@ func TestMergingIsDeterministic(t *testing.T) {
 // What a stub generates is nothing at all, and merging what the whole catalog
 // generates today has to be that rather than a crash.
 func TestMergingWhatTheCatalogGeneratesToday(t *testing.T) {
-	registry := layer.Builtins()
+	registry := layers.Builtins()
 
 	var units []layer.Unit
 	for _, found := range registry.All() {

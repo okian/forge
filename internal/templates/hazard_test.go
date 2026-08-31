@@ -10,10 +10,10 @@ import (
 
 // specialised rewrites a template and returns what it became, failing the test
 // if it was refused.
-func specialised(t *testing.T, source string) string {
+func specialised(t *testing.T, source string, r templates.Rewrite) string {
 	t.Helper()
 
-	out, diags := templates.Apply(templates.Template{Name: "toy", Source: []byte(source)}, ordinary, where)
+	out, diags := templates.Apply(templates.Template{Name: "toy", Source: []byte(source)}, r, where)
 	if !diags.Empty() {
 		t.Fatalf("the template was refused:\n%s", diags.Render())
 	}
@@ -95,7 +95,7 @@ func TestATemplateNameUsedWithTypeArguments(t *testing.T) {
 		"func (c Collection[T]) First() Person {\n"+
 		"\tif len(c) == 0 {\n\t\treturn zero[T]()\n\t}\n"+
 		"\treturn pick[T, Person](c[0], c[0])\n"+
-		"}\n")
+		"}\n", ordinary)
 
 	for _, want := range []string{
 		// The declaration lost the element, so the call loses the argument.
@@ -147,7 +147,7 @@ func TestALiteralKeyOnAForeignType(t *testing.T) {
 		"import \"go/ast\"\n\n"+
 		"type Collection[T any] []T\n\n"+
 		"func Name() string { return \"x\" }\n\n"+
-		"func (c Collection[T]) Ident() *ast.Ident { return &ast.Ident{Name: Name()} }\n")
+		"func (c Collection[T]) Ident() *ast.Ident { return &ast.Ident{Name: Name()} }\n", ordinary)
 
 	if !strings.Contains(text, "&ast.Ident{Name: personsName()}") {
 		t.Errorf("a foreign field was renamed with the template's own name:\n%s", text)
@@ -161,7 +161,7 @@ func TestASelectedNameThatMatchesADeclaredOne(t *testing.T) {
 		"import \"go/ast\"\n\n"+
 		"type Collection[T any] []T\n\n"+
 		"func Name() string { return \"x\" }\n\n"+
-		"func (c Collection[T]) N(id *ast.Ident) string { return id.Name + Name() }\n")
+		"func (c Collection[T]) N(id *ast.Ident) string { return id.Name + Name() }\n", ordinary)
 
 	if !strings.Contains(text, "id.Name + personsName()") {
 		t.Errorf("a selected name was rewritten:\n%s", text)
@@ -193,13 +193,13 @@ func TestARewriteNamingThingsThatAreNotNames(t *testing.T) {
 
 	cases := map[string]templates.Rewrite{
 		"a declared name that is not one": {Param: "T", Subject: "Person", Container: "Collection", Declared: "not an ident"},
-		"a subject that is not one":       {Param: "T", Subject: "*Person", Container: "Collection", Declared: "Persons"},
+		"a subject that is not a type":    {Param: "T", Subject: "Person{}", Container: "Collection", Declared: "Persons"},
+		"a subject that is not anything":  {Param: "T", Subject: "model.", Container: "Collection", Declared: "Persons"},
 		"a prefix that is not one":        {Param: "T", Subject: "Person", Container: "Collection", Declared: "Persons", Prefix: "x-y"},
 		"a declared name like the subject": {
 			Param: "T", Subject: "Person", Container: "Collection", Declared: "Person",
 		},
-		"a subject like the container": {Param: "T", Subject: "Collection", Container: "Collection", Declared: "Persons"},
-		"a blank parameter":            {Param: "_", Subject: "Person", Container: "Collection", Declared: "Persons"},
+		"a blank parameter": {Param: "_", Subject: "Person", Container: "Collection", Declared: "Persons"},
 	}
 
 	for name, r := range cases {
@@ -309,7 +309,7 @@ func TestAHelperInstantiatedWithSomethingElse(t *testing.T) {
 	text := specialised(t, "package tmpl\n\n"+
 		"type Collection[T any] []T\n\n"+
 		"type box[U any] struct{ v U }\n\n"+
-		"func (c Collection[T]) Boxed() box[int] { return box[int]{v: len(c)} }\n")
+		"func (c Collection[T]) Boxed() box[int] { return box[int]{v: len(c)} }\n", ordinary)
 
 	for _, want := range []string{"type personsBox[U any] struct", "personsBox[int]{v: len(c)}"} {
 		if !strings.Contains(text, want) {
@@ -326,7 +326,7 @@ func TestAGenericTheTemplateDoesNotDeclare(t *testing.T) {
 		"import \"slices\"\n\n"+
 		"type Collection[T any] []T\n\n"+
 		"func (c Collection[T]) Sorted(less func(a, b T) int) []T {\n"+
-		"\treturn slices.SortedFunc(slices.Values(c), less)\n}\n")
+		"\treturn slices.SortedFunc(slices.Values(c), less)\n}\n", ordinary)
 
 	if !strings.Contains(text, "slices.SortedFunc(slices.Values(c), less)") {
 		t.Errorf("a foreign generic was rewritten:\n%s", text)

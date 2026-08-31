@@ -8,6 +8,7 @@ import (
 
 	"github.com/okian/forge/internal/explain"
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shape"
 )
@@ -189,7 +190,7 @@ func TestASubjectWithOneOfEverything(t *testing.T) {
 	decl.Stack = nil
 	decl.Layout.Text = "Person"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	if want := "struct model: 1 field, 1 tag"; got.Steps[0].Effect != want {
 		t.Errorf("the subject reads %q, want %q", got.Steps[0].Effect, want)
@@ -204,7 +205,7 @@ func TestASubjectWithNoTags(t *testing.T) {
 	decl.Stack = nil
 	decl.Layout.Text = "Person"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	if want := "struct model: 2 fields, 0 tags"; got.Steps[0].Effect != want {
 		t.Errorf("the subject reads %q, want %q", got.Steps[0].Effect, want)

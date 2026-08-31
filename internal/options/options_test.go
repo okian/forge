@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/discover"
-	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
 	"github.com/okian/forge/internal/tags"
@@ -79,7 +79,7 @@ func on(stack []model.LayerRef, texts ...string) ([]model.Options, string) {
 		Directives: directives,
 		Stack:      stack,
 		Subject:    person,
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	return set, diags.Render()
 }
@@ -296,7 +296,7 @@ func TestFieldsWithNoSubjectToResolveAgainst(t *testing.T) {
 	_, diags := options.Read(options.Declaration{
 		Directives: []discover.Directive{written("//forge:collection sort=Nickname")},
 		Stack:      naming("Collection"),
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	if !diags.Empty() {
 		t.Errorf("a field was resolved against a subject nobody has:\n%s", diags.Render())

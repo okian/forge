@@ -6,6 +6,7 @@ import (
 
 	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
 	"github.com/okian/forge/internal/shape"
@@ -148,7 +149,7 @@ func TestARequiredOptionOfALayerThisReleaseDoesNotShip(t *testing.T) {
 	_, diags := options.Read(options.Declaration{
 		Stack:   naming("Sorted"),
 		Subject: person,
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	if !diags.Empty() {
 		t.Errorf("a staged layer was held to a provisional schema:\n%s", diags.Render())
@@ -181,7 +182,7 @@ func TestADirectiveOnADeclarationWithNoLayers(t *testing.T) {
 	_, diags := options.Read(options.Declaration{
 		Directives: []discover.Directive{written("//forge:collection sort=Age")},
 		Subject:    person,
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	if !strings.Contains(diags.Render(), "no layers at all") {
 		t.Errorf("the failure does not say the declaration names none:\n%s", diags.Render())
@@ -211,7 +212,7 @@ func TestAFieldOnASubjectWithNoFields(t *testing.T) {
 		Directives: []discover.Directive{written("//forge:collection sort=Age")},
 		Stack:      naming("Collection"),
 		Subject:    &model.Struct{},
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	if !strings.Contains(diags.Render(), "has nothing") {
 		t.Errorf("the failure does not say the subject has no fields:\n%s", diags.Render())

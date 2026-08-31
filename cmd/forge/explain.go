@@ -9,7 +9,7 @@ import (
 
 	"github.com/okian/forge/internal/discover"
 	resolution "github.com/okian/forge/internal/explain"
-	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 )
 
@@ -86,7 +86,7 @@ func explain(env *environment, cmd command, args []string) error {
 		Subject:     asked.Model,
 		SubjectName: model.TypeString(asked.Declaration.Subject),
 		Layout:      model.LayoutOf(asked.Declaration.Stack, asked.Declaration.Subject),
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	if err := write(env, answer, *document); err != nil {
 		return err

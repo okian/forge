@@ -171,6 +171,15 @@ func (f File) renderImports(b *strings.Builder) error {
 
 	// One path bound to two names is two imports of it, which does not compile.
 	// Sorting has already put the pair next to each other.
+	//
+	// The mirror of it — two paths bound to one name — is not checked here and
+	// is not an oversight. An import written without a name binds whatever its
+	// package declares itself to be, which is not in the path and is not
+	// anywhere else in a file either, so answering it means resolving the
+	// packages. That belongs to the stage that assembles a file out of what
+	// every layer contributed, which is the only one that both sees them all
+	// and has a load to ask. A layer keeps its own contribution clear of the
+	// names it knows it will bind; the rest waits for that stage.
 	for i := 1; i < len(imports); i++ {
 		if imports[i].Path == imports[i-1].Path {
 			return f.report(codeImportClash, fmt.Errorf("%s is imported %s and %s",

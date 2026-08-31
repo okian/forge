@@ -2,6 +2,7 @@ package diag
 
 import (
 	"cmp"
+	"errors"
 	"slices"
 	"strings"
 )
@@ -121,6 +122,34 @@ func (s *Set) Render() string {
 		blocks[i] = d.Render()
 	}
 	return strings.Join(blocks, "\n")
+}
+
+// Err returns the set as one error, and nil for a set holding nothing.
+//
+// It is the bridge from a stage that collects to an interface that returns a
+// single error, which is what a layer's Generate is. A set holding one returns
+// that one unwrapped, so the caller recovers it with [From] and reports it like
+// any other.
+//
+// A set holding several is joined, and joining is lossy in one direction worth
+// naming: the error's text holds every diagnostic, in report order, but [From]
+// answers with the first and there is no second call that reaches the rest. A
+// caller that has to report each one separately should be handed the set rather
+// than an error — which is why every stage that can produce more than one is
+// written to return one.
+func (s *Set) Err() error {
+	switch len(s.diagnostics) {
+	case 0:
+		return nil
+	case 1:
+		return s.diagnostics[0]
+	default:
+		joined := make([]error, len(s.diagnostics))
+		for i, d := range s.All() {
+			joined[i] = d
+		}
+		return errors.Join(joined...)
+	}
 }
 
 // ExitCode returns the process status a run ending with this set should exit

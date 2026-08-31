@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shape"
 )
@@ -80,11 +81,19 @@ type Unit struct {
 	Comments []*ast.CommentGroup
 	Fset     *token.FileSet
 
-	// Imports holds the import paths the declarations need. Generated code
-	// imports the standard library and the subject's own dependencies and
-	// nothing else, so that a generated file never needs a runtime package to
-	// be in step with the binary that wrote it.
-	Imports []string
+	// Imports holds the imports the declarations need. Generated code imports
+	// the standard library and the subject's own dependencies and nothing else,
+	// so that a generated file never needs a runtime package to be in step with
+	// the binary that wrote it.
+	//
+	// Each carries the name it is bound to as well as its path, because the
+	// declarations name a package by that name and nothing downstream can
+	// recover it: an import binds a package to the name it declares, which is
+	// not always the last element of its path, and a layer whose subject comes
+	// from a package called like one the layer already imports has to bind it to
+	// something else. A path alone would leave the file importing one thing and
+	// the bodies naming another.
+	Imports []emit.Import
 
 	// Assertions holds the compile-time claims to emit for what was generated.
 	Assertions []Assertion

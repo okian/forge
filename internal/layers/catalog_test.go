@@ -1,10 +1,11 @@
-package layer_test
+package layers_test
 
 import (
 	"slices"
 	"testing"
 
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shape"
 )
@@ -28,7 +29,7 @@ type entry struct {
 // other fails rather than redefines what forge is.
 var catalog = map[string]entry{
 	"Slice": {
-		kind: model.KindStorage, stage: layer.StageStub, transparent: true,
+		kind: model.KindStorage, stage: layer.StageReady, transparent: true,
 		adds: []shape.Cap{shape.Sized, shape.Ordered, shape.Indexed, shape.Streamable},
 	},
 	"Ring": {
@@ -141,7 +142,7 @@ func everything() shape.Shape {
 // every column: where it may appear, what it needs, what it contributes, what
 // it withdraws, and how far along it is.
 func TestTheCatalogIsWhatItSaysItIs(t *testing.T) {
-	registry := layer.Builtins()
+	registry := layers.Builtins()
 
 	if got, want := registry.Len(), len(catalog); got != want {
 		t.Fatalf("the registry holds %d layers and the catalog names %d", got, want)
@@ -238,9 +239,9 @@ func (transparentFake) Transparent() bool { return true }
 // The default storage has to be nameable by the stage that inserts it, or that
 // stage keeps a second copy of a fact this catalog owns.
 func TestTheDefaultStorageIsRegistered(t *testing.T) {
-	found, ok := layer.Builtins().Lookup(layer.DefaultStorage())
+	found, ok := layers.Builtins().Lookup(layers.DefaultStorage())
 	if !ok {
-		t.Fatalf("no layer claims the default storage %s", layer.DefaultStorage())
+		t.Fatalf("no layer claims the default storage %s", layers.DefaultStorage())
 	}
 	if got, want := found.Kind(), model.KindStorage; got != want {
 		t.Errorf("the default storage is a %s, want a %s", got, want)

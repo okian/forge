@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 )
 
@@ -252,7 +252,7 @@ func TestMarkerSetMatchesTheCatalog(t *testing.T) {
 // declared can never be reached at all. Both are silent, and each is invisible
 // to the other's own tests, so the two lists are compared here.
 func TestEveryMarkerIsClaimedByALayer(t *testing.T) {
-	registry := layer.Builtins()
+	registry := layers.Builtins()
 
 	for name := range markers {
 		if _, ok := registry.Lookup(model.TypeRef{Pkg: markerPath, Name: name}); !ok {

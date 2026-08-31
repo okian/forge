@@ -53,7 +53,7 @@ func TestEveryLineOfACommentIsRewritten(t *testing.T) {
 		{Text: "// Each is a T."},
 	}}
 
-	reword([]*ast.CommentGroup{group}, map[string]string{"Collection": "Persons"})
+	reword([]*ast.CommentGroup{group}, map[string]string{"Collection": "Persons", "T": "Person"}, "T")
 
 	want := []string{"// Persons holds elements.", "//", "// Each is a T."}
 	for i, line := range group.List {

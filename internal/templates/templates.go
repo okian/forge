@@ -51,6 +51,20 @@ type Rewrite struct {
 	Container string
 	Declared  string
 
+	// Names says what particular package-level names the template declares
+	// become, for the ones the caller has a better answer for than the prefix.
+	//
+	// A constructor is why it exists. A template calls it New, because that is
+	// what a constructor in a package of its own is called; the declaration it
+	// becomes is one type among the author's own, where a constructor is called
+	// NewPersons and personsNew is a name nobody would write. Consulted ahead of
+	// the prefix rule, so what is named here is exempt from it.
+	//
+	// A key that the template does not declare is refused rather than ignored,
+	// since a rename that silently does nothing is a template that quietly kept
+	// the name it was supposed to lose.
+	Names map[string]string
+
 	// Prefix is prepended to every other name the template declares at package
 	// level.
 	//
@@ -131,7 +145,7 @@ func Apply(t Template, r Rewrite, at token.Position) (Result, diag.Set) {
 	}
 
 	comments := kept(file, decls)
-	reword(comments, renamed)
+	reword(comments, renamed, r.Param)
 
 	settled, groups, positions, err := settle(decls, comments, fset)
 	if err != nil {
@@ -161,13 +175,18 @@ const reportHint = "this is a fault in forge rather than in the declaration; rep
 // wrong — and the two names that must differ are checked because the output of
 // confusing them is a type declared in terms of itself, which the compiler
 // reports about the generated file rather than about this.
+//
+// The subject is the exception, and is checked for being a type instead. It is
+// the one name here the file being written does not declare: it is spelled as
+// that file has to spell it, which for a type from another package is
+// model.Person and for an instantiation is Pair[string, int]. Neither is an
+// identifier and both are what the author wrote.
 func (r Rewrite) check() string {
 	named := []struct {
 		what string
 		name string
 	}{
 		{"type parameter", r.Param},
-		{"subject", r.Subject},
 		{"container type", r.Container},
 		{"declared name", r.Declared},
 	}
@@ -182,19 +201,42 @@ func (r Rewrite) check() string {
 	}
 
 	switch {
+	case r.Subject == "":
+		return "no subject was named"
+	case !typeExpression(r.Subject):
+		return "the subject is written as " + strconv.Quote(r.Subject) + ", which is not a type"
 	case r.Prefix != "" && !identifier(r.Prefix):
 		return "the prefix is written as " + strconv.Quote(r.Prefix) + ", which is not an identifier"
 	case r.Param == r.Container:
 		return "the type parameter and the container have the same name"
 	case r.Declared == r.Subject:
 		return "the declared type and the subject have the same name, so the one would be declared in terms of itself"
-	case r.Subject == r.Container:
-		return "the subject and the container have the same name"
 	case r.Param == "_":
 		return "the type parameter is blank, which names nothing to replace"
 	}
+
+	// A name the caller answered for that the template does not decide is not a
+	// rename that lost, it is a rename that was never going to happen — and
+	// saying "it does not declare that" about the container would be false.
+	if _, asked := r.Names[r.Container]; asked {
+		return "it was asked to rename " + r.Container + ", which is the container and takes the declared name"
+	}
+	if _, asked := r.Names[r.Param]; asked {
+		return "it was asked to rename " + r.Param + ", which is the type parameter and becomes the subject"
+	}
+
 	return ""
 }
+
+// Nothing here refuses a subject spelled like the container. A template
+// declaring Slice, rewritten into Persons over a subject the author also called
+// Slice, produces "type Persons []Slice" — which is what they wrote. The rename
+// is one pass over the tree that answers for each node once, so the container's
+// own mentions become Persons before anything could turn them back, and the
+// subject's mentions arrive as the type parameter and are never looked up
+// again. Refusing the pair would report forge's own template as a fault of a
+// declaration whose author wrote nothing wrong, and leave them nothing to do
+// about it but rename their type.
 
 // identifier reports whether a name is one Go would accept.
 //
@@ -212,6 +254,43 @@ func identifier(name string) bool {
 		}
 	}
 	return true
+}
+
+// typeExpression reports whether text is a type as Go would write one.
+//
+// Parsed rather than pattern-matched. A subject reaches a rewrite as text —
+// there is nowhere else for a qualified name or an instantiation to be carried
+// — and the alternative to parsing it is a rule about dots and brackets that
+// admits "model." and refuses Pair[string, int]. What is asked of it is that it
+// is one complete expression, which is what the rewrite substitutes it as; that
+// the expression denotes a type is the compiler's to say, about a file that
+// would not build either way.
+func typeExpression(text string) bool {
+	parsed, err := parser.ParseExpr(text)
+	if err != nil {
+		return false
+	}
+
+	// The whole of the text, because the whole of the text is what gets
+	// substituted: the rewrite writes it into an identifier's name and the
+	// printer writes that verbatim. "Person // note" parses as Person, with the
+	// rest skipped as a comment, and would be written into the middle of a
+	// parameter list. Positions from ParseExpr are offsets from one.
+	if parsed.Pos() != 1 || int(parsed.End()) != len(text)+1 {
+		return false
+	}
+
+	switch parsed.(type) {
+	case *ast.Ident, *ast.SelectorExpr, *ast.IndexExpr, *ast.IndexListExpr,
+		*ast.StarExpr, *ast.ArrayType, *ast.MapType, *ast.ChanType,
+		*ast.FuncType, *ast.StructType, *ast.InterfaceType:
+		return true
+	default:
+		// A call, a literal, an arithmetic expression: text that parses and
+		// names no type. Refusing it here keeps the failure attached to the
+		// declaration that asked rather than to the generated file.
+		return false
+	}
 }
 
 // separate lifts the import paths out of a template's declarations.
@@ -259,31 +338,28 @@ func separate(decls []ast.Decl) (imports []emit.Import, rest []ast.Decl) {
 // have it renamed to the subject, redeclaring the author's own type in their
 // own package.
 //
-// The container takes the declared name; everything else takes the prefix. A
-// template declaring nothing but its container needs no prefix, which is why
-// the requirement is checked here rather than alongside the rest of the
-// rewrite.
+// The container takes the declared name, a name the caller answered for takes
+// that answer, and everything else takes the prefix. A template whose every
+// other name is answered for needs no prefix, which is why the requirement is
+// checked here rather than alongside the rest of the rewrite.
 func names(decls []ast.Decl, r Rewrite) (map[string]string, string) {
 	renamed := make(map[string]string)
+	answered := make(map[string]bool, len(r.Names))
 
 	for _, decl := range decls {
 		for _, name := range declared(decl) {
-			switch {
-			case name == r.Param:
-				// Legal Go — the parameter shadows it inside the container —
-				// and unrewritable: one of the two would have to keep a name
-				// that means the other.
-				return nil, "it declares " + name + ", which is also the name of its type parameter"
-			case name == r.Container:
-				renamed[name] = r.Declared
-			case name == "_" || name == "init":
-				// Neither is a name anything can refer to, so neither can
-				// collide with one in the package this lands in.
-			case r.Prefix == "":
-				return nil, "it declares " + name + " and no prefix was given to keep that from colliding"
-			default:
-				renamed[name] = r.Prefix + upper(name)
+			to, wrong := r.becomes(name)
+			if wrong != "" {
+				return nil, wrong
 			}
+			if to == "" {
+				continue
+			}
+
+			if _, asked := r.Names[name]; asked {
+				answered[name] = true
+			}
+			renamed[name] = to
 		}
 	}
 
@@ -291,12 +367,65 @@ func names(decls []ast.Decl, r Rewrite) (map[string]string, string) {
 		return nil, "it declares no type called " + r.Container
 	}
 
+	// A rename of something the template does not declare renames nothing, and
+	// what it renames nothing of is the name somebody meant to change.
+	for _, name := range slices.Sorted(maps.Keys(r.Names)) {
+		if !answered[name] {
+			return nil, "it was asked to rename " + name + ", which it does not declare"
+		}
+	}
+
 	if clash := collides(renamed); clash != "" {
 		return nil, clash
 	}
 
+	// Against the subject as well as against each other. A declaration in the
+	// author's package that ends up with the subject's own name redeclares it,
+	// which is the same failure as two of the template's names becoming one and
+	// is reachable the same two ways: a name the caller answered for, and a
+	// prefix that happens to spell one.
+	for _, from := range slices.Sorted(maps.Keys(renamed)) {
+		if renamed[from] == r.Subject {
+			return nil, "it declares " + from + ", which becomes the name of the subject"
+		}
+	}
+
 	renamed[r.Param] = r.Subject
 	return renamed, ""
+}
+
+// becomes says what one name the template declares turns into, or what is wrong
+// with what it was asked to turn into.
+//
+// An empty name with no complaint is one nothing outside the template can refer
+// to, so nothing in the package this lands in can collide with it.
+func (r Rewrite) becomes(name string) (to, wrong string) {
+	switch name {
+	case r.Param:
+		// Legal Go — the parameter shadows it inside the container — and
+		// unrewritable: one of the two would have to keep a name that means the
+		// other.
+		return "", "it declares " + name + ", which is also the name of its type parameter"
+	case r.Container:
+		return r.Declared, ""
+	case "_", "init":
+		if _, asked := r.Names[name]; asked {
+			return "", "it was asked to rename " + name + ", which is not a name anything can refer to"
+		}
+		return "", ""
+	}
+
+	if answer, asked := r.Names[name]; asked {
+		if !identifier(answer) {
+			return "", "it was asked to call " + name + " " + strconv.Quote(answer) + ", which is not an identifier"
+		}
+		return answer, ""
+	}
+
+	if r.Prefix == "" {
+		return "", "it declares " + name + " and no prefix was given to keep that from colliding"
+	}
+	return r.Prefix + upper(name), ""
 }
 
 // collides reports two names that become one, which is a package holding two

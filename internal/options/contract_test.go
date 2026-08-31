@@ -7,6 +7,7 @@ import (
 
 	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
 	"github.com/okian/forge/internal/shape"
@@ -70,7 +71,7 @@ func TestOnlyWhatSurvivedIsHandedOver(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			stack := naming("Collection", "Ring", "Json")
-			set, reported := read(t, layer.Builtins(), stack, tc.directive)
+			set, reported := read(t, layers.Builtins(), stack, tc.directive)
 
 			if reported == "" {
 				t.Fatal("an option that should have been refused was accepted")
@@ -93,7 +94,7 @@ func TestOnlyWhatSurvivedIsHandedOver(t *testing.T) {
 // A set carries where its directive was written, since a layer reporting about
 // one of its own options has nowhere else to point.
 func TestASetKnowsWhereItWasWritten(t *testing.T) {
-	set, _ := read(t, layer.Builtins(), naming("Collection"), "//forge:collection sort=Age")
+	set, _ := read(t, layers.Builtins(), naming("Collection"), "//forge:collection sort=Age")
 
 	if len(set) != 1 {
 		t.Fatalf("read %d directives, want 1", len(set))
@@ -141,7 +142,7 @@ func TestOneComplaintPerLayerHoweverOftenItAppears(t *testing.T) {
 
 // And one field named twice is one mistake.
 func TestOneComplaintPerFieldHoweverOftenItIsNamed(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Collection"),
+	_, reported := read(t, layers.Builtins(), naming("Collection"),
 		"//forge:collection sort=Nickname,Nickname,Nickname")
 
 	if got := strings.Count(reported, "FRG3010"); got != 1 {
@@ -172,7 +173,7 @@ func TestALayerNamedInTheWrongCase(t *testing.T) {
 // reading its words as options gives an author complaints about prose they
 // wrote for a reader.
 func TestAnExplanationWrittenAfterTheOptions(t *testing.T) {
-	set, reported := read(t, layer.Builtins(), naming("Collection"),
+	set, reported := read(t, layers.Builtins(), naming("Collection"),
 		"//forge:collection sort=Age // sorted for the report")
 
 	if reported != "" {
@@ -205,7 +206,7 @@ func TestAValueHoldingAnEqualsSign(t *testing.T) {
 
 // Arguments are separated by space, whichever space was written.
 func TestOptionsSeparatedByATab(t *testing.T) {
-	set, reported := read(t, layer.Builtins(), naming("Ring"), "//forge:ring cap=8\toverflow=error")
+	set, reported := read(t, layers.Builtins(), naming("Ring"), "//forge:ring cap=8\toverflow=error")
 
 	if reported != "" {
 		t.Errorf("options separated by a tab were reported:\n%s", reported)
@@ -219,7 +220,7 @@ func TestOptionsSeparatedByATab(t *testing.T) {
 // diagnostics is ordered by position and the offset is what separates two
 // written on one line.
 func TestAnOptionKnowsItsOffset(t *testing.T) {
-	set, _ := read(t, layer.Builtins(), naming("Ring"), "//forge:ring cap=8 overflow=error")
+	set, _ := read(t, layers.Builtins(), naming("Ring"), "//forge:ring cap=8 overflow=error")
 
 	first, second := set[0].Entries[0], set[0].Entries[1]
 	if second.Pos.Offset <= first.Pos.Offset {
@@ -235,7 +236,7 @@ func TestAnOptionKnowsItsOffset(t *testing.T) {
 // An option written with no name at all names nothing, and reporting it as an
 // option the layer does not have would print a sentence with a gap in it.
 func TestAnOptionWithNoName(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Collection"), "//forge:collection =Age")
+	_, reported := read(t, layers.Builtins(), naming("Collection"), "//forge:collection =Age")
 
 	if !strings.Contains(reported, "FRG3012") {
 		t.Errorf("an option with no name was reported as something else:\n%s", reported)
@@ -300,7 +301,7 @@ func TestAnOptionNamingOneFieldTakesOne(t *testing.T) {
 // A field-scoped option is offered to nobody writing on a declaration, since
 // taking the advice would earn the complaint that says it belongs elsewhere.
 func TestWhatALayerOffersOnADeclaration(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Json"), "//forge:json nonesuch=1")
+	_, reported := read(t, layers.Builtins(), naming("Json"), "//forge:json nonesuch=1")
 
 	if strings.Contains(reported, "fallback") {
 		t.Errorf("an option that belongs on a field was offered for a declaration:\n%s", reported)
@@ -328,7 +329,7 @@ func TestALayerWhoseOptionsAreAllAboutFields(t *testing.T) {
 // arguments of a directive are separated by space — so the list ends there and
 // the rest is read as another option.
 func TestALisOfFieldsWrittenWithSpaces(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Collection"), "//forge:collection sort=Age, LastName")
+	_, reported := read(t, layers.Builtins(), naming("Collection"), "//forge:collection sort=Age, LastName")
 
 	if !strings.Contains(reported, "no space between them") {
 		t.Errorf("the failure does not say how to write the list:\n%s", reported)
@@ -376,7 +377,7 @@ func TestAMistypedDirectiveBesideACorrectOne(t *testing.T) {
 
 	for _, name := range []string{"the correct one first", "the mistyped one first"} {
 		t.Run(name, func(t *testing.T) {
-			set, reported := read(t, layer.Builtins(), naming("Collection"), orders[name]...)
+			set, reported := read(t, layers.Builtins(), naming("Collection"), orders[name]...)
 
 			// The correct directive is read, whichever side of the mistyped one
 			// it was written.
@@ -407,7 +408,7 @@ func TestASubjectWithNoNameOfItsOwn(t *testing.T) {
 		Directives: []discover.Directive{written("//forge:collection sort=Nickname")},
 		Stack:      naming("Collection"),
 		Subject:    &model.Struct{Fields: []model.Field{{Name: "ID", Exported: true}}},
-	}, layer.Builtins())
+	}, layers.Builtins())
 
 	rendered := diags.Render()
 	if !strings.Contains(rendered, "the subject has no field Nickname") {
@@ -417,7 +418,7 @@ func TestASubjectWithNoNameOfItsOwn(t *testing.T) {
 
 // And one with a name uses it, since that is what the author is looking at.
 func TestASubjectNamedInTheMessage(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Collection"), "//forge:collection sort=Nickname")
+	_, reported := read(t, layers.Builtins(), naming("Collection"), "//forge:collection sort=Nickname")
 
 	if !strings.Contains(reported, "Person has no field Nickname") {
 		t.Errorf("the message does not name the subject:\n%s", reported)
@@ -430,7 +431,7 @@ func TestASubjectNamedInTheMessage(t *testing.T) {
 // An option written as nothing but an equals sign names nothing, and quoting
 // what was parsed rather than what was written would complain about "".
 func TestAnOptionWrittenAsNothingButAnEqualsSign(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Collection"), "//forge:collection =")
+	_, reported := read(t, layers.Builtins(), naming("Collection"), "//forge:collection =")
 
 	if !strings.Contains(reported, `written as "="`) {
 		t.Errorf("the failure does not quote what was written:\n%s", reported)
@@ -440,7 +441,7 @@ func TestAnOptionWrittenAsNothingButAnEqualsSign(t *testing.T) {
 // Everything after a comment marker is left alone, options included: an author
 // who commented one out has said what they meant.
 func TestOptionsCommentedOut(t *testing.T) {
-	set, reported := read(t, layer.Builtins(), naming("Collection"),
+	set, reported := read(t, layers.Builtins(), naming("Collection"),
 		"//forge:collection sort=Age // index=ID later")
 
 	if reported != "" {
@@ -454,7 +455,7 @@ func TestOptionsCommentedOut(t *testing.T) {
 // The marker has to open an argument to count. Written against a value it is
 // part of it, which is a field name nothing has and is reported as one.
 func TestACommentMarkerWrittenAgainstAValue(t *testing.T) {
-	_, reported := read(t, layer.Builtins(), naming("Collection"), "//forge:collection sort=Age// note")
+	_, reported := read(t, layers.Builtins(), naming("Collection"), "//forge:collection sort=Age// note")
 
 	if !strings.Contains(reported, "Age//") {
 		t.Errorf("the value was not read as written:\n%s", reported)

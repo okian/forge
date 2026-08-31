@@ -19,9 +19,15 @@ type Unit struct {
 	// Sections holds what each layer generated, in stack order.
 	Sections []emit.Section
 
-	// Imports holds the paths the declarations need, deduplicated, in the order
-	// they were first asked for.
-	Imports []string
+	// Imports holds the imports the declarations need, deduplicated, in the
+	// order they were first asked for.
+	//
+	// Deduplicated by path *and* bound name, so two layers importing one path
+	// under one name import it once and two that disagree about the name are
+	// both kept — which is not a fix, it is what makes the disagreement visible
+	// to the stage that writes the file rather than silently resolving it here
+	// in favour of whichever layer generated first.
+	Imports []emit.Import
 
 	// Assertions holds the compile-time claims to emit, deduplicated.
 	Assertions []layer.Assertion
@@ -67,9 +73,9 @@ func Units(units ...layer.Unit) Unit {
 			out.Sections = append(out.Sections, section)
 		}
 
-		for _, path := range unit.Imports {
-			if path != "" && !slices.Contains(out.Imports, path) {
-				out.Imports = append(out.Imports, path)
+		for _, one := range unit.Imports {
+			if one.Path != "" && !slices.Contains(out.Imports, one) {
+				out.Imports = append(out.Imports, one)
 			}
 		}
 
@@ -86,18 +92,5 @@ func Units(units ...layer.Unit) Unit {
 		}
 	}
 
-	return out
-}
-
-// ImportSpecs returns the unit's imports in the shape a file takes them.
-//
-// A layer names an import by path and nothing else, because a layer has no way
-// to know what else the file will import and so no business choosing a name to
-// avoid it. Choosing names belongs to the stage that can see the whole file.
-func (u Unit) ImportSpecs() []emit.Import {
-	out := make([]emit.Import, 0, len(u.Imports))
-	for _, path := range u.Imports {
-		out = append(out, emit.Import{Path: path})
-	}
 	return out
 }

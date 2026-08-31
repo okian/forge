@@ -7,7 +7,7 @@ import (
 
 	"github.com/okian/forge/internal/explain"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/tags"
 )
@@ -61,7 +61,7 @@ func documented() explain.Declaration {
 // wrong explanation or documentation nobody updated.
 func TestTheDocumentedResolution(t *testing.T) {
 	var out bytes.Buffer
-	if err := explain.Of(documented(), layer.Builtins()).Text(&out); err != nil {
+	if err := explain.Of(documented(), layers.Builtins()).Text(&out); err != nil {
 		t.Fatalf("rendering: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestTheDocumentedResolution(t *testing.T) {
 // people and neither is the other's serialisation.
 func TestTheDocumentedResolutionAsADocument(t *testing.T) {
 	var out bytes.Buffer
-	if err := explain.Of(documented(), layer.Builtins()).JSON(&out); err != nil {
+	if err := explain.Of(documented(), layers.Builtins()).JSON(&out); err != nil {
 		t.Fatalf("rendering: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestTheDocumentedResolutionAsADocument(t *testing.T) {
 // other way would tell somebody that the outermost layer decides what the
 // innermost one is offered.
 func TestTheWalkRunsSubjectOutward(t *testing.T) {
-	got := explain.Of(documented(), layer.Builtins())
+	got := explain.Of(documented(), layers.Builtins())
 
 	want := []string{"Person", "Json", "Ring", "Collection"}
 	if len(got.Steps) != len(want) {
@@ -104,7 +104,7 @@ func TestTheWalkRunsSubjectOutward(t *testing.T) {
 // exposes is what the next is offered. A walk that lost that would report a
 // stack nothing could be validated against.
 func TestEachStepIsOfferedWhatTheOneBelowExposes(t *testing.T) {
-	got := explain.Of(documented(), layer.Builtins())
+	got := explain.Of(documented(), layers.Builtins())
 
 	// Json requires a structured subject and adds encodability; Ring adds the
 	// capabilities a container has; Collection requires what Ring added and
@@ -138,7 +138,7 @@ func TestADecoratorThatWithdraws(t *testing.T) {
 	decl.Stack = stack("Guarded", "Collection", "Ring", "Json")
 	decl.Layout.Text = "Guarded[Collection[Ring[Json[Person]]]]"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	last := got.Steps[len(got.Steps)-1]
 	if last.Name != "Guarded" {
@@ -161,7 +161,7 @@ func TestAStackOverASubjectThatWasRefused(t *testing.T) {
 	decl.SubjectName = "*Person"
 	decl.Layout.Text = "Collection[Ring[Json[*Person]]]"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	if len(got.Steps) != 4 {
 		t.Fatalf("walked %d steps, want 4", len(got.Steps))
@@ -185,7 +185,7 @@ func TestAMarkerNoLayerClaims(t *testing.T) {
 	decl.Stack = stack("Nonesuch")
 	decl.Layout.Text = "Nonesuch[Person]"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	last := got.Steps[len(got.Steps)-1]
 	if last.Kind != model.KindInvalid {
@@ -204,7 +204,7 @@ func TestALayerThisReleaseDoesNotShip(t *testing.T) {
 	decl.Stack = stack("Sorted", "Json")
 	decl.Layout.Text = "Sorted[Json[Person]]"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	last := got.Steps[len(got.Steps)-1]
 	if last.Name != "Sorted" {
@@ -225,12 +225,45 @@ func TestADeclarationWithNoLayers(t *testing.T) {
 	decl.Stack = nil
 	decl.Layout.Text = "Person"
 
-	got := explain.Of(decl, layer.Builtins())
+	got := explain.Of(decl, layers.Builtins())
 
 	if len(got.Steps) != 1 {
 		t.Fatalf("walked %d steps, want 1", len(got.Steps))
 	}
 	if got.Steps[0].Kind != model.KindSubject {
 		t.Errorf("the only step is %s, want subject", got.Steps[0].Kind)
+	}
+}
+
+// A layer that actually generates reaches this report through the same three
+// methods a stub does, and its surface is the first thing in a resolution that
+// a stub cannot stand in for. The catalog it comes from is forge's own, so the
+// names below are what an author reading the report will see.
+func TestWhatARealLayerSaysItWillEmit(t *testing.T) {
+	decl := documented()
+	decl.Form = model.FormInline
+	decl.Stack = stack("Slice")
+	decl.Layout.Text = "Slice[Person]"
+
+	got := explain.Of(decl, layers.Builtins())
+
+	if len(got.Steps) != 2 {
+		t.Fatalf("walked %d steps, want the subject and one layer", len(got.Steps))
+	}
+
+	storage := got.Steps[1]
+	if storage.Pending {
+		t.Error("a layer that generates is reported as one whose generator is not written")
+	}
+	if want := "Len, All, Backward, AppendSeq"; strings.Join(storage.Methods, ", ") != want {
+		t.Errorf("it emits %v, want %s", storage.Methods, want)
+	}
+
+	var out bytes.Buffer
+	if err := got.Text(&out); err != nil {
+		t.Fatalf("rendering: %v", err)
+	}
+	if strings.Contains(out.String(), "pending") {
+		t.Errorf("a stack of layers that all generate reports work as pending:\n%s", out.String())
 	}
 }
