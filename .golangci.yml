@@ -265,6 +265,20 @@ linters:
         linters:
           - errname
 
+      # A generated container is read as a value and appended to through a
+      # pointer, so its methods mix receivers and recvcheck says so — pointing
+      # at the declaration, which is the one line in the package a person wrote.
+      # The mixed set is deliberate: value receivers are what let a function
+      # returning a container have its length taken, and appending has to be
+      # able to grow the container it was called on.
+      #
+      # This exception is what a user of forge will need in their own
+      # configuration, which is the reason it is spelled out here rather than as
+      # a directive in the example's source: the example is what they will copy.
+      - path: 'examples/.*\.go$'
+        linters:
+          - recvcheck
+
       # Tests are held to the module's correctness rules, not to its budgets: a
       # table-driven test earns its length and its branch count from the number
       # of cases it covers, and shortening it would delete coverage. Nor are

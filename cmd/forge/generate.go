@@ -53,15 +53,7 @@ func generate(env *environment, cmd command, args []string) error {
 // Keeping them one path is what stops --dry-run and --diff from disagreeing
 // about what would happen.
 func emitting(env *environment, found resolved, hold, show bool) error {
-	self, markers, toolchain := versions()
-
-	cfg := generated.Config{
-		Catalog: compose.Catalog{
-			Registry:       layers.Builtins(),
-			DefaultStorage: layers.DefaultStorage(),
-		},
-		Forge: self, Markers: markers, Toolchain: toolchain,
-	}
+	cfg := configured()
 
 	var (
 		problems diag.Set
@@ -106,6 +98,25 @@ func emitting(env *environment, found resolved, hold, show bool) error {
 
 	env.announce(hold, "%s", counted(changed, hold))
 	return nil
+}
+
+// configured returns what generation is given: the catalog of layers this
+// binary knows, and the three versions a generated file records.
+//
+// One place, because it is a description of this build rather than of a run.
+// Anything assembling it a second time would be generating against a catalog or
+// a version that the command does not use, and would agree with it right up
+// until one of them changed.
+func configured() generated.Config {
+	self, markers, toolchain := versions()
+
+	return generated.Config{
+		Catalog: compose.Catalog{
+			Registry:       layers.Builtins(),
+			DefaultStorage: layers.DefaultStorage(),
+		},
+		Forge: self, Markers: markers, Toolchain: toolchain,
+	}
 }
 
 // placing does what the flags asked with one package's files.

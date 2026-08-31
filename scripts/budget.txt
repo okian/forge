@@ -1,0 +1,47 @@
+# What each benchmark may spend.
+#
+#   <package> <benchmark> <allocs/op> <B/op>
+#
+# scripts/bench.sh runs the suite and fails if any benchmark allocates more
+# times than its budget, or more than a shade over its budget in bytes. Every
+# benchmark must appear here and every line here must name a benchmark that
+# runs, so that neither a new measurement nor a deleted one can slip past
+# unread. A figure that falls below half its budget fails as well: something
+# spending far less than it used to has usually stopped doing the work.
+#
+# Changing a number is the point, not a failure of the process: a budget that
+# goes up should be a line in a review with a reason beside it, and one that
+# goes down is somebody's work showing.
+#
+# Measured on go1.27 for a 64-bit word, which is what every build in the matrix
+# is. Allocation counts are the same everywhere; the byte figures count two
+# words per string header and one per pointer.
+
+# The generated container, and the same work written by hand beside it.
+#
+# The generated forms all cost more than the hand-written ones, and all for one
+# reason: the helpers underneath them require only that the stack beneath can
+# be walked, so they grow their result rather than sizing it ahead. Walking is
+# all a projection needs, and a storage that cannot report a length without
+# walking itself is a storage a collection should still work over.
+#
+# That is the contract and not the last word on it. A stack that *can* report
+# its length says so — the slice storage reports Sized — and the collection
+# layer is handed the shape beneath it before it generates anything, so a
+# variant that sizes its result ahead when the length is free is available and
+# is not written yet. These figures are what it would be measured against.
+github.com/okian/forge/examples/people  LazyChain              9     224
+github.com/okian/forge/examples/people  LazyChainByHand        0       0
+github.com/okian/forge/examples/people  Projection             9   35136
+github.com/okian/forge/examples/people  ProjectionByHand       1   16384
+github.com/okian/forge/examples/people  SortedView            11  122192
+github.com/okian/forge/examples/people  SortedViewByHand       1   49152
+github.com/okian/forge/examples/people  Index                 22  262016
+github.com/okian/forge/examples/people  IndexByHand            5  131152
+
+# The shared lazy view, benchmarked against its own template rather than
+# through a generated copy of it, so that a change to the view is caught where
+# it is written.
+github.com/okian/forge/internal/shared/seq/tmpl  Chain                 9  264
+github.com/okian/forge/internal/shared/seq/tmpl  ChainIntoOwnedMemory  7  192
+github.com/okian/forge/internal/shared/seq/tmpl  Range                 3   56

@@ -62,6 +62,22 @@ forge version                     # version and build info
 Generated files are named `zz_forge_*.go` and are meant to be committed, so
 builds and editors work with no tool installed.
 
+## Example
+
+[`examples/people`](examples/people) is the whole arrangement in one package: a
+plain struct, one declaration over it, and the files `forge` wrote from them,
+committed beside the source the way they are meant to be. The declaration is
+
+```go
+//forge:collection sort=Name,Age index=ID
+type Persons forge.Collection[Person]
+```
+
+and what it buys is a container that walks, projects, sorts and indexes its
+elements with the subject's own field names in the method names — `Names()`,
+`SortedByAge()`, `ByID()` — rather than a package of helpers taking a
+`func(Person) string` at every call site. The tests beside it read as usage.
+
 ## Development
 
 Every gate CI runs is a `make` target, so a green `make check` locally means a
@@ -72,13 +88,22 @@ make check       # formatting, go vet, golangci-lint, tests with the coverage fl
 make test        # tests only
 make race        # tests under the race detector
 make cover       # tests plus the coverage floor (90% of statements)
+make bench       # benchmarks, each held to its budget in scripts/budget.txt
 make fmt         # rewrite sources with gofumpt and gci
 make lint        # golangci-lint on its own
 make vuln        # govulncheck over reachable code
 make tidy-check  # fail if go.mod or go.sum would change under `go mod tidy`
 make build       # build ./cmd/forge into ./bin
+make example     # regenerate the worked example under examples/
 make help        # list every target
 ```
+
+`make bench` is a gate rather than a report. Every benchmark declares what it
+may spend in [`scripts/budget.txt`](scripts/budget.txt) and the run fails if one
+spends more, so a change that costs an allocation per element turns up in the
+review that introduced it. Allocations are what is held to a budget, because
+they are a property of the code; timings are printed and never gated, since a
+shared runner varies by more than most regressions do.
 
 The linting and vulnerability targets need their tools on `PATH`, and fail
 rather than skipping if one is missing. The Makefile pins both versions and CI

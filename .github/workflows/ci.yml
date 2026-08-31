@@ -120,6 +120,27 @@ jobs:
       - name: test under the race detector
         run: make race
 
+  # Benchmarks as a gate rather than as documentation. Every benchmark declares
+  # what it may spend in scripts/budget.txt, and this fails when one spends
+  # more — so a change that costs an allocation per element is a red build in
+  # the review that introduced it rather than a report somebody runs a year
+  # later. What is held to a budget is allocations, which are a property of the
+  # code; timings are printed and never gated, since a shared runner varies by
+  # more than most regressions do.
+  bench:
+    name: bench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: benchmarks are within budget
+        run: make bench
+
   # Generated code has to compile wherever the subject's package does, and the
   # loader walks paths. Building for each platform is the cheap half of that
   # promise; the test matrix above covers the half that needs a real filesystem.
@@ -190,7 +211,7 @@ jobs:
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [lint, test, race, build, tidy, vuln]
+    needs: [lint, test, race, bench, build, tidy, vuln]
     runs-on: ubuntu-latest
     steps:
       - name: every job succeeded

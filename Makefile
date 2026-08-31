@@ -83,6 +83,31 @@ race: ## Run the test suite under the race detector.
 cover: ## Run the test suite and enforce the coverage floor.
 	COVER_MIN=$(COVER_MIN) COVER_PROFILE=$(COVER_PROFILE) ./scripts/cover.sh
 
+# Not part of `check`: benchmarks take longer than a gate anybody runs before
+# every commit should, and the thing they protect against arrives in a review
+# rather than in a keystroke. CI runs it on its own.
+.PHONY: bench
+bench: ## Run the benchmarks and hold each one to its recorded budget.
+	./scripts/bench.sh
+
+# Regeneration is a target rather than a step of the build, which is the whole
+# arrangement forge is for: the output is committed, and it is remade when a
+# declaration changes rather than when somebody types make.
+#
+# The header must record the tool rather than the commit. `go build` stamps a
+# pseudo-version derived from the checkout, and a target that used one would
+# write a version into a committed file that changed on every commit — a file
+# in every review, saying nothing in any of them. `go run` records no VCS stamp
+# and so writes (devel); -buildvcs=false says that this is required rather than
+# incidental, and keeps the target honest if it is ever built rather than run.
+#
+# What still moves is the fingerprint, which is fed by the Go version as well:
+# regenerating on a newer toolchain rewrites the `inputs` line and nothing else.
+# That is why the acceptance test compares bodies rather than bytes.
+.PHONY: example
+example: ## Regenerate the worked example under examples/.
+	$(GO) run -buildvcs=false ./cmd/forge generate ./examples/...
+
 .PHONY: check
 check: fmt-check vet lint cover ## Run every gate CI runs.
 
