@@ -153,16 +153,6 @@ var declared = []*stub{
 		doc: "fixed-capacity circular buffer, so a long-running producer cannot grow memory without bound",
 	},
 	{
-		origin: marker("Collection"), kind: model.KindRefining, stage: layer.StageStub, transparent: true,
-		requires: []shape.Cap{shape.Streamable},
-		options: []layer.OptionDef{
-			{Key: "sort", Value: layer.ValueFields, Doc: "fields to generate a sorted view for"},
-			{Key: "index", Value: layer.ValueFields, Doc: "fields to generate a lookup map for"},
-			{Key: "seq", Value: layer.ValueString, Doc: "name for the generated sequence view, when the default collides"},
-		},
-		doc: "query, projection and sort methods built from the subject's fields",
-	},
-	{
 		origin: marker("Json"), kind: model.KindElement, stage: layer.StageStub,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
 		options: []layer.OptionDef{

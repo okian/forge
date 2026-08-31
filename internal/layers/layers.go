@@ -2,6 +2,7 @@ package layers
 
 import (
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers/collection"
 	"github.com/okian/forge/internal/layers/slice"
 	"github.com/okian/forge/internal/model"
 )
@@ -17,6 +18,7 @@ import (
 // package here is one somebody has.
 func written() []layer.Layer {
 	return []layer.Layer{
+		collection.New(),
 		slice.New(),
 	}
 }

@@ -39,10 +39,11 @@ func TestATemplateThatGrewAnImport(t *testing.T) {
 	}
 }
 
-// The names the spelling keeps clear of are the template's, in an order a map
-// did not decide.
+// What the spelling is given is what the template's imports bind, path and name
+// both, in an order a map did not decide.
 func TestWhatTheTemplateBinds(t *testing.T) {
-	if want := []string{"iter", "slices"}; !slices.Equal(taken(), want) {
+	want := []model.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
+	if !slices.Equal(taken(), want) {
 		t.Errorf("the template binds %v, want %v", taken(), want)
 	}
 }

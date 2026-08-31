@@ -37,7 +37,7 @@ var catalog = map[string]entry{
 		adds: []shape.Cap{shape.Sized, shape.Ordered, shape.Streamable, shape.Bounded},
 	},
 	"Collection": {
-		kind: model.KindRefining, stage: layer.StageStub, transparent: true,
+		kind: model.KindRefining, stage: layer.StageReady, transparent: true,
 		requires: []shape.Cap{shape.Streamable},
 	},
 	"Json": {

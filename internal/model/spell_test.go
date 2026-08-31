@@ -34,8 +34,8 @@ func TestATypeFromTheLocalPackage(t *testing.T) {
 	if got := spelled.String(); got != spelled.Text {
 		t.Errorf("String() = %q, want the text %q", got, spelled.Text)
 	}
-	if len(spelled.Names()) != 0 {
-		t.Errorf("it binds %v", spelled.Names())
+	if got := spelled.Bound(nil); len(got) != 0 {
+		t.Errorf("it binds %v", got)
 	}
 }
 
@@ -54,8 +54,11 @@ func TestATypeFromAnotherPackage(t *testing.T) {
 	if !slices.Equal(spelled.Imports, want) {
 		t.Errorf("it wants %v imported, want %v", spelled.Imports, want)
 	}
-	if got := spelled.Names(); !slices.Equal(got, []string{"domain"}) {
-		t.Errorf("it binds %v", got)
+	// What it binds is handed on to the next type spelled for the same file,
+	// which is what keeps a second one from claiming the same name or asking
+	// for a second import of the same path.
+	if got := spelled.Bound(nil); !slices.Equal(got, want) {
+		t.Errorf("it binds %v, want %v", got, want)
 	}
 }
 
@@ -88,7 +91,10 @@ func TestAnInstantiationNamesMoreThanItself(t *testing.T) {
 func TestAPackageWhoseNameIsAlreadyTaken(t *testing.T) {
 	spelled := model.Spell(
 		declaring("example.com/util/slices", "slices", "Person"),
-		"example.com/model", []string{"iter", "slices"})
+		"example.com/model", []model.Import{
+			{Path: "iter", Name: "iter"},
+			{Path: "slices", Name: "slices"},
+		})
 
 	if got, want := spelled.Text, "slices2.Person"; got != want {
 		t.Errorf("spelled %q, want %q", got, want)
@@ -105,7 +111,8 @@ func TestTwoPackagesOfOneName(t *testing.T) {
 	first := declaring("example.com/a/domain", "domain", "Key")
 	second := declaring("example.com/b/domain", "domain", "Value")
 
-	spelled := model.Spell(types.NewMap(first, second), "example.com/model", []string{"domain"})
+	spelled := model.Spell(types.NewMap(first, second), "example.com/model",
+		[]model.Import{{Path: "example.com/held/domain", Name: "domain"}})
 
 	if got, want := spelled.Text, "map[domain2.Key]domain3.Value"; got != want {
 		t.Errorf("spelled %q, want %q", got, want)
@@ -200,7 +207,53 @@ func TestTheSubjectIsSpelledForTheDeclarationsPackage(t *testing.T) {
 	if got, want := elsewhere.SubjectSpelling(nil).Text, "domain.Person"; got != want {
 		t.Errorf("a subject from elsewhere is spelled %q, want %q", got, want)
 	}
-	if got, want := elsewhere.SubjectSpelling([]string{"domain"}).Text, "domain2.Person"; got != want {
+	taken := []model.Import{{Path: "example.com/held/domain", Name: "domain"}}
+	if got, want := elsewhere.SubjectSpelling(taken).Text, "domain2.Person"; got != want {
 		t.Errorf("a subject whose name is taken is spelled %q, want %q", got, want)
+	}
+}
+
+// A path the file already binds is spelled by the name it already has, rather
+// than by a new one — a file that imported one path twice would not compile any
+// more than one that bound two paths to one name.
+func TestAPackageTheFileAlreadyImports(t *testing.T) {
+	bound := []model.Import{{Path: "iter", Name: "iter"}}
+
+	spelled := model.Spell(declaring("iter", "iter", "Seq"), "example.com/model", bound)
+
+	if got, want := spelled.Text, "iter.Seq"; got != want {
+		t.Errorf("spelled %q, want %q", got, want)
+	}
+	// And it asks for nothing to be imported, because the file has it.
+	if len(spelled.Imports) != 0 {
+		t.Errorf("it wants %v imported, and the file already imports it", spelled.Imports)
+	}
+	if got := spelled.Bound(bound); !slices.Equal(got, bound) {
+		t.Errorf("it binds %v, want what it was given", got)
+	}
+}
+
+// One type spelled after another for the same file joins what the first bound
+// and keeps clear of the names it took.
+func TestASecondTypeSpelledForOneFile(t *testing.T) {
+	first := model.Spell(declaring("example.com/a/util", "util", "One"), "example.com/model", nil)
+	second := model.Spell(declaring("example.com/b/util", "util", "Two"), "example.com/model",
+		first.Bound(nil))
+
+	if got, want := first.Text, "util.One"; got != want {
+		t.Errorf("the first is spelled %q, want %q", got, want)
+	}
+	if got, want := second.Text, "util2.Two"; got != want {
+		t.Errorf("the second is spelled %q, want %q", got, want)
+	}
+
+	// Both are bound, once each, in the order they were spelled.
+	held := second.Bound(first.Bound(nil))
+	want := []model.Import{
+		{Path: "example.com/a/util", Name: "util"},
+		{Path: "example.com/b/util", Name: "util2", Aliased: true},
+	}
+	if !slices.Equal(held, want) {
+		t.Errorf("the two bind %v, want %v", held, want)
 	}
 }

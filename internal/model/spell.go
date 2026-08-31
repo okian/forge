@@ -49,18 +49,35 @@ type Spelling struct {
 	// Imports holds what the text depends on, ordered by path and without
 	// repeats. It is empty when the text names nothing outside its own package.
 	Imports []Import
+
+	// Local is the import path of the package the text was written for, and is
+	// what a second type spelled to sit beside this one has to be given.
+	//
+	// Carried rather than left to the caller, because the two have to agree: a
+	// field spelled for one package beside a subject spelled for another
+	// produces a file that qualifies half of what it names and imports none of
+	// it. A caller that already has the answer passes it in again; one that has
+	// only the spelling would otherwise have to be given it a second way.
+	Local string
 }
 
 // String returns the spelling's text, so that a spelling can be printed where a
 // name is wanted.
 func (s Spelling) String() string { return s.Text }
 
-// Names returns the names the spelling binds, which is what a caller spelling a
-// second type has to hand back as taken.
-func (s Spelling) Names() []string {
-	out := make([]string, len(s.Imports))
-	for i, one := range s.Imports {
-		out[i] = one.Name
+// Bound returns what the spelling binds together with what it was given,
+// which is what a caller spelling a second type for the same file hands on.
+//
+// Both, because both are what the next spelling has to know: a path already
+// bound is spelled by the name it has, and a name already taken by another path
+// is one the next spelling must not choose.
+func (s Spelling) Bound(given []Import) []Import {
+	out := slices.Clone(given)
+
+	for _, one := range s.Imports {
+		if held(out, one.Path) < 0 {
+			out = append(out, one)
+		}
 	}
 	return out
 }
@@ -77,15 +94,20 @@ func (s Spelling) Names() []string {
 // A type from the local package is written bare. Generated code lives in the
 // package it is generated for, where a self-import is not a thing that exists.
 //
-// The taken names are the ones the file already binds to something else — the
-// packages whatever else is being written into it imports. A package whose own
-// name is among them is bound to a fresh one and spelled by that, because the
-// alternative is a file that imports two packages under one name: it does not
-// compile, and the failure is in generated code the author cannot edit, about a
-// collision they caused by naming a package slices.
-func Spell(t types.Type, local string, taken []string) Spelling {
+// The bound imports are what the file being written already binds, path and
+// name both. A package among them is spelled by the name it is already bound
+// to, and one whose own name is taken by a *different* path is bound to a fresh
+// one and spelled by that.
+//
+// Both halves matter and neither is enough alone. Without the names, a file
+// ends up importing two packages under one — it does not compile, and the
+// failure is in generated code the author cannot edit, about a collision they
+// caused by naming a package slices. Without the paths, one package spelled
+// twice is bound twice under two names, which does not compile either and is
+// the same mistake wearing the other face.
+func Spell(t types.Type, local string, bound []Import) Spelling {
 	if t == nil {
-		return Spelling{Text: "?"}
+		return Spelling{Text: "?", Local: local}
 	}
 
 	var imports []Import
@@ -97,20 +119,31 @@ func Spell(t types.Type, local string, taken []string) Spelling {
 			return ""
 		}
 
-		if at := slices.IndexFunc(imports, func(one Import) bool { return one.Path == p.Path() }); at >= 0 {
+		if at := held(bound, p.Path()); at >= 0 {
+			// Already bound by whatever else is being written into the file, so
+			// the spelling joins it rather than asking for a second import of
+			// one path. It is not recorded again: the file has it.
+			return bound[at].Name
+		}
+		if at := held(imports, p.Path()); at >= 0 {
 			return imports[at].Name
 		}
 
-		bound := free(p.Name(), taken, imports)
-		imports = append(imports, Import{Path: p.Path(), Name: bound, Aliased: bound != p.Name()})
+		name := free(p.Name(), bound, imports)
+		imports = append(imports, Import{Path: p.Path(), Name: name, Aliased: name != p.Name()})
 
-		return bound
+		return name
 	}
 
 	text := types.TypeString(t, qualify)
 	slices.SortFunc(imports, func(a, b Import) int { return strings.Compare(a.Path, b.Path) })
 
-	return Spelling{Text: text, Imports: imports}
+	return Spelling{Text: text, Imports: imports, Local: local}
+}
+
+// held returns where a path is bound among these imports, or a negative number.
+func held(imports []Import, path string) int {
+	return slices.IndexFunc(imports, func(one Import) bool { return one.Path == path })
 }
 
 // free returns a name to bind a package to: its own where that is available,
@@ -119,10 +152,10 @@ func Spell(t types.Type, local string, taken []string) Spelling {
 // Numbered rather than decorated, because the result is read in generated code
 // and slices2.Person says what it is. Counting from two reads as the second
 // package of that name, which is what it is.
-func free(name string, taken []string, bound []Import) string {
+func free(name string, bound, imports []Import) string {
 	claimed := func(candidate string) bool {
-		return slices.Contains(taken, candidate) ||
-			slices.ContainsFunc(bound, func(one Import) bool { return one.Name == candidate })
+		return slices.ContainsFunc(bound, func(one Import) bool { return one.Name == candidate }) ||
+			slices.ContainsFunc(imports, func(one Import) bool { return one.Name == candidate })
 	}
 
 	if !claimed(name) {
@@ -136,12 +169,12 @@ func free(name string, taken []string, bound []Import) string {
 }
 
 // SubjectSpelling writes the declaration's subject the way the generated file
-// has to write it, avoiding the names that file already binds.
+// has to write it, joining what that file already binds.
 //
 // It is here rather than in the layer that needs it because every layer needs
 // it and they must all agree: two layers spelling one subject differently would
 // each be right about their own half of a file that does not compile.
-func (m *Model) SubjectSpelling(taken []string) Spelling {
+func (m *Model) SubjectSpelling(bound []Import) Spelling {
 	if m == nil {
 		return Spelling{Text: "?"}
 	}
@@ -151,5 +184,5 @@ func (m *Model) SubjectSpelling(taken []string) Spelling {
 		local = m.Pkg.PkgPath
 	}
 
-	return Spell(m.Subject.Type(), local, taken)
+	return Spell(m.Subject.Type(), local, bound)
 }

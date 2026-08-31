@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -62,15 +63,20 @@ var templateImports = map[string]string{
 	"slices": "slices",
 }
 
-// taken returns the names the template's imports bind, sorted so that a
-// spelling built from them does not depend on a map.
-func taken() []string {
-	out := make([]string, 0, len(templateImports))
-	for _, name := range templateImports {
-		out = append(out, name)
+// taken returns what the template's imports bind, sorted so that a spelling
+// built from them does not depend on a map.
+//
+// Path and name both, because a spelling given only names would alias a subject
+// from a package the template already imports — the file would then bind one
+// path twice, which is the mistake the names were passed to prevent, wearing
+// the other face.
+func taken() []model.Import {
+	out := make([]model.Import, 0, len(templateImports))
+	for path, name := range templateImports {
+		out = append(out, model.Import{Path: path, Name: name})
 	}
 
-	slices.Sort(out)
+	slices.SortFunc(out, func(a, b model.Import) int { return strings.Compare(a.Path, b.Path) })
 	return out
 }
 

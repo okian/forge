@@ -19,4 +19,4 @@ Step  Layer       Emits    Withdraws
 1     Person      —        —
 2     Json        pending  —
 3     Ring        pending  —
-4     Collection  pending  —
+4     Collection  Seq      —

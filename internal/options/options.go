@@ -26,6 +26,7 @@ var (
 	codeOptionField      = diag.Register(3010, "option does not name a field of the subject")
 	codeOptionMissing    = diag.Register(3011, "layer cannot generate without this option")
 	codeOptionUnnamed    = diag.Register(3012, "option has no name")
+	codeFieldTwice       = diag.Register(3016, "option names one field twice")
 )
 
 // Declaration is what validating a declaration's options needs to know about
@@ -267,6 +268,14 @@ func fields(decl Declaration, entry model.Option, def layer.OptionDef) diag.Set 
 
 	for _, name := range named {
 		if said[name] {
+			// Naming a field twice asks for the same thing twice, and what a
+			// layer would make of it is one declaration written twice into
+			// somebody's package. Reported here rather than left to each layer
+			// that takes fields, because it is meaningless for all of them and
+			// this is the one place that holds the option's own position.
+			diags.Add(diag.New(codeFieldTwice, entry.Pos,
+				"%s names %s more than once", entry.Key, name).
+				WithHint("%s", "write it once; naming it again asks for nothing further"))
 			continue
 		}
 		said[name] = true

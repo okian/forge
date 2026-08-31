@@ -80,9 +80,11 @@
         "Streamable",
         "Bounded"
       ],
-      "methods": [],
+      "methods": [
+        "Seq"
+      ],
       "withdraws": [],
-      "pending": true,
+      "pending": false,
       "staged": false
     }
   ]
