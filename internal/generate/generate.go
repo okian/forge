@@ -12,6 +12,7 @@ import (
 	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/merge"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
@@ -316,6 +317,7 @@ func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emi
 	}
 	if held != nil {
 		file.Decl, file.Pos = held.Name, held.Pos
+		file.Build = tagged(held.Form)
 	}
 
 	// A unit's assertions are not written. Nothing generates one yet, and where
@@ -323,6 +325,26 @@ func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emi
 	// about one file — the stage that decides which interfaces a declaration
 	// claims is the one that owns emitting the claims.
 	return file.Render()
+}
+
+// tagged returns the build constraint a declaration's file carries.
+//
+// A spec declaration and the file generated for it are two declarations of one
+// name, and exactly one of them may be in scope. The spec is written under a
+// tag and this is written under its complement, so the ordinary build sees the
+// real type and a build with the tag sees the one the author wrote — which is
+// what keeps the spec type-checked, and a rename of the subject a compile error
+// rather than a stale comment.
+//
+// An inline declaration carries none. The author's own file holds the type and
+// carries no tag, so the methods have to be readable wherever that file is —
+// which is everywhere. A constraint of any kind would take them out of some
+// build the author already had.
+func tagged(form model.Form) string {
+	if form == model.FormSpec {
+		return "!" + load.SpecTag
+	}
+	return ""
 }
 
 // Fingerprint records everything one declaration's output depends on.
