@@ -75,7 +75,7 @@ func build(t *testing.T, name string) *model.Struct {
 	t.Helper()
 
 	loaded := session(t)
-	built, diags := builder(t, loaded).Build(named(t, loaded, name), token.Position{})
+	built, diags := builder(t, loaded).Build(named(t, loaded, name), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("%s does not model clean:\n%s", name, diags.Render())
 	}
@@ -180,7 +180,7 @@ func TestTagsAreParsedOntoTheField(t *testing.T) {
 func TestAMalformedTagIsReportedAtItsField(t *testing.T) {
 	loaded := session(t)
 
-	built, diags := builder(t, loaded).Build(named(t, loaded, "Tagged"), token.Position{})
+	built, diags := builder(t, loaded).Build(named(t, loaded, "Tagged"), subject.At(token.Position{}))
 	if built == nil {
 		t.Fatal("a malformed tag stopped the model being built")
 	}
@@ -305,8 +305,8 @@ func TestMutualCyclesAreRecordedOnBothSides(t *testing.T) {
 	loaded := session(t)
 	shared := builder(t, loaded)
 
-	ring, _ := shared.Build(named(t, loaded, "Ring"), token.Position{})
-	spoke, _ := shared.Build(named(t, loaded, "Spoke"), token.Position{})
+	ring, _ := shared.Build(named(t, loaded, "Ring"), subject.At(token.Position{}))
+	spoke, _ := shared.Build(named(t, loaded, "Spoke"), subject.At(token.Position{}))
 
 	if !ring.Cyclic || !spoke.Cyclic {
 		t.Errorf("cyclic: Ring=%v Spoke=%v, want both", ring.Cyclic, spoke.Cyclic)
@@ -338,15 +338,15 @@ func TestOneTypeIsModelledOnce(t *testing.T) {
 	loaded := session(t)
 	shared := builder(t, loaded)
 
-	first, _ := shared.Build(named(t, loaded, "Person"), token.Position{})
-	second, _ := shared.Build(named(t, loaded, "Person"), token.Position{})
+	first, _ := shared.Build(named(t, loaded, "Person"), subject.At(token.Position{}))
+	second, _ := shared.Build(named(t, loaded, "Person"), subject.At(token.Position{}))
 
 	if first != second {
 		t.Error("one type modelled twice")
 	}
 
 	// And a subject reached from another subject is the same value again.
-	address, _ := shared.Build(named(t, loaded, "Address"), token.Position{})
+	address, _ := shared.Build(named(t, loaded, "Address"), subject.At(token.Position{}))
 	if address != first.Closure[0] {
 		t.Error("Address is one value as a subject and another as a field")
 	}
@@ -389,7 +389,7 @@ func TestModellingIsDeterministic(t *testing.T) {
 
 	var first []string
 	for range 5 {
-		built, diags := builder(t, loaded).Build(named(t, loaded, "Person"), token.Position{})
+		built, diags := builder(t, loaded).Build(named(t, loaded, "Person"), subject.At(token.Position{}))
 		if !diags.Empty() {
 			t.Fatalf("Person does not model clean:\n%s", diags.Render())
 		}
@@ -431,10 +431,10 @@ func TestAStructReachedOnlyThroughAClosureIsCompleteToo(t *testing.T) {
 func TestAnInstantiatedSubjectSaysSo(t *testing.T) {
 	loaded := session(t)
 
-	keyed, _ := builder(t, loaded).Build(named(t, loaded, "Keyed"), token.Position{})
+	keyed, _ := builder(t, loaded).Build(named(t, loaded, "Keyed"), subject.At(token.Position{}))
 	entry, _ := keyed.Field("Entry")
 
-	built, diags := builder(t, loaded).Build(entry.Type.Type, token.Position{})
+	built, diags := builder(t, loaded).Build(entry.Type.Type, subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("Pair[string, Unit] does not model clean:\n%s", diags.Render())
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/internal/subject"
 )
 
 // A layer branches on the class before it looks at anything finer, so every
@@ -151,7 +152,7 @@ func TestSubjectsNothingCanBeBuiltFrom(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			built, diags := builder(t, loaded).Build(tc.subject, where)
+			built, diags := builder(t, loaded).Build(tc.subject, subject.At(where))
 
 			if built != nil {
 				t.Errorf("built %s from it", built)

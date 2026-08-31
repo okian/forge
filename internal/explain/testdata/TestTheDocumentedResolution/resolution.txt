@@ -1,0 +1,22 @@
+Persons Collection[Ring[Json[Person]]]
+  model/spec.go:8:6 · package example.com/model · spec form
+
+Step  Layer       Kind      Effect
+1     Person      subject   struct model: 4 fields, 4 tags
+2     Json        element   streaming codec with no reflection, driven by the subject's json tags
+3     Ring        storage   fixed-capacity circular buffer, so a long-running producer cannot grow memory without bound
+4     Collection  refining  query, projection and sort methods built from the subject's fields
+
+Shape
+Step  Layer       Adds                                 Masks  Exposes
+1     Person      Structured                           —      Structured
+2     Json        Encodable                            —      Structured, Encodable
+3     Ring        Sized, Ordered, Streamable, Bounded  —      Sized, Ordered, Structured, Encodable, Streamable, Bounded
+4     Collection  —                                    —      Sized, Ordered, Structured, Encodable, Streamable, Bounded
+
+Methods
+Step  Layer       Emits    Withdraws
+1     Person      —        —
+2     Json        pending  —
+3     Ring        pending  —
+4     Collection  pending  —

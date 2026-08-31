@@ -26,22 +26,34 @@ func TestForgeOverAModuleOnDisk(t *testing.T) {
 
 	got := forge("-v", "-C", fixture, "check", "./...")
 
-	// The module holds no mistakes, so the walk finds nothing to report and
-	// stops at the half this build cannot do.
 	if got.status != diag.ExitDiagnostics {
 		t.Errorf("exited %d, want %d:\n%s", got.status, diag.ExitDiagnostics, got.err)
-	}
-	if !strings.Contains(got.err, "not in this build") {
-		t.Errorf("the run did not reach the end of the path it can walk:\n%s", got.err)
 	}
 
 	// Every stage found something. A stage wired to nothing reports zero and
 	// changes no status, so these numbers are the only thing that says the tool
 	// is connected to the packages it claims to read.
-	for _, want := range []string{"loaded", "found", "resolved"} {
+	for _, want := range []string{"loaded", "found", "resolved", "modelled"} {
 		if !found(got.err, want) {
 			t.Errorf("the %s stage found nothing:\n%s", want, got.err)
 		}
+	}
+
+	// The fixture holds subjects that cannot be modelled, on purpose, so the
+	// walk reaches the far end and reports — which is a stronger claim than
+	// reaching it and finding nothing to say.
+	if !strings.Contains(got.err, "FRG2") {
+		t.Errorf("the subjects were not modelled at all:\n%s", got.err)
+	}
+
+	// And the refusal is drawn, which only happens if the stage that knows the
+	// stack hands it to the stage that does not. A diagnostic naming the type
+	// it refused leaves the reader to find it among four nested layers.
+	if !strings.Contains(got.err, "Collection[*Person]\n") {
+		t.Errorf("the refusal does not draw the declaration:\n%s", got.err)
+	}
+	if !strings.Contains(got.err, "^^^^^^^") {
+		t.Errorf("the refusal draws no caret:\n%s", got.err)
 	}
 }
 
@@ -111,7 +123,6 @@ func TestTheVerbsThisBuildCannotFinish(t *testing.T) {
 	}{
 		{name: "check", args: []string{"./..."}},
 		{name: "doctor"},
-		{name: "explain", args: []string{"-t", "Persons"}},
 		{name: "generate", args: []string{"./..."}},
 		{name: "list"},
 	}

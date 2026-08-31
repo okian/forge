@@ -159,3 +159,9 @@ type Registry struct {
 	All  Labels
 	Unit Unit
 }
+
+// Åéîõü is named outside ASCII, which Go allows and which is where a span
+// measured in bytes and a caret drawn in characters part company.
+type Åéîõü struct {
+	Name string
+}

@@ -1,0 +1,89 @@
+{
+  "name": "Persons",
+  "declaration": "Collection[Ring[Json[Person]]]",
+  "package": "example.com/model",
+  "position": "model/spec.go:8:6",
+  "form": "spec",
+  "steps": [
+    {
+      "step": 1,
+      "name": "Person",
+      "kind": "subject",
+      "effect": "struct model: 4 fields, 4 tags",
+      "adds": [
+        "Structured"
+      ],
+      "masks": [],
+      "exposes": [
+        "Structured"
+      ],
+      "methods": [],
+      "withdraws": [],
+      "pending": false,
+      "staged": false
+    },
+    {
+      "step": 2,
+      "name": "Json",
+      "kind": "element",
+      "effect": "streaming codec with no reflection, driven by the subject's json tags",
+      "adds": [
+        "Encodable"
+      ],
+      "masks": [],
+      "exposes": [
+        "Structured",
+        "Encodable"
+      ],
+      "methods": [],
+      "withdraws": [],
+      "pending": true,
+      "staged": false
+    },
+    {
+      "step": 3,
+      "name": "Ring",
+      "kind": "storage",
+      "effect": "fixed-capacity circular buffer, so a long-running producer cannot grow memory without bound",
+      "adds": [
+        "Sized",
+        "Ordered",
+        "Streamable",
+        "Bounded"
+      ],
+      "masks": [],
+      "exposes": [
+        "Sized",
+        "Ordered",
+        "Structured",
+        "Encodable",
+        "Streamable",
+        "Bounded"
+      ],
+      "methods": [],
+      "withdraws": [],
+      "pending": true,
+      "staged": false
+    },
+    {
+      "step": 4,
+      "name": "Collection",
+      "kind": "refining",
+      "effect": "query, projection and sort methods built from the subject's fields",
+      "adds": [],
+      "masks": [],
+      "exposes": [
+        "Sized",
+        "Ordered",
+        "Structured",
+        "Encodable",
+        "Streamable",
+        "Bounded"
+      ],
+      "methods": [],
+      "withdraws": [],
+      "pending": true,
+      "staged": false
+    }
+  ]
+}

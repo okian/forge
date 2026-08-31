@@ -13,16 +13,16 @@ func generate(env *environment, cmd command, args []string) error {
 	flags.Bool("dry-run", false, "resolve and report without writing anything")
 	flags.Bool("diff", false, "write what would change to stdout as a diff")
 
-	on, err := parse(env, cmd, flags, args)
+	packages, on, err := parse(env, cmd, flags, args)
 	if !on || err != nil {
 		return err
 	}
 
-	found, err := env.pipeline.follow(env, env.loadConfig(flags.Args()...))
+	found, err := env.pipeline.follow(env, env.loadConfig(packages...))
 	if err != nil {
 		return err
 	}
-	if env.report(found.Diagnostics) {
+	if env.report(found.All()) {
 		return errReported
 	}
 

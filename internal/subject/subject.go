@@ -102,6 +102,16 @@ type Builder struct {
 	// the order the fields refer to them and without repeats. The closure and
 	// the cycle flag are both read off it once the walk is done.
 	reaches map[model.TypeRef][]model.TypeRef
+
+	// faults remembers what was wrong with each subject, so that the second
+	// declaration over one is told what the first was told.
+	//
+	// Memoising the model without memoising its faults would make a malformed
+	// tag a property of declaration order: the declaration that reached the
+	// subject first would be refused and every later one would be handed the
+	// cached model and a clean bill. The fault is in the subject, so every
+	// declaration that names it has it.
+	faults map[model.TypeRef]diag.Set
 }
 
 // New returns a builder for one module.
@@ -110,28 +120,38 @@ func New(cfg Config) *Builder {
 		cfg:     cfg,
 		built:   make(map[model.TypeRef]*model.Struct),
 		reaches: make(map[model.TypeRef][]model.TypeRef),
+		faults:  make(map[model.TypeRef]diag.Set),
 	}
 }
 
 // Build returns the model of the type a stack is specialised to, and the
 // diagnostics for a type no subject can be built from.
 //
-// pos is the position of the declaration that named the subject, not of the
-// subject's own declaration. A subject is very often somebody else's type in
-// somebody else's file, and the line the author of this declaration can edit is
-// the one that named it.
-//
 // It returns nil only when the subject itself is one no model can be built
 // from. A tag that will not parse, and a type that nests without end, are
 // reported alongside a model rather than instead of one: the rest of it is
 // still true, and a layer that needs none of the part that failed should still
 // run.
-func (b *Builder) Build(subject types.Type, pos token.Position) (*model.Struct, diag.Set) {
-	run := &run{where: pos}
+func (b *Builder) Build(subject types.Type, at Site) (*model.Struct, diag.Set) {
+	run := &run{at: at}
 
 	named, ok := b.named(subject, run)
 	if !ok {
 		return nil, run.diags
+	}
+
+	ref := model.RefOf(named)
+	if built, seen := b.built[ref]; seen {
+		// Built already, so the walk would find nothing to report this time
+		// round. What was wrong with it is still wrong, and every declaration
+		// over it has it — so the same answer is given again rather than the
+		// second author being handed the cached model and a clean bill.
+		//
+		// Verbatim, positions included. What is wrong here is wrong in a field
+		// or in a type reached from one, and those are in one place whoever
+		// named them; moving them to the asking declaration would point every
+		// author at a line that holds nothing but the name of the type.
+		return built, b.faults[ref]
 	}
 
 	// Everything discovered from here is new, and everything discovered before
@@ -144,25 +164,66 @@ func (b *Builder) Build(subject types.Type, pos token.Position) (*model.Struct, 
 	root := b.structFor(named, 0, run)
 	b.link(fresh)
 
+	b.faults[ref] = run.diags
+
 	return root, run.diags
 }
 
+// Site is where a subject was named.
+//
+// The position is the declaration's, not the subject's own: a subject is very
+// often somebody else's type in somebody else's file, and the line the author
+// of this declaration can edit is the one that named it.
+//
+// The rendering is separate because the stage that refuses a subject cannot
+// produce it. A stack is resolved before a model is built, so the picture is
+// known by then — but the builder is handed a type and never sees the stack it
+// was written inside, and a diagnostic that only says which type was refused
+// leaves the reader to find it among four nested layers.
+type Site struct {
+	// Pos is where the declaration was written.
+	Pos token.Position
+
+	// Layout is the declaration rendered, with the subject's place inside it.
+	// Its zero value is a site that carries a position and no picture, which is
+	// what a caller with nothing to draw gets.
+	//
+	// The rendering rather than a caret line already drawn: drawing it is one
+	// call, and a caller that had to make it could make it wrong — under the
+	// layer beside the subject, or measured in the wrong units — with nothing
+	// to compare against.
+	Layout model.Layout
+}
+
+// At returns a site with a position and no rendering, for a caller that has
+// nothing to draw.
+func At(pos token.Position) Site { return Site{Pos: pos} }
+
 // run is the state of one Build: where to report, and what has been reported.
 type run struct {
-	// where is the position of the declaration being built for. Every
-	// diagnostic about the subject itself points there rather than at the type,
-	// which is very often somebody else's and in somebody else's file.
-	where token.Position
+	// at is where the declaration being built for was written, and how it
+	// reads.
+	at Site
 
 	// diags collects what was wrong.
 	diags diag.Set
+}
+
+// refuse records a diagnostic about the subject itself, drawn beneath the
+// declaration that named it.
+//
+// Only the subject's own refusals go through here. A malformed tag is reported
+// against the field that carries it, and underlining the subject for it would
+// point at the one part of the declaration that is right.
+func (r *run) refuse(d diag.Diagnostic) {
+	r.diags.Add(d.WithStack(r.at.Layout.Text, r.at.Layout.Subject.Underline(r.at.Layout.Text)))
 }
 
 // named narrows a resolved subject to the one shape a model can be built from,
 // reporting what it was instead.
 func (b *Builder) named(subject types.Type, run *run) (*types.Named, bool) {
 	if subject == nil {
-		run.diags.Add(diag.New(codeSubjectNotAvailable, run.where, "the declaration names no subject").
+		run.refuse(diag.New(codeSubjectNotAvailable, run.at.Pos, "the declaration names no subject").
 			WithHint("%s", "report this declaration; resolution accepted it and left nothing for the subject"))
 		return nil, false
 	}
@@ -174,19 +235,19 @@ func (b *Builder) named(subject types.Type, run *run) (*types.Named, bool) {
 		return b.instantiated(typ, spelled, run)
 
 	case *types.Pointer:
-		run.diags.Add(diag.New(codeSubjectPointer, run.where, "subject %s is a pointer", spelled).
+		run.refuse(diag.New(codeSubjectPointer, run.at.Pos, "subject %s is a pointer", spelled).
 			WithHint("%s", "write the value type; a pointer's nil and its aliasing would have to be answered for by every layer above it"))
 
 	case *types.TypeParam:
-		run.diags.Add(diag.New(codeSubjectOpen, run.where, "subject %s is a type parameter", spelled).
+		run.refuse(diag.New(codeSubjectOpen, run.at.Pos, "subject %s is a type parameter", spelled).
 			WithHint("%s", openHint))
 
 	case *types.Basic:
-		run.diags.Add(diag.New(codeSubjectUnnamed, run.where, "subject %s is a predeclared type", spelled).
+		run.refuse(diag.New(codeSubjectUnnamed, run.at.Pos, "subject %s is a predeclared type", spelled).
 			WithHint("declare a type for it, as in \"type Celsius %s\", so that generated methods have something to attach to", spelled))
 
 	default:
-		run.diags.Add(diag.New(codeSubjectUnnamed, run.where, "subject %s is not a named type", spelled).
+		run.refuse(diag.New(codeSubjectUnnamed, run.at.Pos, "subject %s is not a named type", spelled).
 			WithHint("%s", "declare a type for it, so that generated methods have something to attach to"))
 	}
 
@@ -209,14 +270,14 @@ func (b *Builder) instantiated(named *types.Named, spelled string, run *run) (*t
 	args := named.TypeArgs()
 
 	if named.TypeParams().Len() > 0 && args.Len() == 0 {
-		run.diags.Add(diag.New(codeSubjectOpen, run.where, "subject %s is a generic type", spelled).
+		run.refuse(diag.New(codeSubjectOpen, run.at.Pos, "subject %s is a generic type", spelled).
 			WithHint("%s", openHint))
 		return nil, false
 	}
 
 	for arg := range args.Types() {
 		if holdsTypeParam(arg) {
-			run.diags.Add(diag.New(codeSubjectOpen, run.where,
+			run.refuse(diag.New(codeSubjectOpen, run.at.Pos,
 				"subject %s is instantiated with a type parameter", spelled).
 				WithHint("%s", openHint))
 			return nil, false
@@ -300,7 +361,7 @@ func (b *Builder) structFor(named *types.Named, depth int, run *run) *model.Stru
 	b.discovered = append(b.discovered, ref)
 
 	if depth >= maxDepth {
-		run.diags.Add(diag.New(codeTypeUnbounded, run.where,
+		run.diags.Add(diag.New(codeTypeUnbounded, run.at.Pos,
 			"type %s nests inside itself without end", model.TypeString(named)).
 			WithHint("%s", "this is an instantiation cycle, which the compiler rejects; the package declaring it does not build"))
 		return out

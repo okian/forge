@@ -33,7 +33,7 @@ func outside(t *testing.T, loaded *load.Session) *subject.Builder {
 func TestAnExternalStructIsFollowedThroughItsExportedFields(t *testing.T) {
 	loaded := session(t)
 
-	inside, diags := builder(t, loaded).Build(named(t, loaded, "Hidden"), token.Position{})
+	inside, diags := builder(t, loaded).Build(named(t, loaded, "Hidden"), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("Hidden does not model clean:\n%s", diags.Render())
 	}
@@ -41,7 +41,7 @@ func TestAnExternalStructIsFollowedThroughItsExportedFields(t *testing.T) {
 		t.Fatalf("inside the module the closure is %v, want %v", got, want)
 	}
 
-	foreign, diags := outside(t, loaded).Build(named(t, loaded, "Hidden"), token.Position{})
+	foreign, diags := outside(t, loaded).Build(named(t, loaded, "Hidden"), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("Hidden does not model clean from outside:\n%s", diags.Render())
 	}
@@ -82,11 +82,11 @@ func TestAnExternalStructWithNothingReadableIsALeaf(t *testing.T) {
 func TestAMalformedTagInAnotherModuleIsNotReported(t *testing.T) {
 	loaded := session(t)
 
-	if _, diags := builder(t, loaded).Build(named(t, loaded, "Tagged"), token.Position{}); diags.Len() != 1 {
+	if _, diags := builder(t, loaded).Build(named(t, loaded, "Tagged"), subject.At(token.Position{})); diags.Len() != 1 {
 		t.Fatalf("inside the module the tag reported %d diagnostics, want 1", diags.Len())
 	}
 
-	built, diags := outside(t, loaded).Build(named(t, loaded, "Tagged"), token.Position{})
+	built, diags := outside(t, loaded).Build(named(t, loaded, "Tagged"), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Errorf("a tag in another module was reported:\n%s", diags.Render())
 	}
@@ -107,7 +107,7 @@ func TestFieldsAnswerForTheTypeAsWritten(t *testing.T) {
 		Fset:       loaded.Fset,
 		Module:     fixtureModule,
 		Interfaces: []subject.Interface{stringer},
-	}).Build(named(t, loaded, "Shapes"), token.Position{})
+	}).Build(named(t, loaded, "Shapes"), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("Shapes does not model clean:\n%s", diags.Render())
 	}
@@ -123,7 +123,7 @@ func TestFieldsAnswerForTheTypeAsWritten(t *testing.T) {
 	}
 
 	// And the same for the module boundary: what is written is what answers.
-	foreign, _ := outside(t, loaded).Build(named(t, loaded, "Shapes"), token.Position{})
+	foreign, _ := outside(t, loaded).Build(named(t, loaded, "Shapes"), subject.At(token.Position{}))
 	for _, name := range []string{"Value", "Ptr"} {
 		if field, _ := foreign.Field(name); !field.External {
 			t.Errorf("%s is not external to a module it does not belong to", name)
@@ -200,7 +200,7 @@ func TestOpenSubjectsAreRefused(t *testing.T) {
 
 	for name, subjectType := range cases {
 		t.Run(name, func(t *testing.T) {
-			built, diags := builder(t, loaded).Build(subjectType, token.Position{})
+			built, diags := builder(t, loaded).Build(subjectType, subject.At(token.Position{}))
 
 			if built != nil {
 				t.Errorf("built %s from it", built)
@@ -244,7 +244,7 @@ func TestAnInstantiationCycleIsReportedRatherThanFollowed(t *testing.T) {
 	}
 
 	built, diags := subject.New(subject.Config{Fset: loaded.Fset, Module: "cyclicfixture"}).
-		Build(start, token.Position{Filename: "spec.go", Line: 1, Column: 1})
+		Build(start, subject.At(token.Position{Filename: "spec.go", Line: 1, Column: 1}))
 
 	if built == nil {
 		t.Fatal("Start modelled to nothing")

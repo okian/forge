@@ -26,13 +26,13 @@ var build = debug.ReadBuildInfo
 func version(env *environment, cmd command, args []string) error {
 	flags := flagsFor(cmd)
 
-	on, err := parse(env, cmd, flags, args)
+	rest, on, err := parse(env, cmd, flags, args)
 	if !on || err != nil {
 		return err
 	}
 
-	if flags.NArg() > 0 {
-		return misusedf("version takes no arguments, got %q", flags.Arg(0))
+	if len(rest) > 0 {
+		return answered(cmd, flags, "version takes no arguments, got %q", rest[0])
 	}
 
 	self, markers, toolchain := versions()

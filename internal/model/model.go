@@ -113,6 +113,10 @@ type Layout struct {
 
 	// Spans holds one entry per element of [Model.Stack], in the same order.
 	Spans []Span
+
+	// Subject locates the innermost type, which no stack entry covers and
+	// which the diagnostics that refuse a subject have to point at.
+	Subject Span
 }
 
 // Underline returns a line of spaces and carets that marks the i'th stack
@@ -186,22 +190,28 @@ func (m *Model) Layout() Layout {
 	if m == nil {
 		return Layout{}
 	}
-
-	text, spans, open := OpenStack(m.Stack)
-
-	return Layout{
-		Text:  text + m.subjectName() + strings.Repeat("]", open),
-		Spans: spans,
-	}
+	return LayoutOf(m.Stack, m.Subject.Type())
 }
 
-// subjectName returns the name to print innermost in a rendered stack.
+// LayoutOf renders a stack over a subject that has no model yet.
 //
-// It spells the type rather than its identity: [TypeRef.Args] qualifies an
-// instantiation's arguments by import path, which is what keeps two
-// instantiations apart and exactly what a reader of a rendered declaration does
-// not want to see.
-func (m *Model) subjectName() string { return TypeString(m.Subject.Type()) }
+// The stage that refuses a subject is the stage that would otherwise have built
+// the model, so the picture a diagnostic draws has to be available before there
+// is one. Both entry points render through the same code, because a rendering
+// that disagreed with the offsets underneath it would draw a caret under the
+// wrong layer.
+func LayoutOf(stack []LayerRef, subject types.Type) Layout {
+	text, spans, open := OpenStack(stack)
+
+	name := TypeString(subject)
+	at := Span{Offset: len(text), Width: len(name)}
+
+	return Layout{
+		Text:    text + name + strings.Repeat("]", open),
+		Spans:   spans,
+		Subject: at,
+	}
+}
 
 // Options is one layer's option set, as written on a declaration.
 type Options struct {

@@ -44,7 +44,7 @@ func TestInterfacesAlreadyImplementedAreRecorded(t *testing.T) {
 	// An interface with nothing behind it is skipped rather than crashed on.
 	empty := subject.Interface{Ref: model.TypeRef{Pkg: "none", Name: "Missing"}}
 
-	built, diags := builder(t, loaded, late, empty, early).Build(named(t, loaded, "Holder"), token.Position{})
+	built, diags := builder(t, loaded, late, empty, early).Build(named(t, loaded, "Holder"), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("Holder does not model clean:\n%s", diags.Render())
 	}
@@ -95,7 +95,7 @@ func TestWithoutAModuleNothingIsExternal(t *testing.T) {
 	loaded := session(t)
 
 	built, diags := subject.New(subject.Config{Fset: loaded.Fset}).
-		Build(named(t, loaded, "External"), token.Position{})
+		Build(named(t, loaded, "External"), subject.At(token.Position{}))
 	if !diags.Empty() {
 		t.Fatalf("External does not model clean:\n%s", diags.Render())
 	}
@@ -131,7 +131,7 @@ func TestWithoutAFileSetPositionsAreEmpty(t *testing.T) {
 	loaded := session(t)
 
 	built, _ := subject.New(subject.Config{Module: fixtureModule}).
-		Build(named(t, loaded, "Person"), token.Position{})
+		Build(named(t, loaded, "Person"), subject.At(token.Position{}))
 
 	if built.Pos != (token.Position{}) {
 		t.Errorf("Pos = %s, want the zero position", built.Pos)

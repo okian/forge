@@ -6,13 +6,13 @@ import "fmt"
 func doctor(env *environment, cmd command, args []string) error {
 	flags := flagsFor(cmd)
 
-	on, err := parse(env, cmd, flags, args)
+	rest, on, err := parse(env, cmd, flags, args)
 	if !on || err != nil {
 		return err
 	}
 
-	if flags.NArg() > 0 {
-		return misusedf("doctor takes no arguments, got %q", flags.Arg(0))
+	if len(rest) > 0 {
+		return answered(cmd, flags, "doctor takes no arguments, got %q", rest[0])
 	}
 
 	return fmt.Errorf("diagnosing the toolchain %w", errNotBuilt)

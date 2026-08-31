@@ -7,13 +7,13 @@ func list(env *environment, cmd command, args []string) error {
 	flags := flagsFor(cmd)
 	flags.Bool("json", false, "write the catalog as JSON")
 
-	on, err := parse(env, cmd, flags, args)
+	rest, on, err := parse(env, cmd, flags, args)
 	if !on || err != nil {
 		return err
 	}
 
-	if flags.NArg() > 0 {
-		return misusedf("list takes no arguments, got %q", flags.Arg(0))
+	if len(rest) > 0 {
+		return answered(cmd, flags, "list takes no arguments, got %q", rest[0])
 	}
 
 	return fmt.Errorf("listing the layer catalog %w", errNotBuilt)

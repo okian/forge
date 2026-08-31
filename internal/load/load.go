@@ -159,6 +159,37 @@ func (s *Session) FileName(file *ast.File) string {
 	return s.Fset.Position(file.FileStart).Filename
 }
 
+// Module returns the import path of the module being generated for, or the
+// empty string when the load reached no package that belongs to one.
+//
+// The main module, taken from the load rather than inferred: go/packages marks
+// which module each package belongs to, so this is the answer rather than a
+// guess at it. A workspace holding several main modules reports the first by
+// import path, which is at least the same one twice.
+//
+// It returns a path, and a path is not yet enough. Deciding whether a type is
+// one forge may attach a method to still compares import path prefixes, and a
+// module nested inside this one shares the prefix while belonging to neither
+// its build nor its ownership — so the wrong answer is available for exactly
+// the packages whose generated code would not compile. Closing that means
+// asking per package rather than per path, which is a change to the stage that
+// asks.
+//
+// A package in no module at all — GOPATH mode, or a directory outside one —
+// reports nothing rather than guessing, since every type it holds is then
+// equally foreign and saying so is the honest answer.
+func (s *Session) Module() string {
+	if s == nil {
+		return ""
+	}
+	for _, pkg := range s.Packages {
+		if pkg.Module != nil && pkg.Module.Main {
+			return pkg.Module.Path
+		}
+	}
+	return ""
+}
+
 // Package returns the loaded package with the given import path.
 func (s *Session) Package(path string) (*packages.Package, bool) {
 	if s == nil {

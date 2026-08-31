@@ -3,15 +3,20 @@ package main
 import (
 	"bytes"
 	"errors"
+	"flag"
+	"fmt"
 	"go/token"
 	"io"
 	"strings"
 	"testing"
 
+	"golang.org/x/tools/go/packages"
+
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/resolve"
+	"github.com/okian/forge/internal/subject"
 )
 
 // stack stands in for the shared path, so that a command can be run against
@@ -24,18 +29,22 @@ type stack struct {
 	empty      bool
 	candidates []discover.Candidate
 	found      []resolve.Declaration
+	modelled   []request
 	loaded     diag.Set
 	discovered diag.Set
 	resolved   diag.Set
+	built      diag.Set
 
 	// asked records what reached each stage, so that a test can say whether a
 	// verb walked the path or went around it.
 	asked []string
 
-	// given records what the load was configured with. Recording only that a
-	// stage ran would leave a verb free to load something other than what the
-	// command line named.
-	given load.Config
+	// given records what the load was configured with, and modelling what the
+	// subject builder was. Recording only that a stage ran would leave a verb
+	// free to load something other than what the command line named, or to
+	// build subjects for a module it is not generating for.
+	given     load.Config
+	modelling subject.Config
 }
 
 func (s *stack) Load(cfg load.Config) (*load.Session, error) {
@@ -65,15 +74,56 @@ func (s *stack) Resolve([]discover.Candidate) ([]resolve.Declaration, diag.Set) 
 	return s.found, s.resolved
 }
 
+func (s *stack) Model(cfg subject.Config, declarations []resolve.Declaration) ([]request, diag.Set) {
+	s.asked = append(s.asked, "model")
+	s.modelling = cfg
+
+	// What the builder said travels with the declaration it was said about, the
+	// way the real stage attributes it — and a request that already carries its
+	// own is left alone, so that a test can give two declarations different
+	// problems and see which one is reported.
+	if s.modelled != nil {
+		out := make([]request, len(s.modelled))
+		for i, one := range s.modelled {
+			if one.Diagnostics.Empty() {
+				one.Diagnostics = s.built
+			}
+			out[i] = one
+		}
+		return out, s.built
+	}
+
+	out := make([]request, 0, len(declarations))
+	for _, decl := range declarations {
+		out = append(out, request{Declaration: decl, Diagnostics: s.built})
+	}
+	return out, s.built
+}
+
 // over returns a pipeline wired to a stand-in.
 func over(s *stack) pipeline {
-	return pipeline{loading: s, discovering: s, resolving: s}
+	return pipeline{loading: s, discovering: s, resolving: s, modelling: s}
 }
 
 // quietly returns an environment that reports nowhere, for the tests that are
 // about the walk rather than about what it said.
 func quietly() *environment {
 	return &environment{stdout: io.Discard, stderr: io.Discard}
+}
+
+// named returns the least declaration a verb can be asked about: a name, and
+// nothing resolution would have had to work for.
+func named(name string) resolve.Declaration {
+	return resolve.Declaration{Candidate: discover.Candidate{Name: name}}
+}
+
+// loadedFrom returns a session whose packages belong to a module, which is
+// where the answer to "may forge attach a method to this type" comes from.
+func loadedFrom(module string) *load.Session {
+	return &load.Session{
+		Fset:     token.NewFileSet(),
+		Packages: []*packages.Package{{Module: &packages.Module{Path: module, Main: true}}},
+	}
 }
 
 // complaint returns a diagnostic set holding one thing to say.
@@ -91,6 +141,12 @@ func TestTheWalkCollectsFromEveryStage(t *testing.T) {
 		loaded:     complaint(diag.Code(5001), "the package does not build"),
 		discovered: complaint(diag.Code(3001), "the directive landed on nothing"),
 		resolved:   complaint(diag.Code(1007), "the stack does not resolve"),
+
+		// A declaration for the fourth diagnostic to belong to. What the
+		// subject builder says is about one declaration, so without one there
+		// is nowhere for it to be said.
+		found: []resolve.Declaration{named("Persons")},
+		built: complaint(diag.Code(2002), "the subject is a pointer"),
 	}
 
 	found, err := over(s).follow(quietly(), load.Config{})
@@ -98,11 +154,17 @@ func TestTheWalkCollectsFromEveryStage(t *testing.T) {
 		t.Fatalf("the walk was refused: %v", err)
 	}
 
-	if want := []string{"load", "discover", "resolve"}; strings.Join(s.asked, " ") != strings.Join(want, " ") {
+	if want := []string{"load", "discover", "resolve", "model"}; strings.Join(s.asked, " ") != strings.Join(want, " ") {
 		t.Errorf("the stages ran %v, want %v", s.asked, want)
 	}
+	// Three about the packages, and the fourth about the declaration it was
+	// said about — which is where a verb answering a question about one
+	// declaration looks, and where a verb acting on all of them looks too.
 	if found.Diagnostics.Len() != 3 {
-		t.Errorf("collected %d diagnostics, want 3:\n%s", found.Diagnostics.Len(), found.Diagnostics.Render())
+		t.Errorf("collected %d package diagnostics, want 3:\n%s", found.Diagnostics.Len(), found.Diagnostics.Render())
+	}
+	if all := found.All(); all.Len() != 4 {
+		t.Errorf("collected %d diagnostics in all, want 4:\n%s", all.Len(), all.Render())
 	}
 }
 
@@ -131,7 +193,7 @@ func TestAWalkOverAPackageThatDoesNotBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a package that does not build ended the walk: %v", err)
 	}
-	if len(s.asked) != 3 {
+	if len(s.asked) != 4 {
 		t.Errorf("the walk stopped at %v", s.asked)
 	}
 	if found.Diagnostics.Empty() {
@@ -170,7 +232,7 @@ func TestTheVerbsWalkTheSamePath(t *testing.T) {
 				t.Fatal("a verb this build cannot finish reported success")
 			}
 
-			if want := "load discover resolve"; strings.Join(s.asked, " ") != want {
+			if want := "load discover resolve model"; strings.Join(s.asked, " ") != want {
 				t.Errorf("the stages ran %v, want %q", s.asked, want)
 			}
 		})
@@ -231,8 +293,16 @@ func TestDiagnosticsGoToStandardError(t *testing.T) {
 			if !strings.Contains(errs.String(), "two storage layers in stack") {
 				t.Errorf("the diagnostic is not on stderr:\n%s", errs.String())
 			}
-			if out.Len() != 0 {
+			// The complaint must not be on stdout, since a run whose output
+			// feeds another program would have it arrive in the pipe. And for
+			// the two verbs that answer with nothing, stdout must be empty
+			// outright — a relaxation made for the verb that answers with
+			// something would hide a regression in the two that do not.
+			if strings.Contains(out.String(), "two storage layers in stack") {
 				t.Errorf("a diagnostic arrived on stdout:\n%s", out.String())
+			}
+			if name != "explain" && out.Len() != 0 {
+				t.Errorf("a verb that answers nothing wrote to stdout:\n%s", out.String())
 			}
 		})
 	}
@@ -378,7 +448,7 @@ func TestProgressWhenAskedForIt(t *testing.T) {
 		t.Fatalf("the walk was refused: %v", err)
 	}
 
-	for _, want := range []string{"loading ./model", "packages", "declarations", "stacks"} {
+	for _, want := range []string{"loading ./model", "packages", "declarations", "stacks", "subjects"} {
 		if !strings.Contains(errs.String(), want) {
 			t.Errorf("the progress does not mention %q:\n%s", want, errs.String())
 		}
@@ -466,6 +536,11 @@ func TestEveryVerbSendsDiagnosticsToStandardError(t *testing.T) {
 			cmd, _ := lookup(name)
 			args := []string{"./..."}
 			if name == "explain" {
+				// The verb answers a question about one declaration, so it has
+				// to find one — and reports what was said about that one rather
+				// than about the package it sits in.
+				s.modelled = []request{{Declaration: named("Persons")}}
+				s.built = complaint(diag.Code(1007), "two storage layers in stack")
 				args = []string{"-t", "Persons"}
 			}
 			_ = cmd.run(env, cmd, args)
@@ -473,8 +548,93 @@ func TestEveryVerbSendsDiagnosticsToStandardError(t *testing.T) {
 			if !strings.Contains(errs.String(), "two storage layers in stack") {
 				t.Errorf("the diagnostic is not on stderr:\n%s", errs.String())
 			}
-			if out.Len() != 0 {
+			// The complaint must not be on stdout, since a run whose output
+			// feeds another program would have it arrive in the pipe. And for
+			// the two verbs that answer with nothing, stdout must be empty
+			// outright — a relaxation made for the verb that answers with
+			// something would hide a regression in the two that do not.
+			if strings.Contains(out.String(), "two storage layers in stack") {
 				t.Errorf("a diagnostic arrived on stdout:\n%s", out.String())
+			}
+			if name != "explain" && out.Len() != 0 {
+				t.Errorf("a verb that answers nothing wrote to stdout:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// How a run ends is the whole of what a shell script can act on, so every way
+// one can end has to map to the status that says so — and to the stream that
+// carries the reason.
+func TestHowARunCanEnd(t *testing.T) {
+	answered := misuse{err: errors.New("a flag nobody defined"), answer: func(w io.Writer) {
+		_, _ = io.WriteString(w, "the flags this command takes\n")
+	}}
+
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		out    string
+		errs   []string
+		quiet  []string
+	}{
+		{name: "the run did what was asked", err: nil, status: diag.ExitOK},
+		{
+			name: "somebody asked what the commands are",
+			err:  flag.ErrHelp, status: diag.ExitOK,
+			out: "Commands:",
+		},
+		{
+			name: "the input was reported on",
+			err:  errReported, status: diag.ExitDiagnostics,
+			// Already said, and saying it again under a heading would make one
+			// run read as two failures.
+			quiet: []string{"forge:", "Commands:"},
+		},
+		{
+			name: "the run could not do what was asked",
+			err:  fmt.Errorf("writing generated files %w", errNotBuilt), status: diag.ExitDiagnostics,
+			errs:  []string{"forge:", "not in this build"},
+			quiet: []string{"Commands:"},
+		},
+		{
+			name: "the command line named no run",
+			err:  misusedf("unknown command %q", "bogus"), status: diag.ExitUsage,
+			errs: []string{"forge:", "bogus", "Commands:"},
+		},
+		{
+			name: "one command's flags were got wrong",
+			err:  answered, status: diag.ExitUsage,
+			errs: []string{"forge:", "the flags this command takes"},
+			// The list of commands is the answer to a wrong command, not to a
+			// wrong flag of the right one.
+			quiet: []string{"Commands:"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errs bytes.Buffer
+
+			if got := status(&out, &errs, tc.err); got != tc.status {
+				t.Errorf("exited %d, want %d", got, tc.status)
+			}
+			if tc.out != "" && !strings.Contains(out.String(), tc.out) {
+				t.Errorf("stdout does not hold %q:\n%s", tc.out, out.String())
+			}
+			if tc.out == "" && out.Len() != 0 {
+				t.Errorf("a run that answered nothing wrote to stdout:\n%s", out.String())
+			}
+			for _, want := range tc.errs {
+				if !strings.Contains(errs.String(), want) {
+					t.Errorf("stderr does not hold %q:\n%s", want, errs.String())
+				}
+			}
+			for _, gone := range tc.quiet {
+				if strings.Contains(errs.String(), gone) {
+					t.Errorf("stderr holds %q:\n%s", gone, errs.String())
+				}
 			}
 		})
 	}

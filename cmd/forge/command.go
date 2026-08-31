@@ -59,7 +59,10 @@ type command struct {
 var commands = []command{
 	{name: "generate", takes: "[packages]", about: "Resolve declarations and write generated files", run: generate},
 	{name: "check", takes: "[packages]", about: "Validate declarations and verify outputs are fresh", run: check},
-	{name: "explain", takes: "[package]", about: "Show the resolved stack for one declaration", run: explain},
+	{
+		name: "explain", takes: "[package]", run: explain,
+		about: "Show the resolved stack for one declaration.\nThe answer is written whether or not anything was wrong with it; the status says which.",
+	},
 	{name: "list", about: "List registered layers, kinds, and option schemas", run: list},
 	{name: "doctor", about: "Diagnose toolchain, build tags, and editor configuration", run: doctor},
 	{name: "version", about: "Print version and build info", run: version},
@@ -332,24 +335,71 @@ func flagsFor(cmd command) *flag.FlagSet {
 	return flags
 }
 
-// parse reads one command's flags and reports whether the command should go on.
-// A request for help has been answered by the time it returns.
-func parse(env *environment, cmd command, flags *flag.FlagSet, args []string) (bool, error) {
-	err := flags.Parse(args)
+// parse reads one command's flags and returns everything that was not one. It
+// reports whether the command should go on: a request for help has been
+// answered by the time it returns.
+func parse(env *environment, cmd command, flags *flag.FlagSet, args []string) ([]string, bool, error) {
+	rest, err := interleaved(flags, args)
 	switch {
 	case err == nil:
-		return true, nil
+		return rest, true, nil
 	case errors.Is(err, flag.ErrHelp):
 		describe(env.stdout, cmd, flags)
-		return false, nil
+		return nil, false, nil
 	default:
 		// The answer to a flag this command does not take is the list of flags
 		// it does take, which the command list does not contain.
-		return false, misuse{
+		return nil, false, misuse{
 			err:    err,
 			answer: func(w io.Writer) { describe(w, cmd, flags) },
 		}
 	}
+}
+
+// interleaved reads flags written anywhere among the arguments, and returns the
+// arguments that were not flags in the order they were written.
+//
+// The flag package stops at the first thing that is not a flag, so
+// "explain ./model -t Persons" would read -t as a package name and then report
+// that no type was asked about — denying the author supplied the flag they are
+// looking at. Nothing about the shape of a command line says the flags come
+// first, and the documented spelling of this one puts them last.
+//
+// It parses repeatedly, taking one non-flag argument out of the way each time.
+// Every round consumes at least that argument, so it ends.
+//
+// Everything after a bare -- is an argument whatever it looks like, and stays
+// one: the terminator is how a caller passes a package whose name begins with a
+// dash, and resuming after it would make that promise last exactly one word.
+func interleaved(flags *flag.FlagSet, args []string) ([]string, error) {
+	args, literal := terminated(args)
+
+	var rest []string
+	for len(args) > 0 {
+		if err := flags.Parse(args); err != nil {
+			return nil, err
+		}
+
+		left := flags.Args()
+		if len(left) == 0 {
+			break
+		}
+		rest = append(rest, left[0])
+		args = left[1:]
+	}
+
+	return append(rest, literal...), nil
+}
+
+// terminated splits a command line at the first bare --, returning what comes
+// before it and what comes after.
+func terminated(args []string) (before, after []string) {
+	for i, arg := range args {
+		if arg == "--" {
+			return args[:i], args[i+1:]
+		}
+	}
+	return args, nil
 }
 
 // describe writes one command's usage.
