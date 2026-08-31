@@ -1,0 +1,234 @@
+// Package tmpl holds the shared sequence view, as it is emitted.
+//
+// It is written once and emitted once per package, unchanged: the view is
+// generic over its element, so there is nothing in it for a declaration to
+// specialise and nothing about it that depends on which declaration asked. That
+// is the whole reason it is shared. A combinator that only ever hands elements
+// along does not need to know what they are, so writing one per declaration
+// would be writing the same twenty lines into a package as many times as it has
+// declarations.
+//
+// What stays per declaration is what reads the subject: a predicate over a
+// field, a projection to one. Those are generated against the subject's own
+// type and hand their results here, which is the division the two halves of the
+// query surface are drawn along.
+//
+// The comments below are written for the file they end up in rather than for
+// this one, since they are what a reader of somebody else's package sees.
+package tmpl
+
+import (
+	"iter"
+	"slices"
+)
+
+// Seq is a lazy view over a sequence of elements.
+//
+// Every operation on it is lazy: it returns another view and walks nothing. The
+// walk happens once, when a terminal asks for it, and each element passes
+// through the whole chain before the next one is read — so a chain over a
+// million elements holds one of them at a time and allocates nothing per
+// element. A chain costs a few allocations per link to build and to start, and
+// that is the whole of what it costs: the same over a million elements as over
+// ten.
+//
+// The zero view yields nothing through every method here, so one that was never
+// given a sequence behaves like an empty one. Ranging over it directly is
+// ranging over a function that is not there, which panics like any other nil
+// call — All is what guards that, and is what to range over.
+type Seq[U any] iter.Seq[U]
+
+// All returns the view as an ordinary sequence, which is what everything taking
+// an iter.Seq wants and what a range loop should read.
+//
+// It is also where the zero view is made safe. A view is a function underneath,
+// so one that was never given a sequence is a nil function and ranging over it
+// panics; this hands back an empty sequence instead, and every method below
+// walks through here rather than over the view directly.
+func (s Seq[U]) All() iter.Seq[U] {
+	if s == nil {
+		return func(func(U) bool) {}
+	}
+	return iter.Seq[U](s)
+}
+
+// Filter returns a view of the elements the predicate keeps.
+func (s Seq[U]) Filter(keep func(U) bool) Seq[U] {
+	return func(yield func(U) bool) {
+		for v := range s.All() {
+			if keep(v) && !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+// Map returns a view of what the function makes of each element.
+//
+// Genuinely generic in its result, so a chain that changes type keeps chaining:
+// the view a projection returns is a view like any other, and the combinators
+// on it are these same ones rather than a second set written for the new type.
+func (s Seq[U]) Map[V any](to func(U) V) Seq[V] {
+	return func(yield func(V) bool) {
+		for v := range s.All() {
+			if !yield(to(v)) {
+				return
+			}
+		}
+	}
+}
+
+// Take returns a view of at most the first n elements, and of none for an n
+// that is not positive.
+//
+// It stops the walk beneath it rather than reading on and discarding, which is
+// what makes taking ten from a very long sequence cost ten.
+func (s Seq[U]) Take(n int) Seq[U] {
+	return func(yield func(U) bool) {
+		if n <= 0 {
+			return
+		}
+
+		left := n
+		for v := range s.All() {
+			if !yield(v) {
+				return
+			}
+
+			left--
+			if left == 0 {
+				return
+			}
+		}
+	}
+}
+
+// Skip returns a view of everything after the first n elements, and of
+// everything for an n that is not positive.
+func (s Seq[U]) Skip(n int) Seq[U] {
+	return func(yield func(U) bool) {
+		left := n
+		for v := range s.All() {
+			if left > 0 {
+				left--
+				continue
+			}
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+// Dedup returns a view with runs of equal elements collapsed to their first.
+//
+// Adjacent elements only, which is the whole of what a lazy operation can do:
+// dropping every repeat wherever it appears means remembering everything seen
+// so far, and a view that grew a set as it walked would not be a view any more.
+// Sort or group first if that is what is wanted.
+//
+// Each element is compared against the last one that was *yielded* rather than
+// against the one immediately before it, so a run collapses to its first
+// element however long it is. The two are the same thing for an equality, and
+// differ for a comparison that is not one — a nearness test over 1, 2, 3 keeps
+// 1 and 3 here, where comparing neighbours would keep only 1. The first
+// argument is the element that was kept and the second the one being offered.
+func (s Seq[U]) Dedup(same func(a, b U) bool) Seq[U] {
+	return func(yield func(U) bool) {
+		var last U
+		seen := false
+
+		for v := range s.All() {
+			if seen && same(last, v) {
+				continue
+			}
+
+			last, seen = v, true
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+// Chunk yields slices of n elements, the last of them shorter if the sequence
+// does not divide evenly. It panics for an n below one, which asks for
+// something there is no answer to.
+//
+// Each chunk is a slice of its own rather than one buffer handed out again and
+// again. Reusing it would allocate less and would make a chunk kept past the
+// next one silently become that one — a bug that shows up as data from the
+// wrong batch, far from here. The cost is one allocation per chunk, which is
+// still none per element.
+//
+// A plain sequence rather than another view, and that one is the language's.
+// A method of this type returning a view of slices means the type mentioning
+// itself over a bigger type than it was given, and the method set of that one
+// mentioning a bigger one again, without end; the compiler calls it an
+// instantiation cycle and refuses the file. A function beside the type could
+// return one — the cycle is a property of method sets — at the price of a name
+// in this package that everything else here keeps inside the view. Chunks are
+// usually ranged over, which this is, and converting what it yields to a view
+// of slices is the whole of the difference when they are not.
+func (s Seq[U]) Chunk(n int) iter.Seq[[]U] {
+	if n < 1 {
+		panic("forge: Chunk of fewer than one element")
+	}
+
+	return func(yield func([]U) bool) {
+		// Built on the first element that goes into it rather than ahead of
+		// one, so a sequence that ends on a boundary does not pay for a batch
+		// nothing is put in.
+		var batch []U
+
+		for v := range s.All() {
+			if batch == nil {
+				batch = make([]U, 0, n)
+			}
+			if batch = append(batch, v); len(batch) < n {
+				continue
+			}
+			if !yield(batch) {
+				return
+			}
+			batch = nil
+		}
+
+		if len(batch) > 0 {
+			yield(batch)
+		}
+	}
+}
+
+// Collect walks the view and returns everything it yields.
+func (s Seq[U]) Collect() []U { return slices.Collect(s.All()) }
+
+// Into appends everything the view yields to a slice and returns it.
+//
+// It is Collect for a caller who owns the memory: passing a slice kept between
+// calls turns the one allocation Collect makes into none.
+func (s Seq[U]) Into(dst []U) []U { return slices.AppendSeq(dst, s.All()) }
+
+// First returns the first element the view yields, and whether it yielded one.
+// The walk stops there, so first-of-a-filter over a long sequence costs the
+// elements up to the match and no more.
+func (s Seq[U]) First() (U, bool) {
+	for v := range s.All() {
+		return v, true
+	}
+
+	var none U
+	return none, false
+}
+
+// Reduce combines the elements into a single value, left to right.
+//
+// Generic in what it builds rather than in the element alone, so a sequence of
+// values reduces to a count, a total or a map without being projected first.
+func (s Seq[U]) Reduce[A any](initial A, combine func(A, U) A) A {
+	out := initial
+	for v := range s.All() {
+		out = combine(out, v)
+	}
+	return out
+}

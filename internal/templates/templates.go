@@ -111,13 +111,9 @@ func Apply(t Template, r Rewrite, at token.Position) (Result, diag.Set) {
 		return Result{}, diags
 	}
 
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, t.Name+".go", t.Source, parser.ParseComments|parser.SkipObjectResolution)
-	if err != nil {
-		diags.Add(diag.New(codeTemplateUnreadable, at,
-			"the %s template does not parse: %v", t.Name, err).
-			WithHint("%s", reportHint))
-		return Result{}, diags
+	fset, file, read := t.read(at)
+	if !read.Empty() {
+		return Result{}, read
 	}
 
 	imports, decls := separate(file.Decls)
@@ -161,6 +157,71 @@ func Apply(t Template, r Rewrite, at token.Position) (Result, diag.Set) {
 		Fset:     positions,
 		Imports:  imports,
 	}, diags
+}
+
+// Verbatim reads a template that is emitted as it was written.
+//
+// Not everything a layer needs is specialised. A view that is generic over its
+// element stays generic in the output: it is written once into a package and
+// used by every declaration there, so there is no subject to rewrite it to and
+// no name that depends on one. What is left is the part of reading a template
+// that has nothing to do with rewriting it — separating the imports out of the
+// declarations, and keeping the comments that belong to what is emitted while
+// leaving behind the ones that describe the template itself.
+//
+// Every one of those steps is the one [Apply] uses rather than a second copy of
+// it — the parse, the imports, the comments — because a copy is a second thing
+// to keep in step and the two would drift in exactly the way that is invisible:
+// output that compiles and has somebody else's package comment at the top of
+// it.
+//
+// Nothing is printed and reparsed here, which [Apply] has to do because
+// renaming makes every node a different length than its position says. Nothing
+// is renamed, so every position still describes the text it holds.
+func Verbatim(t Template, at token.Position) (Result, diag.Set) {
+	fset, file, diags := t.read(at)
+	if !diags.Empty() {
+		return Result{}, diags
+	}
+
+	imports, decls := separate(file.Decls)
+	if len(decls) == 0 {
+		diags.Add(diag.New(codeTemplateShape, at,
+			"the %s template declares nothing", t.Name).
+			WithHint("%s", reportHint))
+		return Result{}, diags
+	}
+
+	return Result{
+		Decls:    decls,
+		Comments: kept(file, decls),
+		Fset:     fset,
+		Imports:  imports,
+	}, diags
+}
+
+// read parses a template, keeping its comments.
+//
+// One parse for both ways of using a template, because the two agree about
+// everything a parse decides: comments are kept because they are emitted, and
+// object resolution is skipped because nothing here looks anything up. Two
+// copies would be two places for a flag to be added to one of them, and what
+// that produces is output that differs between a rewritten template and a
+// verbatim one for reasons nobody can see from either.
+func (t Template) read(at token.Position) (*token.FileSet, *ast.File, diag.Set) {
+	var diags diag.Set
+
+	fset := token.NewFileSet()
+
+	file, err := parser.ParseFile(fset, t.Name+".go", t.Source, parser.ParseComments|parser.SkipObjectResolution)
+	if err != nil {
+		diags.Add(diag.New(codeTemplateUnreadable, at,
+			"the %s template does not parse: %v", t.Name, err).
+			WithHint("%s", reportHint))
+		return nil, nil, diags
+	}
+
+	return fset, file, diags
 }
 
 // reportHint says what an author can do about a template that is wrong, which
