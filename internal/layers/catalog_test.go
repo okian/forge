@@ -126,16 +126,19 @@ var catalog = map[string]entry{
 // catalog row two-directional: a row is compared against all ten rather than
 // against its own list, so an entry nobody wrote is caught as well as one
 // nobody remembered.
-var allCaps = []shape.Cap{
-	shape.Sized, shape.Ordered, shape.Indexed, shape.Keyed, shape.Structured,
-	shape.Encodable, shape.Comparable, shape.Streamable, shape.Bounded, shape.Concurrent,
-}
+var allCaps = shape.Every().All()
 
 // everything is a shape holding every capability, which is what makes a layer's
 // masks visible: what it takes away is what is missing from what it exposes
 // over a stack that had all of it.
+//
+// Taken from the package that declares them rather than listed here. A list
+// written out would have to be added to every time a capability is, and the
+// test that noticed would be this one — which is the test that would then be
+// checking nine of ten layers against ten of eleven capabilities and reporting
+// that everything agreed.
 func everything() shape.Shape {
-	return shape.Shape{Caps: shape.Set(allCaps...)}
+	return shape.Shape{Caps: shape.Every()}
 }
 
 // Every layer is checked against the catalog it is supposed to implement, in

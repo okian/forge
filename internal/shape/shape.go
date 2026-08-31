@@ -95,6 +95,21 @@ func (c Cap) String() string {
 // exposes and what a subject on its own has.
 type CapSet uint32
 
+// Every returns the set of every capability this package declares.
+//
+// It is what a caller probes a layer with. What a layer requires and what it
+// masks are both answered by offering it everything and seeing what it refuses
+// or takes away — and a caller assembling that set by listing the capabilities
+// itself would have a list to keep in step with this one, which is the kind of
+// list nobody remembers to add to.
+func Every() CapSet {
+	var out CapSet
+	for _, known := range caps {
+		out = out.With(known.cap)
+	}
+	return out
+}
+
 // Set returns the set holding exactly these capabilities.
 func Set(members ...Cap) CapSet {
 	var out CapSet

@@ -4,6 +4,7 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/okian/forge/internal/model"
@@ -193,5 +194,36 @@ func TestShapeSurface(t *testing.T) {
 
 	if got, want := subject.Names(), []string{"Len", "All"}; !slices.Equal(got, want) {
 		t.Errorf("Names() = %v, want %v", got, want)
+	}
+}
+
+// Every capability this package declares is in the set that stands for all of
+// them.
+//
+// It is what a caller probes a layer with, and a capability missing from it is
+// one no layer is ever asked about: a storage that needs it would be reported
+// as needing nothing, and the report would look exactly like the truth.
+func TestTheSetOfEveryCapability(t *testing.T) {
+	every := shape.Every()
+
+	// Counted against the names the package renders, which is the other place
+	// the full list is written down and the only independent one available.
+	if got, want := len(every.All()), strings.Count(every.String(), ",")+1; got != want {
+		t.Errorf("the set holds %d capabilities and renders %d", got, want)
+	}
+
+	for _, one := range []shape.Cap{
+		shape.Sized, shape.Ordered, shape.Indexed, shape.Keyed, shape.Structured,
+		shape.Encodable, shape.Comparable, shape.Streamable, shape.Bounded, shape.Concurrent,
+	} {
+		if !every.Has(one) {
+			t.Errorf("%s is not in the set of every capability", one)
+		}
+	}
+
+	// And nothing that is not a capability, which would be a bit no layer can
+	// answer about and every probe would treat as a requirement nobody has.
+	if got := every.String(); strings.Contains(got, "cap(") {
+		t.Errorf("the set holds something unnamed: %s", got)
 	}
 }

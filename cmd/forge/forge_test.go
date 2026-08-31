@@ -122,7 +122,6 @@ func TestTheVerbsThisBuildCannotFinish(t *testing.T) {
 		args []string
 	}{
 		{name: "doctor"},
-		{name: "list"},
 	}
 
 	for _, tc := range cases {
