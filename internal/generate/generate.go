@@ -118,6 +118,10 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		taken[held] = ""
 	}
 
+	// What each declaration turned out to claim, kept so that the skips written
+	// on it can be answered once everything has been claimed.
+	var judged []judgement
+
 	// Which subjects will be given a String, decided before any of them is
 	// generated for. A field of one is rendered through it, and a declaration
 	// asked on its own could only answer that by reading what the last run
@@ -129,10 +133,16 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 			continue
 		}
 
-		file, unit, ok := one(req, name, cfg, taken, willRead, &diags)
+		file, unit, was, ok := one(req, name, cfg, taken, willRead, &diags)
 		if !ok {
 			continue
 		}
+		judged = append(judged, judgement{
+			declared: req.Model.Name,
+			subject:  model.TypeIdentity(req.Model.Subject.Type()),
+			skipped:  skips(req.Directives),
+			made:     was,
+		})
 
 		out = append(out, file)
 		required = append(required, unit.Requires...)
@@ -149,23 +159,71 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		}
 	}
 
-	if len(standing) > 0 {
-		var sum emit.Digest
-		FingerprintStubs(&sum, requests, name, cfg)
-
-		content, err := renderStubs(name, standing, imported, cfg, &sum)
-		if err != nil {
-			diags.AddError(err)
-		} else {
-			out = append(out, File{Name: Stubs(), Content: content})
-		}
-	}
-
-	if file, ok := sharing(path, name, required, about, requests, cfg, &diags); ok {
+	if file, wrote := standIn(standing, imported, requests, name, cfg, &diags); wrote {
 		out = append(out, file)
 	}
 
+	file, shared, ok := sharing(path, name, required, about, requests, cfg, &diags)
+	if ok {
+		out = append(out, file)
+	}
+
+	// Last, because a skip turns off a claim about a declaration or about its
+	// subject and those are decided in two places. Neither of them knows enough
+	// to say a directive turned nothing off — only the run does, and only once
+	// both have run.
+	//
+	// Against this declaration's own subject rather than against every subject
+	// the package has. What a skip written here can turn off is what [turned]
+	// hands to that subject's synthesis, so the set it is judged against has to
+	// be the set it acts on: judged against the wider one, a skip naming a
+	// claim some other subject earned would be accepted for doing nothing.
+	for _, one := range judged {
+		unclaimed(one.made.with(shared[one.subject]), one, &diags)
+	}
+
 	return out, diags
+}
+
+// standIn writes the file that stands in for what the tag excludes, and reports
+// whether there was anything to stand in for.
+//
+// A declaration written in spec form has its methods under a constraint the
+// author's own build does not set, so under that build the type has none — and
+// a spec file that names them would not type-check. This is what puts them back
+// there, with bodies that panic and are never linked.
+func standIn(
+	standing []emit.Section, imported []emit.Import,
+	requests []Request, name string, cfg Config, diags *diag.Set,
+) (File, bool) {
+	if len(standing) == 0 {
+		return File{}, false
+	}
+
+	var sum emit.Digest
+	FingerprintStubs(&sum, requests, name, cfg)
+
+	content, err := renderStubs(name, standing, imported, cfg, &sum)
+	if err != nil {
+		diags.AddError(err)
+		return File{}, false
+	}
+
+	return File{Name: Stubs(), Content: content}, true
+}
+
+// judgement is one declaration's claims, kept until the run can answer for the
+// skips written on it.
+//
+// What it holds rather than the request it came from, because the request is
+// only reachable here through a path that already established these: a name to
+// report against, the directives to answer for, and which subject's claims
+// count as the same declaration's.
+type judgement struct {
+	declared string
+	subject  string
+	skipped  []discover.Directive
+	made     claimable
 }
 
 // sharing writes the file holding what a package's declarations have between
@@ -177,13 +235,15 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 // in who wrote them.
 func sharing(path, name string, required []model.TypeRef, about map[string]layer.Unit,
 	requests []Request, cfg Config, diags *diag.Set,
-) (File, bool) {
+) (File, map[string]claimable, bool) {
 	built, problems := helpers(path, required, requests)
 	diags.Merge(&problems)
 
+	made := make(map[string]claimable)
+
 	held := merge.Units(append(contributed(about), asUnit(built))...)
 	if held.Empty() {
-		return File{}, false
+		return File{}, made, false
 	}
 
 	// The subjects earn claims here for the same reason the declarations earn
@@ -192,14 +252,24 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	// check. Reported into the run's own set, since a package is written whole
 	// and a claim that cannot be built is not a reason to write the rest.
 	for _, one := range subjects(requests) {
-		claims, imports, made := synthesise(held, synthesis{
+		claims, imports, was, wrote := synthesise(held, synthesis{
 			declared: model.Spell(one.Type(), path, binds(held.Imports)).Text,
-			elem:     model.Spell(one.Type(), path, binds(held.Imports)),
-			pkg:      path,
-			at:       one.Pos,
+
+			// The subject stands in for its own element, which is not a
+			// mistake and is not meaningful either: an element is what a
+			// container holds, and a subject holds nothing. It is read only to
+			// build the walk's signature, and a subject has no walk — so what
+			// is written here is discarded, and writing the subject is what
+			// keeps the field from being the one thing at hand that is wrong.
+			elem:    model.Spell(one.Type(), path, binds(held.Imports)),
+			pkg:     path,
+			at:      one.Pos,
+			skipped: turned(one, requests),
 		}, diags)
 
-		if made {
+		made[model.TypeIdentity(one.Type())] = was
+
+		if wrote {
 			held.Sections = append(held.Sections, claims)
 			held.Imports = merged(held.Imports, imports)
 		}
@@ -211,10 +281,10 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	content, err := render(nil, name, held, cfg, &sum)
 	if err != nil {
 		diags.AddError(err)
-		return File{}, false
+		return File{}, made, false
 	}
 
-	return File{Name: Shared(), Content: content}, true
+	return File{Name: Shared(), Content: content}, made, true
 }
 
 // reading returns the subjects of this package that will be given a String, by
@@ -233,6 +303,32 @@ func reading(requests []Request) map[string]bool {
 		if scalars.Earns(one) {
 			out[model.TypeIdentity(one.Type())] = true
 		}
+	}
+
+	return out
+}
+
+// turned returns the skips written on the declarations over a subject.
+//
+// A subject has no directives of its own — it is somebody's struct, and forge
+// reads directives above declarations — so the only place an author can say
+// they do not want one of its claims is on a declaration that caused it. Any of
+// them is enough, because what a skip turns off is a claim rather than a
+// method: not making one costs nothing that two declarations could disagree
+// about.
+func turned(subject *model.Struct, requests []Request) []discover.Directive {
+	var out []discover.Directive
+
+	held := model.TypeIdentity(subject.Type())
+
+	for _, req := range requests {
+		if req.Model == nil || req.Model.Subject == nil {
+			continue
+		}
+		if model.TypeIdentity(req.Model.Subject.Type()) != held {
+			continue
+		}
+		out = append(out, skips(req.Directives)...)
 	}
 
 	return out
@@ -278,11 +374,11 @@ func subjects(requests []Request) []*model.Struct {
 func one(
 	req Request, name string, cfg Config,
 	taken map[string]string, reads map[string]bool, diags *diag.Set,
-) (File, merge.Unit, bool) {
+) (File, merge.Unit, claimable, bool) {
 	into := Named(req.Model.Name)
 	if first, twice := taken[into]; twice {
 		diags.Add(collision(req.Model, into, first))
-		return File{}, merge.Unit{}, false
+		return File{}, merge.Unit{}, claimable{}, false
 	}
 	taken[into] = req.Model.Name
 
@@ -293,20 +389,20 @@ func one(
 	var sum emit.Digest
 	Fingerprint(&sum, req, name, cfg)
 
-	unit, problems := declaration(req, cfg, reads)
+	unit, was, problems := declaration(req, cfg, reads)
 	diags.Merge(&problems)
 
 	if !problems.Empty() {
-		return File{}, merge.Unit{}, false
+		return File{}, merge.Unit{}, claimable{}, false
 	}
 
 	content, err := render(req.Model, name, unit, cfg, &sum)
 	if err != nil {
 		diags.AddError(err)
-		return File{}, merge.Unit{}, false
+		return File{}, merge.Unit{}, claimable{}, false
 	}
 
-	return File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos}, unit, true
+	return File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos}, unit, was, true
 }
 
 // collision reports a declaration whose file another declaration is already
@@ -392,7 +488,7 @@ func asUnit(held merge.Unit) layer.Unit {
 
 // declaration generates for one declaration: what its options mean, what its
 // stack composes to, and what each of its layers contributes.
-func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, diag.Set) {
+func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, claimable, diag.Set) {
 	var diags diag.Set
 
 	held := req.Model
@@ -422,7 +518,7 @@ func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, di
 	diags.Merge(&problems)
 
 	if !diags.Empty() {
-		return merge.Unit{}, diags
+		return merge.Unit{}, claimable{}, diags
 	}
 
 	// The stack composition arrived at, which is what the layers were asked
@@ -433,7 +529,7 @@ func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, di
 	units := earned(held, contributions(held, composed, cfg, &diags), cfg, reads, &diags)
 
 	if !diags.Empty() {
-		return merge.Unit{}, diags
+		return merge.Unit{}, claimable{}, diags
 	}
 
 	already := holds(held.Pkg, cfg.Generated)
@@ -446,30 +542,41 @@ func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, di
 	}, &diags)
 
 	if !diags.Empty() {
-		return merge.Unit{}, diags
+		return merge.Unit{}, claimable{}, diags
 	}
 
-	// After the policy rather than before it: what a declaration claims is what
-	// its methods add up to, and which methods those are is not settled until an
-	// override has taken the place of what would have been generated.
-	claims, imports, made := synthesise(out, synthesis{
+	out, was := claiming(out, req, already, &diags)
+
+	if !diags.Empty() {
+		return merge.Unit{}, claimable{}, diags
+	}
+	return out, was, diags
+}
+
+// claiming adds the assertions a declaration's output earns to it.
+//
+// Run after the collision policy rather than before it: what a declaration
+// claims is what its methods add up to, and which methods those are is not
+// settled until an override has taken the place of what would have been
+// generated.
+func claiming(out merge.Unit, req Request, already declared, diags *diag.Set) (merge.Unit, claimable) {
+	held := req.Model
+
+	claims, imports, was, made := synthesise(out, synthesis{
 		declared: held.Name,
 		elem:     model.Spell(held.Subject.Type(), held.Pkg.PkgPath, binds(out.Imports)),
 		pkg:      held.Pkg.PkgPath,
 		at:       held.Pos,
 		held:     already,
 		skipped:  skips(req.Directives),
-	}, &diags)
+	}, diags)
 
 	if made {
 		out.Sections = append(out.Sections, claims)
 		out.Imports = merged(out.Imports, imports)
 	}
 
-	if !diags.Empty() {
-		return merge.Unit{}, diags
-	}
-	return out, diags
+	return out, was
 }
 
 // skips returns the directives asking for an interface not to be claimed.

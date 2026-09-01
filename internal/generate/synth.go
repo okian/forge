@@ -394,23 +394,69 @@ type synthesis struct {
 // a claim in a file somebody else compiles: one made from the shape would be a
 // claim about what a layer said it would do, and one made from the declarations
 // is a claim about what it did.
-func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, []emit.Import, bool) {
+func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, []emit.Import, claimable, bool) {
 	as := bindings(held.Imports, importing(of.elem)...)
 	have := methods(held.Sections, of, as)
 
-	var (
-		earned     []string
-		unnameable []string
-		claims     []claim
-		imports    []emit.Import
-		skipped    = named(of.skipped)
-	)
+	skipped := named(of.skipped)
+	earned, unnameable, claims, imports := sifted(have, as, skipped)
 
-	// Earned and claimed are kept apart, and the difference is a skip. What was
-	// earned is what the declarations add up to; what is claimed is what is
-	// left after the author turned some of it off. A single list would have
-	// nothing left to compare a skip against, and every skip would look like
-	// one that named something the declaration never claimed.
+	walked, walking := walk(have, of, as, diags)
+
+	// What was claimed goes back to the caller rather than being judged here.
+	// A skip is written on a declaration and turns off a claim about it or
+	// about its subject, and those two are decided in different places — so
+	// neither of them knows enough to say a directive turned nothing off, and
+	// the run answers for all of them once both have run.
+	made := claimable{earned: earned, unnameable: unnameable, walking: walking}
+
+	// Everything from here is about what gets written, and for that the only
+	// question is whether there is a signature to write. Whether there was a
+	// walk to talk about is a different question, which unclaimed above has
+	// already been asked: a walk that was reported is one there is nothing to
+	// write about and something to say about.
+	if slices.Contains(skipped, walkedRef) {
+		walked = ""
+	}
+	if walked != "" {
+		// The walk answered with a signature, so the file can name iter: walk
+		// asks first and hands nothing back when it cannot.
+		bound, _ := as.binds(stdIter)
+
+		imports = append(imports, bound)
+
+		// The element's own imports go in with it, and only with it. It is the
+		// one place where what was decided from and what the file receives are
+		// not the same set: a declaration that does not walk never names the
+		// element, so nothing it writes needs the import — while the binding
+		// still counted towards what the claims above could be written under.
+		imports = append(imports, importing(of.elem)...)
+	}
+
+	if len(claims) == 0 && walked == "" {
+		return emit.Section{}, nil, made, false
+	}
+
+	section, err := asserted(of, claims, walked)
+	if err != nil {
+		diags.AddError(err)
+		return emit.Section{}, nil, made, false
+	}
+
+	return section, imports, made, true
+}
+
+// sifted sorts every row into what the declarations earned, what they earned
+// and the file cannot name, and what survives the skips.
+//
+// Earned and claimed are kept apart, and the difference is a skip. What was
+// earned is what the declarations add up to; what is claimed is what is left
+// after the author turned some of it off. A single list would have nothing left
+// to compare a skip against, and every skip would look like one that named
+// something the declaration never claimed.
+func sifted(
+	have map[string]has, as binding, skipped []string,
+) (earned, unnameable []string, claims []claim, imports []emit.Import) {
 	for _, row := range synthesised {
 		through, does := satisfies(have, row, as)
 		if !does {
@@ -439,44 +485,7 @@ func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, [
 		imports = append(imports, bound)
 	}
 
-	walked, walking := walk(have, of, as, diags)
-
-	unclaimed(claimable{earned: earned, unnameable: unnameable, walking: walking}, of, diags)
-
-	// Everything from here is about what gets written, and for that the only
-	// question is whether there is a signature to write. Whether there was a
-	// walk to talk about is a different question, which unclaimed above has
-	// already been asked: a walk that was reported is one there is nothing to
-	// write about and something to say about.
-	if slices.Contains(skipped, walkedRef) {
-		walked = ""
-	}
-	if walked != "" {
-		// The walk answered with a signature, so the file can name iter: walk
-		// asks first and hands nothing back when it cannot.
-		bound, _ := as.binds(stdIter)
-
-		imports = append(imports, bound)
-
-		// The element's own imports go in with it, and only with it. It is the
-		// one place where what was decided from and what the file receives are
-		// not the same set: a declaration that does not walk never names the
-		// element, so nothing it writes needs the import — while the binding
-		// still counted towards what the claims above could be written under.
-		imports = append(imports, importing(of.elem)...)
-	}
-
-	if len(claims) == 0 && walked == "" {
-		return emit.Section{}, nil, false
-	}
-
-	section, err := asserted(of, claims, walked)
-	if err != nil {
-		diags.AddError(err)
-		return emit.Section{}, nil, false
-	}
-
-	return section, imports, true
+	return earned, unnameable, claims, imports
 }
 
 // walkedRef is what a skip directive names to turn the walk's own assertion
@@ -594,8 +603,27 @@ type claimable struct {
 	walking bool
 }
 
+// with returns what two stages claimed between them, keeping this one's walk.
+//
+// The walk stays this declaration's because it is the only part of a claim that
+// is about the declaration alone: a subject has no walk, and a skip naming one
+// on a declaration that does not walk is a mistake however many other
+// declarations in the package do.
+func (c claimable) with(other claimable) claimable {
+	return claimable{
+		earned:     append(append([]string(nil), c.earned...), other.earned...),
+		unnameable: append(append([]string(nil), c.unnameable...), other.unnameable...),
+		walking:    c.walking,
+	}
+}
+
 // unclaimed reports a skip that turns nothing off.
-func unclaimed(held claimable, of synthesis, diags *diag.Set) {
+//
+// Held against what the run claimed rather than against what one stage of it
+// did. A skip turns off a claim about a declaration or about its subject, and
+// those are decided in two places — so neither of them is in a position to say
+// a directive turned nothing off, and this is asked once both have.
+func unclaimed(held claimable, of judgement, diags *diag.Set) {
 	seen := make(map[string]token.Position, len(of.skipped))
 
 	for _, one := range of.skipped {

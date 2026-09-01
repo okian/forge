@@ -335,8 +335,7 @@ func TestASkipForAClaimTheFileCouldNotWrite(t *testing.T) {
 		Pos:        token.Position{Filename: "model.go", Line: 4, Column: 1},
 	}
 
-	of := about()
-	of.skipped = []discover.Directive{written}
+	of := judgement{declared: "Persons", skipped: []discover.Directive{written}}
 
 	diags := &diag.Set{}
 	unclaimed(claimable{unnameable: []string{"json.MarshalerTo"}}, of, diags)
