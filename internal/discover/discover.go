@@ -167,8 +167,8 @@ func inFile(fset *token.FileSet, pkg *packages.Package, file *ast.File) ([]Candi
 				continue
 			}
 
-			attached := directives(fset, docOf(gen, typeSpec))
-			attached = append(attached, directives(fset, typeSpec.Comment)...)
+			attached := model.Directives(fset, docOf(gen, typeSpec))
+			attached = append(attached, model.Directives(fset, typeSpec.Comment)...)
 			for _, directive := range attached {
 				claimed[directive.Pos.Offset] = true
 			}
@@ -185,7 +185,39 @@ func inFile(fset *token.FileSet, pkg *packages.Package, file *ast.File) ([]Candi
 		}
 	}
 
+	claimFields(fset, file, claimed)
 	return found, claimed
+}
+
+// claimFields marks the directives written above a struct field as landed, so
+// that the stray check does not report them.
+//
+// A field-scoped option is written above the field it applies to, and this
+// stage does not read it — the stage that walks the subject does, where the
+// field is a field rather than a line of syntax. What is claimed here is
+// therefore claimed on that stage's behalf, and the claim is worth making
+// because the alternative is worse in both directions: unclaimed, every
+// correctly written field option is reported as applying to nothing, and the
+// only advice forge could give is to delete it.
+//
+// The gap this leaves is a directive above a field of a struct that is never a
+// subject. Nothing reads it and nothing complains, because whether a struct is
+// a subject is not decided here or in this file — it is decided by what some
+// declaration elsewhere names. It is the narrower silence of the two available.
+func claimFields(fset *token.FileSet, file *ast.File, claimed map[int]bool) {
+	ast.Inspect(file, func(node ast.Node) bool {
+		structure, ok := node.(*ast.StructType)
+		if !ok || structure.Fields == nil {
+			return true
+		}
+
+		for _, field := range structure.Fields.List {
+			for _, directive := range model.Directives(fset, field.Doc) {
+				claimed[directive.Pos.Offset] = true
+			}
+		}
+		return true
+	})
 }
 
 // candidate reports whether a type declaration is one worth resolving.

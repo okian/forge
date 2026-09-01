@@ -165,3 +165,37 @@ type Registry struct {
 type Åéîõü struct {
 	Name string
 }
+
+// Annotated carries forge directives above its fields, which is where a
+// field-scoped option is written. What they say is nothing to do with this
+// stage; that they arrive attached to the right field is.
+type Annotated struct {
+	// Plain has nothing written above it beyond this sentence.
+	Plain string
+
+	// Blob is documented, and carries an option.
+	//
+	//forge:json fallback=stdlib
+	Blob any
+
+	//forge:json fallback=stdlib
+	//forge:validate rule=nonzero
+	Two string
+
+	// Paired share a comment, so both fields carry what it says.
+	//
+	//forge:json fallback=stdlib
+	First, Second string
+
+	//forge:json fallback=stdlib
+	Unit
+
+	// Embedded through a pointer and from another package, which are the two
+	// ways an embedded field's name is not where the field begins.
+	//
+	//forge:json fallback=stdlib
+	*Address
+
+	//forge:json fallback=stdlib
+	other.Place
+}

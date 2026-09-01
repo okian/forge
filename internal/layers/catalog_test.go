@@ -41,7 +41,7 @@ var catalog = map[string]entry{
 		requires: []shape.Cap{shape.Streamable},
 	},
 	"Json": {
-		kind: model.KindElement, stage: layer.StageStub,
+		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
 	},
 	"Validate": {

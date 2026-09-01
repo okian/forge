@@ -263,19 +263,28 @@ func claimed(decl Declaration, registry *layer.Registry, diags *diag.Set) ([]mod
 	return stack, found, ok
 }
 
-// defaulted fills in the storage a refining layer means and does not say.
+// defaulted fills in the storage a declaration means and does not say.
 //
-// A refining layer adds a surface over a representation, and one written with
-// no representation beneath it is over the ordinary one — Collection[Person] is
+// A declaration names a type, and a type needs a representation. Storage is what
+// supplies one, so a stack with none is a declaration of something with no
+// underlying type at all — and rather than being a special case, it is read as
+// the ordinary representation having been left unwritten. Collection[Person] is
 // Collection[Slice[Person]], which is what makes an inline declaration's
-// underlying type a real slice rather than a special case.
+// underlying type a real slice.
+//
+// Two stacks are read that way and a third is not. A refining layer adds a
+// surface over a representation, and a stack of nothing but element layers has
+// no representation to be — both are a storage left unsaid. A decorator is not:
+// it wraps a representation rather than sitting over one, and a decorator
+// written with nothing beneath it is a mistake with a diagnostic of its own,
+// which filling one in would silently answer instead.
 //
 // The entry goes above the element layers, which sit around the subject: a
 // storage layer holds elements, and what an element layer attached to the
 // subject is still the subject. It is marked as inferred, so that nothing draws
 // a caret under a layer nobody wrote.
 func defaulted(stack []model.LayerRef, layers []layer.Layer, cat Catalog) ([]model.LayerRef, []layer.Layer) {
-	refining, storage := false, false
+	refining, storage, elements := false, false, len(stack) > 0
 	for _, ref := range stack {
 		switch ref.Kind {
 		case model.KindRefining:
@@ -284,9 +293,12 @@ func defaulted(stack []model.LayerRef, layers []layer.Layer, cat Catalog) ([]mod
 			storage = true
 		default:
 		}
+		if ref.Kind != model.KindElement {
+			elements = false
+		}
 	}
 
-	if !refining || storage {
+	if storage || (!refining && !elements) {
 		return stack, layers
 	}
 

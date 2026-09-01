@@ -356,3 +356,20 @@ func TestSomebodyElsesGeneratedCodeIsStillRead(t *testing.T) {
 		t.Errorf("a declaration in another generator's output was passed over; found %v", names(found))
 	}
 }
+
+// A directive written above a field is not reported as landing on nothing.
+//
+// It lands on the field, which this stage does not read: what reads it is the
+// stage that walks the subject, where a field is a field rather than a line of
+// syntax. Claiming it here is on that stage's behalf, and the claim has to be
+// made — unclaimed, every correctly written field option is reported as
+// applying to nothing, and the only advice forge could give is to delete the
+// one thing that would have worked.
+func TestADirectiveAboveAFieldLandsOnIt(t *testing.T) {
+	_, diags := discover.Declarations(loadFixture(t))
+
+	rendered := diags.Render()
+	if strings.Contains(rendered, "fallback=stdlib") {
+		t.Errorf("a directive above a field was reported as landing on nothing:\n%s", rendered)
+	}
+}

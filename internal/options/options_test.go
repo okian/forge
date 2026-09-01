@@ -350,3 +350,40 @@ func TestAFailureSaysWhichLayersThereAre(t *testing.T) {
 		}
 	}
 }
+
+// A field-scoped option written on the declaration is told where to put it.
+//
+// Asserted because the hint went stale once already: it used to say the option
+// could not be read from a field at all and should be deleted, which stopped
+// being true when something started reading it — and nothing failed, because
+// nothing read the text. What an author does next is the whole value of the
+// diagnostic, so the sentence that says it is worth pinning.
+func TestWhereAFieldScopedOptionIsSentInstead(t *testing.T) {
+	set, diags := options.Read(options.Declaration{
+		Directives: []discover.Directive{written("//forge:json fallback=stdlib")},
+		Stack:      naming("Json"),
+		Subject:    person,
+	}, layers.Builtins())
+
+	for _, one := range set {
+		if len(one.Entries) != 0 {
+			t.Errorf("an option that belongs on a field reached the layer: %v", one.Entries)
+		}
+	}
+
+	rendered := diags.Render()
+	if !strings.Contains(rendered, "FRG3008") {
+		t.Fatalf("a field-scoped option on the declaration was accepted:\n%s", rendered)
+	}
+
+	// The hint has to name the marker and the option, since what it is asking
+	// for is one line the author writes somewhere else.
+	for _, want := range []string{model.DirectivePrefix + "json", "fallback", "above the field"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("the hint does not mention %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, "remove it") {
+		t.Errorf("the hint still tells the author to delete the option:\n%s", rendered)
+	}
+}

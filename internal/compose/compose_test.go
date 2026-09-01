@@ -116,14 +116,41 @@ func TestWhereTheFilledInStorageGoes(t *testing.T) {
 	}
 }
 
-// A stack with no refining layer in it has nothing to fill in for: a storage
-// layer is what a refining layer needs, and a declaration that named neither
-// asked for neither.
-func TestNothingIsFilledInForAStackThatWantsNone(t *testing.T) {
-	held, _ := compose.Compose(declaration("Json"), catalog())
+// A stack of nothing but element layers gets storage filled in too.
+//
+// A declaration names a type and a type needs a representation. An element layer
+// attaches to the subject and supplies none, so a declaration naming only
+// element layers would be a type with no underlying type — which is not a
+// meaning forge could generate, it is a package that does not compile.
+func TestStorageIsFilledInForAStackOfElementsAlone(t *testing.T) {
+	held, diags := compose.Compose(declaration("Json"), catalog())
+	if !diags.Empty() {
+		t.Fatalf("a codec over the ordinary storage was refused:\n%s", diags.Render())
+	}
 
-	if got, want := strings.Join(named(held), " "), "Json"; got != want {
+	if got, want := strings.Join(named(held), " "), "Slice(implicit) Json"; got != want {
 		t.Errorf("composed to %s, want %s", got, want)
+	}
+}
+
+// A decorator written over nothing gets no storage filled in.
+//
+// It is the one stack with no storage that is not a storage left unsaid. A
+// decorator wraps a representation rather than sitting over one, and there is a
+// diagnostic that says exactly that — filling one in would answer the mistake
+// instead of reporting it, and leave the author wrapping a container they never
+// asked for.
+func TestNothingIsFilledInBeneathADecorator(t *testing.T) {
+	held, diags := compose.Compose(declaration("Guarded"), catalog())
+
+	// The refusal is the assertion. A storage filled in beneath it would leave
+	// this composing cleanly, so a run with no complaint is a run where the
+	// mistake was answered rather than reported.
+	if !strings.Contains(diags.Render(), "FRG1004") {
+		t.Errorf("a decorator over nothing was not reported:\n%s", diags.Render())
+	}
+	if strings.Contains(strings.Join(named(held), " "), "Slice") {
+		t.Errorf("a storage was filled in beneath a decorator: %s", strings.Join(named(held), " "))
 	}
 }
 

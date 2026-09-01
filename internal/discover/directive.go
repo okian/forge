@@ -6,14 +6,15 @@ import (
 	"strings"
 
 	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/model"
 )
 
 // DirectivePrefix marks a comment as carrying options for a layer.
 //
-// There is no space after the slashes, which is the Go convention for a
-// directive rather than prose. It is what makes gofmt leave the line alone and
-// godoc keep it out of rendered documentation.
-const DirectivePrefix = "//forge:"
+// An alias rather than a second spelling of the same string: a directive above
+// a field is read by the stage that walks the subject, and a prefix defined
+// twice is two answers to what forge's own marker is.
+const DirectivePrefix = model.DirectivePrefix
 
 // Diagnostics this package reports. Both are about a directive that will never
 // be read, which is worth saying out loud: an option that is silently dropped
@@ -27,87 +28,13 @@ var (
 // directiveHint says where a directive has to go, by showing one.
 const directiveHint = `write it immediately above a declaration, as in //forge:collection sort=Age above "type Persons Collection[Person]"`
 
-// Directive is one //forge: comment attached to a declaration, collected but
-// not interpreted.
+// Directive is one //forge: comment attached to a declaration.
 //
-// Whether the layer exists, whether its options are spelled correctly and
-// whether their values name real fields are all questions for the stage that
-// validates options against a layer's schema. This stage records what was
-// written, and where.
-type Directive struct {
-	// Layer is the text between the prefix and the first space or tab: the
-	// "collection" of //forge:collection sort=Age. It is empty for a directive
-	// written with nothing after the prefix, which is left to be reported
-	// rather than dropped here.
-	Layer string
-
-	// Args is the rest of the line, with surrounding space removed.
-	Args string
-
-	// Text is the comment exactly as written, including the prefix.
-	Text string
-
-	// ArgsOffset is the byte offset of Args within Text, so that a diagnostic
-	// about one option can point at the option rather than at the line. For a
-	// directive with no arguments it is the length of Text.
-	ArgsOffset int
-
-	// Pos is the position of the comment's first character.
-	Pos token.Position
-}
-
-// String returns the directive as it was written.
-func (d Directive) String() string { return d.Text }
-
-// ArgsPos returns the position of the first argument, which is where a
-// diagnostic about the directive's options starts counting from.
-func (d Directive) ArgsPos() token.Position {
-	pos := d.Pos
-	pos.Column += d.ArgsOffset
-	pos.Offset += d.ArgsOffset
-	return pos
-}
-
-// directives extracts the forge directives from a comment group.
-//
-// Anything that is not a directive — the prose of a doc comment, a //go: line
-// meant for another tool — is passed over without comment.
-func directives(fset *token.FileSet, group *ast.CommentGroup) []Directive {
-	if group == nil {
-		return nil
-	}
-
-	var found []Directive
-	for _, comment := range group.List {
-		text := comment.Text
-		if !strings.HasPrefix(text, DirectivePrefix) {
-			continue
-		}
-
-		body := text[len(DirectivePrefix):]
-
-		// The layer name runs to the first space or tab; everything after it is
-		// the layer's own business.
-		layer, args := body, ""
-		if i := strings.IndexAny(body, " \t"); i >= 0 {
-			layer, args = body[:i], body[i:]
-		}
-
-		offset := len(DirectivePrefix) + len(layer)
-		trimmed := strings.TrimLeft(args, " \t")
-		offset += len(args) - len(trimmed)
-
-		found = append(found, Directive{
-			Layer:      layer,
-			Args:       strings.TrimRight(trimmed, " \t"),
-			Text:       text,
-			ArgsOffset: offset,
-			Pos:        fset.Position(comment.Pos()),
-		})
-	}
-
-	return found
-}
+// An alias, so that a directive read from above a declaration and one read from
+// above a field of the subject are the same value and reach a layer through one
+// type. What one is, and what it says about where its options were written, is
+// documented on [model.Directive].
+type Directive = model.Directive
 
 // reportStrays records every directive in the file that no candidate claimed.
 //

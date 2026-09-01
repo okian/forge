@@ -182,6 +182,7 @@ func (p pipeline) follow(env *environment, cfg load.Config) (resolved, error) {
 	requests, _ := p.modelling.Model(subject.Config{
 		Fset:  session.Fset,
 		Owned: session.Owned(),
+		Docs:  session.FieldDocs(),
 	}, declarations)
 	found.Requests = requests
 	env.progress("modelled %d subjects", modelled(requests))

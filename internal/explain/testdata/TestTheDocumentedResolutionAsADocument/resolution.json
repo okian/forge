@@ -26,7 +26,7 @@
       "step": 2,
       "name": "Json",
       "kind": "element",
-      "effect": "streaming codec with no reflection, driven by the subject's json tags",
+      "effect": "streaming codec over the subject's own fields, driven by its json tags",
       "adds": [
         "Encodable"
       ],
@@ -37,7 +37,7 @@
       ],
       "methods": [],
       "withdraws": [],
-      "pending": true,
+      "pending": false,
       "staged": false
     },
     {

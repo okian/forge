@@ -43,3 +43,20 @@ type Spaced markers.Collection[Item]
 
 // Blocked carries a directive written as a block comment.
 type Blocked markers.Collection[Item]
+
+// Fielded carries directives above its fields, which is where a field-scoped
+// option is written and where this stage does not read one.
+//
+// It is claimed all the same. What reads it is the stage that walks the
+// subject, where a field is a field rather than a line of syntax — and left
+// unclaimed, every correctly written field option would be reported as applying
+// to nothing, with deletion the only advice forge could give.
+type Fielded struct {
+	//forge:json fallback=stdlib
+	Anything any
+
+	// Documented is documented, and carries an option under the prose.
+	//
+	//forge:json fallback=stdlib
+	Also any
+}

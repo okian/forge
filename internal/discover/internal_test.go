@@ -5,6 +5,8 @@ import (
 	"go/parser"
 	"go/token"
 	"testing"
+
+	"github.com/okian/forge/internal/model"
 )
 
 // parseDecls parses a source string and returns its file and file set.
@@ -56,7 +58,7 @@ func TestDirectives(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fset, file := parseDecls(t, tc.comment+"\npackage model\n\ntype Persons []int\n")
 
-			found := directives(fset, file.Doc)
+			found := model.Directives(fset, file.Doc)
 			if len(found) != 1 {
 				t.Fatalf("collected %d directives, want 1: %v", len(found), found)
 			}
@@ -92,34 +94,6 @@ func trailingSpace(s string) string {
 		i--
 	}
 	return s[i:]
-}
-
-// Comments that are not directives are passed over, whoever they are for.
-func TestDirectivesIgnoresEverythingElse(t *testing.T) {
-	src := `// Persons is a collection of people.
-//
-// It has a longer explanation, which mentions //forge: in prose.
-//
-//go:generate stringer -type=Persons
-//forge:collection sort=Age
-//nolint:revive // not ours either
-package model
-
-type Persons []int
-`
-	fset, file := parseDecls(t, src)
-
-	found := directives(fset, file.Doc)
-	if len(found) != 1 {
-		t.Fatalf("collected %d directives, want 1: %v", len(found), found)
-	}
-	if found[0].Layer != "collection" {
-		t.Errorf("Layer = %q, want %q", found[0].Layer, "collection")
-	}
-
-	if got := directives(fset, nil); got != nil {
-		t.Errorf("directives(nil) = %v, want nil", got)
-	}
 }
 
 // Where the parser puts a comment depends on how the declaration was written,
@@ -164,7 +138,7 @@ func TestDocOf(t *testing.T) {
 			fset, file := parseDecls(t, tc.src)
 			gen, spec := firstTypeDecl(t, file)
 
-			found := directives(fset, docOf(gen, spec))
+			found := model.Directives(fset, docOf(gen, spec))
 			switch {
 			case tc.want == "":
 				if len(found) != 0 {

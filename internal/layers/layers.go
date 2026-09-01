@@ -3,6 +3,7 @@ package layers
 import (
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/collection"
+	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/layers/ring"
 	"github.com/okian/forge/internal/layers/slice"
 	"github.com/okian/forge/internal/model"
@@ -20,6 +21,7 @@ import (
 func written() []layer.Layer {
 	return []layer.Layer{
 		collection.New(),
+		jsoncodec.New(),
 		ring.New(),
 		slice.New(),
 	}

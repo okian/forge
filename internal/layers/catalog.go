@@ -161,25 +161,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Json"), kind: model.KindElement, stage: layer.StageStub,
-		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
-		options: []layer.OptionDef{
-			{
-				Key: "names", Value: layer.ValueEnum, Values: []string{"asis", "snake", "camel"}, Default: "asis",
-				Doc: "how a field with no json tag is named on the wire",
-			},
-			{
-				Key: "omitzero", Value: layer.ValueBool, Default: "false",
-				Doc: "omit zero-valued fields without tagging each one",
-			},
-			{
-				Key: "fallback", Scope: layer.ScopeField, Value: layer.ValueEnum, Values: []string{"stdlib"},
-				Doc: "encode a field forge cannot see through reflectively, and mark that it did",
-			},
-		},
-		doc: "streaming codec with no reflection, driven by the subject's json tags",
-	},
-	{
 		origin: marker("Validate"), kind: model.KindElement, stage: layer.StageStub,
 		requires: []shape.Cap{shape.Structured},
 		doc:      "rules read from the subject's validate tags, checked in declaration order",

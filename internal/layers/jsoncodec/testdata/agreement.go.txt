@@ -1,0 +1,664 @@
+package model
+
+import (
+	"encoding/json/v2"
+	"testing"
+
+	"codecfixture/other"
+)
+
+// Twins of every subject: the same fields, and no codec.
+//
+// A defined type does not inherit the methods declared on its source, so the
+// standard library reflects over a twin while the subject itself dispatches to
+// what forge wrote — and comparing the two is the whole of this file.
+//
+// A twin holding a struct has to hold a twin of it rather than the struct. A
+// method is promoted from an embedded field and a field's own methods are used
+// for that field, so a twin that kept Address where its source had one would
+// have forge's codec called for that part of it, and the comparison would be
+// between forge's output and forge's output.
+//
+// Exported, because reflection cannot write through an embedded pointer to an
+// unexported type — which would make the one shape this file exists to check
+// the one it could not read back.
+type (
+	ScalarsTwin    Scalars
+	NamedTwin      Named
+	TaggedTwin     Tagged
+	CompositesTwin Composites
+	AddressTwin    Address
+	ReflectiveTwin Reflective
+
+	// Stamped keeps its Stamp: the field carries a codec the author wrote, and
+	// what forge does with one is call it — so both sides of the comparison
+	// reach the same hand-written codec, which is the claim being made.
+	StampedTwin Stamped
+	WeighedTwin Weighed
+
+	// Omitting keeps its Address and Composites: what is under test here is
+	// whether a member is written at all, and both sides reach the same codec
+	// for the members that are.
+	OmittingTwin Omitting
+	NamingTwin   Naming
+)
+
+type NestedTwin struct {
+	Home    AddressTwin
+	Work    *AddressTwin
+	Visited []AddressTwin
+}
+
+type EmbeddedTwin struct {
+	AddressTwin
+	Name string
+}
+
+type RenamedTwin struct {
+	AddressTwin `json:"address"`
+	Name        string
+}
+
+type BehindTwin struct {
+	*AddressTwin
+	Name string
+}
+
+type ChainTwin struct {
+	Name string    `json:"name,omitempty"`
+	Next *ChainTwin `json:"next,omitempty"`
+}
+
+type CyclicTwin struct {
+	Name string
+	Next *CyclicTwin
+}
+
+func TestScalars(t *testing.T) {
+	for _, held := range []Scalars{
+		{},
+		{
+			Bool: true, String: "hello, world", Int: -3, Int8: -128, Int16: 32767,
+			Int32: -2147483648, Int64: 9007199254740993, Uint: 7, Uint16: 65535,
+			Uint32: 4294967295, Uint64: 18446744073709551615, Float32: 1.1, Float64: 1.1,
+		},
+		{String: "quotes \" and \\ backslashes, ünïcode, and a\ttab"},
+	} {
+		agree(t, held, ScalarsTwin(held))
+	}
+}
+
+func TestNamed(t *testing.T) {
+	for _, held := range []Named{{}, {Temp: -40.5, Label: "warm", Count: 12}} {
+		agree(t, held, NamedTwin(held))
+	}
+}
+
+func TestTagged(t *testing.T) {
+	for _, held := range []Tagged{
+		{},
+		{Renamed: "a", Hidden: "never written", Zero: 1, Empty: []int{1, 2}, Plain: "p"},
+		{Empty: []int{}},
+	} {
+		agree(t, held, TaggedTwin(held))
+	}
+}
+
+func TestComposites(t *testing.T) {
+	text := "pointed at"
+
+	for _, held := range []Composites{
+		{},
+		{
+			Strings: []string{"a", "b"}, Numbers: []int{1, -2},
+			Nested: [][]string{{"x"}, {}, nil}, Fixed: [3]int{7, 8, 9},
+			Lookup: map[string]int{"z": 1, "a": 2, "m": 3},
+			Deep:   map[string][]string{"k": {"v1", "v2"}, "j": nil},
+			Pointer: &text, Bytes: []byte{0, 1, 254, 255},
+		},
+		{Strings: []string{}, Lookup: map[string]int{}, Bytes: []byte{}},
+	} {
+		agree(t, held, CompositesTwin(held))
+	}
+}
+
+func TestAddress(t *testing.T) {
+	for _, held := range []Address{{}, {City: "Oslo", Post: "0150"}} {
+		agree(t, held, AddressTwin(held))
+	}
+}
+
+func TestNested(t *testing.T) {
+	work := Address{City: "Kyoto", Post: "600"}
+
+	for _, held := range []Nested{
+		{},
+		{
+			Home: Address{City: "Oslo", Post: "0150"}, Work: &work,
+			Visited: []Address{{City: "Lima"}, {Post: "X"}},
+		},
+	} {
+		agree(t, held, nestedLike(held))
+	}
+}
+
+func TestEmbedded(t *testing.T) {
+	for _, held := range []Embedded{{}, {Address: Address{City: "Cairo", Post: "11511"}, Name: "n"}} {
+		agree(t, held, EmbeddedTwin{AddressTwin: AddressTwin(held.Address), Name: held.Name})
+	}
+}
+
+func TestRenamed(t *testing.T) {
+	for _, held := range []Renamed{{}, {Address: Address{City: "Lisbon"}, Name: "n"}} {
+		agree(t, held, RenamedTwin{AddressTwin: AddressTwin(held.Address), Name: held.Name})
+	}
+}
+
+func TestBehind(t *testing.T) {
+	for _, held := range []Behind{{}, {Address: &Address{City: "Accra"}, Name: "n"}} {
+		twin := BehindTwin{Name: held.Name}
+		if held.Address != nil {
+			one := AddressTwin(*held.Address)
+			twin.AddressTwin = &one
+		}
+		agree(t, held, twin)
+	}
+}
+
+func TestReflective(t *testing.T) {
+	for _, held := range []Reflective{
+		{},
+		{Name: "n", Extra: map[string]any{"k": 1.5, "a": "text"}},
+		{Extra: []any{1.0, "two", true, nil}},
+	} {
+		agree(t, held, ReflectiveTwin(held))
+	}
+}
+
+func TestStamped(t *testing.T) {
+	also := Stamp{Seconds: 17}
+
+	for _, held := range []Stamped{{}, {At: Stamp{Seconds: -1}, Also: &also, Name: "n"}} {
+		agree(t, held, StampedTwin(held))
+	}
+}
+
+func TestWeighed(t *testing.T) {
+	for _, held := range []Weighed{{}, {Mass: Weight{Grams: 900}, Name: "n"}} {
+		agree(t, held, WeighedTwin(held))
+	}
+}
+
+func TestOmitting(t *testing.T) {
+	text := "there"
+
+	for _, held := range []Omitting{
+		{},
+		{
+			Text: "t", Count: 1, Flag: true, List: []int{1}, Lookup: map[string]int{"k": 1},
+			Ptr: &text, Blob: []byte{1},
+			ZeroText: "z", ZeroFlag: true, ZeroFloat: 0.5,
+			ZeroStruct: Address{City: "Bern"}, ZeroArray: [2]int{1, 2}, ZeroList: []int{3},
+			ZeroPtr: &Address{Post: "P"}, ZeroHolder: Composites{Strings: []string{"s"}},
+			ZeroFix: [4]byte{1, 0, 0, 2},
+			ZeroSlices: [2][]int{{1}, nil},
+			ZeroBehind: Behind{Address: &Address{City: "Suva"}, Name: "b"},
+			EmptyBehind: Behind{Name: "e"},
+		},
+		// Every one of them empty in the JSON sense but not obviously so in Go:
+		// an allocated slice and map are not nil, and a pointer to a zero value
+		// is not a nil pointer.
+		{List: []int{}, Lookup: map[string]int{}, Blob: []byte{}, ZeroList: []int{}, ZeroPtr: &Address{}},
+	} {
+		agree(t, held, OmittingTwin(held))
+	}
+}
+
+func TestNaming(t *testing.T) {
+	for _, held := range []Naming{{}, {UserID: 1, JSONValue: "v", HTTPServer: "s", ID: 2, Name: "n"}} {
+		agree(t, held, NamingTwin(held))
+	}
+}
+
+func TestCyclic(t *testing.T) {
+	for _, held := range []Cyclic{{}, {Name: "head", Next: &Cyclic{Name: "tail"}}} {
+		agree(t, held, cyclicLike(held))
+	}
+}
+
+// nestedLike and cyclicLike build the twin of a value whose fields are structs,
+// which no conversion can do: the two types differ in exactly the field types
+// that had to differ.
+func nestedLike(held Nested) NestedTwin {
+	out := NestedTwin{Home: AddressTwin(held.Home)}
+
+	if held.Work != nil {
+		one := AddressTwin(*held.Work)
+		out.Work = &one
+	}
+	for _, one := range held.Visited {
+		out.Visited = append(out.Visited, AddressTwin(one))
+	}
+	return out
+}
+
+func cyclicLike(held Cyclic) CyclicTwin {
+	out := CyclicTwin{Name: held.Name}
+	if held.Next != nil {
+		one := cyclicLike(*held.Next)
+		out.Next = &one
+	}
+	return out
+}
+
+// agree checks that forge's codec and the standard library's reflection produce
+// the same bytes for one value, and read the same value back out of them.
+//
+// Both directions, because they fail differently. A writer that disagrees sends
+// the wrong thing; a reader that disagrees accepts what the writer sent and
+// stores something else, which is the failure that survives a round trip through
+// one program and appears in another.
+//
+// Deterministic, because the one place forge's writer differs on purpose is map
+// member order: forge sorts, so that generated output does not change between
+// runs. Asking the standard library for the same thing compares the two on the
+// question actually at issue rather than on Go's map iteration.
+func agree[T, U any](t *testing.T, forged T, reflected U) {
+	t.Helper()
+
+	written, err := json.Marshal(forged, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("forge's codec would not write %#v: %v", forged, err)
+	}
+
+	want, err := json.Marshal(reflected, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("the standard library would not write %#v: %v", reflected, err)
+	}
+
+	if string(written) != string(want) {
+		t.Errorf("forge wrote\n\t%s\nand the standard library wrote\n\t%s\nfor %#v",
+			written, want, forged)
+		return
+	}
+
+	// Read back by both, then written again by both. Comparing the two values
+	// directly is not available — they are different types, which is the whole
+	// arrangement — and rewriting is the stronger check anyway: it says the two
+	// readers produced values that mean the same thing rather than that they
+	// filled the same fields.
+	var back T
+	if err := json.Unmarshal(written, &back); err != nil {
+		t.Fatalf("forge's codec would not read back %s: %v", written, err)
+	}
+
+	var reference U
+	if err := json.Unmarshal(want, &reference); err != nil {
+		t.Fatalf("the standard library would not read back %s: %v", want, err)
+	}
+
+	first, err := json.Marshal(back, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("forge's codec would not rewrite what it read: %v", err)
+	}
+	second, err := json.Marshal(reference, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("the standard library would not rewrite what it read: %v", err)
+	}
+
+	if string(first) != string(second) {
+		t.Errorf("after reading %s back, forge holds\n\t%s\nand the standard library holds\n\t%s",
+			written, first, second)
+	}
+}
+
+// Twins for the shapes whose own fields are structs, which no conversion
+// reaches: the two types differ in exactly the field types that had to differ.
+type (
+	PointedTwin  Pointed
+	MeasuredTwin Measured
+	DeepTwin     Deep
+	PlaceTwin    other.Place
+	HollowTwin   Hollow
+	ScalaredTwin Scalared
+	BorrowedTwin Borrowed
+	MarkedTwin   Marked
+	NilableTwin  Nilable
+	BufferedTwin Buffered
+)
+
+type SettledTwin struct {
+	LeftTwin
+	RightTwin
+	Shared string
+}
+
+type (
+	LeftTwin  Left
+	RightTwin Right
+)
+
+type ShadowTwin struct {
+	DeepTwin
+	Shared string
+	Only   string
+}
+
+type HollowedTwin struct {
+	Ptr  *HollowTwin `json:"ptr,omitempty"`
+	Text *string     `json:"text,omitempty"`
+	Name string      `json:"name,omitempty"`
+}
+
+type ElsewhereTwin struct {
+	Temp   other.Celsius
+	Name   other.Label
+	Many   []other.Celsius
+	Lookup map[string]other.Label
+	Ptr    *other.Celsius
+	Where  PlaceTwin
+	Places []PlaceTwin
+}
+
+// A pointer to a number is read into a temporary rather than into a field, and
+// a decoder that let its own temporaries shadow that one reads the value and
+// then throws it away.
+func TestPointed(t *testing.T) {
+	var (
+		big   = int64(9007199254740993)
+		num   = -3
+		small = int8(-128)
+		count = uint32(4294967295)
+		ratio = float32(0.5)
+		warm  = Celsius(-40.5)
+		text  = "pointed"
+		flag  = true
+	)
+
+	for _, held := range []Pointed{
+		{},
+		{Big: &big, Num: &num, Small: &small, Count: &count, Ratio: &ratio, Warm: &warm, Text: &text, Flag: &flag},
+	} {
+		agree(t, held, PointedTwin(held))
+	}
+}
+
+// A codec names every type it reaches into, and a file that binds none of them
+// does not compile. Reaching one across a package boundary is what makes that
+// visible: the enclosing type's own spelling says nothing about the package its
+// members come from.
+func TestElsewhere(t *testing.T) {
+	warm := other.Celsius(21.5)
+
+	for _, held := range []Elsewhere{
+		{},
+		{
+			Temp: -40.5, Name: "label", Many: []other.Celsius{1, 2},
+			Lookup: map[string]other.Label{"k": "v"}, Ptr: &warm,
+			Where: other.Place{City: "Doha"}, Places: []other.Place{{City: "Lima"}},
+		},
+	} {
+		agree(t, held, elsewhereLike(held))
+	}
+}
+
+// A type that says for itself when it is empty is asked rather than compared.
+func TestMeasured(t *testing.T) {
+	for _, held := range []Measured{{}, {M: Measure{Amount: 3}, Name: "n"}, {M: Measure{Amount: -1}, Name: "unset"}} {
+		agree(t, held, MeasuredTwin(held))
+	}
+}
+
+// A member that wins a shadowed name keeps its own place in the object rather
+// than taking the place of the one it beat.
+func TestShadow(t *testing.T) {
+	for _, held := range []Shadow{
+		{},
+		{Shared: "own", Only: "o", Deep: Deep{Shared: "deep", Extra: "e"}},
+	} {
+		agree(t, held, ShadowTwin{DeepTwin: DeepTwin(held.Deep), Shared: held.Shared, Only: held.Only})
+	}
+}
+
+// A pointer to something that renders empty is empty, however present the
+// pointer is.
+func TestHollowed(t *testing.T) {
+	var (
+		empty = ""
+		text  = "there"
+	)
+
+	for _, held := range []Hollowed{
+		{},
+		{Ptr: &Hollow{}, Text: &empty},
+		{Ptr: &Hollow{Text: "t"}, Text: &text, Name: "n"},
+	} {
+		twin := HollowedTwin{Text: held.Text, Name: held.Name}
+		if held.Ptr != nil {
+			one := HollowTwin(*held.Ptr)
+			twin.Ptr = &one
+		}
+		agree(t, held, twin)
+	}
+}
+
+// elsewhereLike builds the twin of a value holding structs from another package.
+func elsewhereLike(held Elsewhere) ElsewhereTwin {
+	out := ElsewhereTwin{
+		Temp: held.Temp, Name: held.Name, Many: held.Many,
+		Lookup: held.Lookup, Ptr: held.Ptr, Where: PlaceTwin(held.Where),
+	}
+	for _, one := range held.Places {
+		out.Places = append(out.Places, PlaceTwin(one))
+	}
+	return out
+}
+
+// What a reader does with a document it did not write is where a codec is
+// actually used, and it is the half a round trip cannot reach.
+//
+// Feeding a codec its own output only ever asks whether it agrees with itself.
+// Every document here is one somebody else could send: a null where a number
+// was expected, a string where a number was, an array of the wrong length, a
+// member nobody declared. What matters is that forge and the standard library
+// reach the same answer — the same value, or an error where the other errs.
+func TestReadingWhatSomebodyElseWrote(t *testing.T) {
+	cases := []string{
+		// Nulls, which are a value rather than a disagreement.
+		`{"Bool":null,"String":null,"Int":null,"Float64":null}`,
+		`{"Home":null,"Work":null,"Visited":null}`,
+		`{"Strings":null,"Lookup":null,"Fixed":null,"Pointer":null,"Bytes":null}`,
+
+		// Numbers the target cannot hold, which jsontext reads into a width of
+		// its own before anything narrower is asked about.
+		`{"Int8":300}`,
+		`{"Int16":70000}`,
+		`{"Int32":3000000000}`,
+		`{"Uint16":70000}`,
+		`{"Uint32":5000000000}`,
+		`{"Float32":1e40}`,
+		`{"Float32":1.0000001}`,
+		`{"Float32":1.1}`,
+		`{"Float64":1.1}`,
+		`{"Int8":-300}`,
+		`{"Uint":-1}`,
+
+		// Kinds the target cannot hold.
+		`{"Int":"5"}`,
+		`{"String":5}`,
+		`{"Bool":1}`,
+		`{"Int":1.5}`,
+		`{"Int8":99999999999999999999}`,
+		`{"Uint":-1}`,
+
+		// Lengths an array cannot hold.
+		`{"Fixed":[1]}`,
+		`{"Fixed":[1,2,3,4]}`,
+		`{"Fixed":[1,2,3]}`,
+
+		// Shapes where an object or an array was expected.
+		`{"Home":[1,2]}`,
+		`{"Strings":{"a":1}}`,
+		`{"Lookup":[1]}`,
+
+		// Members nobody declared, holding whatever they like.
+		`{"nope":{"deep":[1,{"deeper":null}]},"String":"kept"}`,
+
+		// Nothing at all, and a null for the whole of it.
+		`{}`,
+		`null`,
+	}
+
+	for _, doc := range cases {
+		t.Run(doc, func(t *testing.T) {
+			// Read into a target that already holds something, because that is
+			// what a reader in a loop does and it is where leaving a value
+			// untouched and zeroing it come apart.
+			forged := Scalars{Bool: true, String: "before", Int: 9, Int8: 1, Uint: 2, Float64: 1.5}
+			reflected := ScalarsTwin(forged)
+			readAlike(t, doc, &forged, &reflected)
+
+			held := Composites{Strings: []string{"before"}, Fixed: [3]int{7, 8, 9}}
+			heldTwin := CompositesTwin(held)
+			readAlike(t, doc, &held, &heldTwin)
+
+			nested := Nested{Home: Address{City: "before"}}
+			nestedTwin := nestedLike(nested)
+			readAlike(t, doc, &nested, &nestedTwin)
+		})
+	}
+}
+
+// readAlike reads one document with both codecs and compares what each made of
+// it, error included.
+func readAlike[T, U any](t *testing.T, doc string, forged *T, reflected *U) {
+	t.Helper()
+
+	forgedErr := json.Unmarshal([]byte(doc), forged)
+	reflectedErr := json.Unmarshal([]byte(doc), reflected)
+
+	if (forgedErr != nil) != (reflectedErr != nil) {
+		t.Errorf("reading %s into %T: forge said %v and the standard library said %v",
+			doc, *forged, forgedErr, reflectedErr)
+		return
+	}
+	if forgedErr != nil {
+		// Both refused. What they say need not match word for word — the
+		// messages are the standard library's to word — only that both refused.
+		return
+	}
+
+	first, err := json.Marshal(forged, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("rewriting what forge read: %v", err)
+	}
+	second, err := json.Marshal(reflected, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("rewriting what the standard library read: %v", err)
+	}
+
+	if string(first) != string(second) {
+		t.Errorf("after reading %s, forge holds\n\t%s\nand the standard library holds\n\t%s",
+			doc, first, second)
+	}
+}
+
+// A member nothing can predict is written and then looked at, which is the only
+// way to answer emptiness for something somebody else writes.
+//
+// The map is here for the options rather than for the shape: a member encoded
+// without the ones the caller gave would order its keys however the map felt
+// like, which is the one thing this codec's output is not allowed to do.
+func TestBuffered(t *testing.T) {
+	at := Stamp{Seconds: 3}
+	zero := Stamp{}
+
+	for _, held := range []Buffered{
+		{},
+		{One: at, Ptr: &at, Extra: map[string]any{"z": 1.0, "a": 2.0, "m": 3.0, "q": 4.0}, Name: "n"},
+		// Each at a value that renders empty or nearly so: a zero stamp writes
+		// 0, which is not empty, and an allocated-but-empty map is.
+		{One: zero, Ptr: &zero, Extra: map[string]any{}},
+		{Extra: []any{}},
+		{Extra: ""},
+		{Extra: nil, Name: "only"},
+	} {
+		agree(t, held, BufferedTwin(held))
+	}
+}
+
+// A type that reaches itself is written and looked at too, and the recursion
+// ends where the chain does.
+func TestChain(t *testing.T) {
+	for _, held := range []Chain{
+		{},
+		{Name: "head"},
+		{Next: &Chain{}},
+		{Name: "head", Next: &Chain{Name: "tail"}},
+		{Name: "head", Next: &Chain{Next: &Chain{}}},
+	} {
+		agree(t, held, chainLike(held))
+	}
+}
+
+func chainLike(held Chain) ChainTwin {
+	out := ChainTwin{Name: held.Name}
+	if held.Next != nil {
+		one := chainLike(*held.Next)
+		out.Next = &one
+	}
+	return out
+}
+
+// A member asked to be omitted at its zero value, where that value is not
+// something a composite literal can spell.
+func TestMarked(t *testing.T) {
+	for _, held := range []Marked{
+		{},
+		{At: 5, Extra: map[string]any{"k": 1.0}},
+		{At: 0, Extra: nil},
+		{At: -1, Extra: []any{}},
+	} {
+		agree(t, held, MarkedTwin(held))
+	}
+}
+
+// A name two embedded structs both claim is settled by a field of the enclosing
+// struct, which is a struct the standard library encodes without complaint.
+func TestSettled(t *testing.T) {
+	for _, held := range []Settled{
+		{},
+		{Shared: "own", Left: Left{Shared: "l"}, Right: Right{Shared: "r"}},
+	} {
+		agree(t, held, SettledTwin{
+			LeftTwin: LeftTwin(held.Left), RightTwin: RightTwin(held.Right), Shared: held.Shared,
+		})
+	}
+}
+
+// A type reaching another package through named scalars alone.
+func TestScalared(t *testing.T) {
+	label := other.Label("l")
+
+	for _, held := range []Scalared{{}, {Temp: 1.5, Many: []other.Celsius{2, -3}, Ptr: &label}} {
+		agree(t, held, ScalaredTwin(held))
+	}
+}
+
+// A type reaching another package only through members that name no package
+// when they are written.
+func TestBorrowed(t *testing.T) {
+	for _, held := range []Borrowed{{}, {At: 17, B: Blob{1, 2, 254}}, {B: Blob{}}} {
+		agree(t, held, BorrowedTwin(held))
+	}
+}
+
+// A pointer to a type that writes itself, omitted when it is nil.
+func TestNilable(t *testing.T) {
+	at := Stamp{Seconds: 3}
+	zero := Stamp{}
+
+	for _, held := range []Nilable{{}, {At: &at, Name: "n"}, {At: &zero}, {Name: "only"}} {
+		agree(t, held, NilableTwin(held))
+	}
+}

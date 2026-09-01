@@ -210,6 +210,21 @@ type Field struct {
 	// so no method may be attached to it.
 	External bool
 
+	// Directives holds the forge directives written above the field, in the
+	// order they appear. Read the ones belonging to a layer with [Written].
+	//
+	// Above the field rather than in its tag, because a tag is part of the
+	// type: it travels with the struct into every encoder that reads tags, and
+	// forge's options are not theirs to read. A comment is also where an author
+	// is already looking when they decide a field needs one.
+	//
+	// Empty for a field whose struct was read without its syntax — a subject in
+	// a module the author does not own, most often — which is the honest
+	// answer rather than a guess. A layer that would have generated differently
+	// for a directive it cannot see reports that instead of quietly generating
+	// the other way.
+	Directives []Directive
+
 	// Pos is the position of the field's declaration, which is where a
 	// diagnostic about this field points. For a field of a struct declared in
 	// another package that is a position in another file, which is exactly why

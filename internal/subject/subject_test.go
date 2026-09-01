@@ -66,6 +66,7 @@ func builder(t *testing.T, loaded *load.Session, interfaces ...subject.Interface
 	return subject.New(subject.Config{
 		Fset:       loaded.Fset,
 		Owned:      loaded.Owned(),
+		Docs:       loaded.FieldDocs(),
 		Interfaces: interfaces,
 	})
 }
@@ -491,5 +492,80 @@ func TestWhereAMethodOnASubjectMayGo(t *testing.T) {
 	// Reachable all the same, because this module owns the package it is in.
 	if !elsewhere.Reachable() {
 		t.Errorf("%s is in this module and is reported as beyond reach", elsewhere.Ref().Name)
+	}
+}
+
+// A directive written above a field arrives on that field and on no other.
+//
+// The stage reads types, and a type carries no comments; what puts the two back
+// together is the position both report for the same field. Every shape that
+// position can take is here, because the ones that differ are exactly the ones
+// where a comment could land on the wrong field or on none: a field sharing its
+// declaration with another, and an embedded field, whose name go/types reports
+// is not written anywhere in the source.
+func TestWhatAFieldCarriesFromAboveIt(t *testing.T) {
+	built := build(t, "Annotated")
+
+	want := map[string][]string{
+		"Plain":   nil,
+		"Blob":    {"//forge:json fallback=stdlib"},
+		"Two":     {"//forge:json fallback=stdlib", "//forge:validate rule=nonzero"},
+		"First":   {"//forge:json fallback=stdlib"},
+		"Second":  {"//forge:json fallback=stdlib"},
+		"Unit":    {"//forge:json fallback=stdlib"},
+		"Address": {"//forge:json fallback=stdlib"},
+		"Place":   {"//forge:json fallback=stdlib"},
+	}
+
+	for name, texts := range want {
+		field, ok := built.Field(name)
+		if !ok {
+			t.Errorf("Annotated has no field %s", name)
+			continue
+		}
+
+		var got []string
+		for _, one := range field.Directives {
+			got = append(got, one.Text)
+		}
+		if !slices.Equal(got, texts) {
+			t.Errorf("%s carries %v, want %v", name, got, texts)
+		}
+	}
+
+	// Two layers writing above one field do not read each other's options.
+	two, _ := built.Field("Two")
+	if got := model.Written(two.Directives, "json"); len(got) != 1 || got[0].Args != "fallback=stdlib" {
+		t.Errorf("the json directives on Two are %v, want the one", got)
+	}
+
+	// A directive points at itself, so a complaint about the option lands on
+	// the line the author wrote rather than on the field's first line.
+	got := model.Written(two.Directives, "validate")
+	if len(got) != 1 {
+		t.Fatalf("the validate directives on Two are %v, want one", got)
+	}
+	if got[0].Pos.Line == two.Pos.Line {
+		t.Errorf("the directive is reported at the field's own line %d", two.Pos.Line)
+	}
+}
+
+// A field of a struct read without its syntax carries nothing, rather than
+// carrying whatever a position collision happened to find.
+func TestAFieldWhoseCommentsWereNeverRead(t *testing.T) {
+	loaded := session(t)
+
+	built, problems := subject.New(subject.Config{
+		Fset:  loaded.Fset,
+		Owned: loaded.Owned(),
+	}).Build(named(t, loaded, "Annotated"), subject.Site{})
+	if !problems.Empty() {
+		t.Fatalf("modelling Annotated: %s", problems.Render())
+	}
+
+	for _, field := range built.Fields {
+		if len(field.Directives) != 0 {
+			t.Errorf("%s carries %v, want nothing", field.Name, field.Directives)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package subject
 
 import (
+	"go/ast"
 	"go/token"
 	"go/types"
 	"slices"
@@ -78,6 +79,21 @@ type Config struct {
 	// implements one. An empty list records nothing, which is honest: no
 	// interface is claimed rather than every interface denied.
 	Interfaces []Interface
+
+	// Docs holds the comment written above each struct field, keyed by the
+	// position of the field's name, as [load.Session.FieldDocs] returns it.
+	//
+	// This stage reads types, and a type carries no comments. An option written
+	// above a field would be unreadable without this, and the field is where
+	// such an option has to be written — on the declaration it would have to
+	// name the field in its value, which is a second grammar with a second way
+	// to misspell one.
+	//
+	// An empty map reads no directives from any field. That is what a caller
+	// with no load has, and it costs a diagnostic rather than producing a wrong
+	// one: a layer sees a field with no options written, which is the ordinary
+	// case anyway.
+	Docs map[token.Pos]*ast.CommentGroup
 }
 
 // Builder builds subject models, sharing the structs it has already built.
@@ -437,6 +453,8 @@ func (b *Builder) field(owner model.TypeRef, v *types.Var, tag string, external 
 	// a fmt.Stringer, and reporting nothing for a field written as one would be
 	// a plain wrong answer.
 	out.Implements = b.implements(v.Type())
+
+	out.Directives = model.Directives(b.cfg.Fset, b.cfg.Docs[v.Pos()])
 
 	if !external || v.Exported() {
 		// A struct that reaches itself records the edge like any other. That

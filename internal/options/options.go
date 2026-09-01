@@ -188,14 +188,14 @@ func value(decl Declaration, directive discover.Directive, entry model.Option, d
 	var diags diag.Set
 
 	if def.Scope == layer.ScopeField {
-		// Where it belongs, not how to write it. A field-scoped directive is
-		// written above the field it applies to, and nothing in this build
-		// reads one from there yet — so telling an author to move it would
-		// trade this complaint for the one about a directive attached to
-		// nothing.
+		// Where it belongs, and how to get it there. A field-scoped directive is
+		// written above the field it applies to, which is where the stage that
+		// walks the subject reads it from — so the advice is to move it, that
+		// being the one place it does anything.
 		diags.Add(diag.New(codeOptionElsewhere, entry.Pos,
 			"%s is about one field of %s rather than about the declaration", entry.Key, directive.Layer).
-			WithHint("%s", "an option about a field belongs with the field; nothing reads one from there yet, so remove it for now"))
+			WithHint("write %s%s %s=… immediately above the field it is about",
+				model.DirectivePrefix, directive.Layer, entry.Key))
 		return diags
 	}
 

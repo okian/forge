@@ -237,6 +237,113 @@ func (s *Session) Owned() map[string]bool {
 	return out
 }
 
+// FieldDocs returns the comment written above each struct field in the load,
+// keyed by the position of the field's name.
+//
+// It exists because the stage that walks a subject walks types rather than
+// syntax. A field's options are written above it as an ordinary comment, and
+// go/types carries no comments at all — so the two have to be brought back
+// together, and a position is what they have in common: the name in the syntax
+// and the variable in the type both report the same one.
+//
+// The whole import graph rather than the requested packages, for the same
+// reason [Session.Owned] walks it: a subject is often declared in a package
+// that is imported rather than named, and its fields are documented where they
+// are declared.
+//
+// One field per key even where several share a declaration. In `A, B int` the
+// comment above the line documents both, and both names report their own
+// position, so both find it.
+func (s *Session) FieldDocs() map[token.Pos]*ast.CommentGroup {
+	out := make(map[token.Pos]*ast.CommentGroup)
+	if s == nil {
+		return out
+	}
+
+	seen := make(map[string]bool)
+
+	var walk func(pkg *packages.Package)
+	walk = func(pkg *packages.Package) {
+		if pkg == nil || seen[pkg.PkgPath] {
+			return
+		}
+		seen[pkg.PkgPath] = true
+
+		for _, file := range pkg.Syntax {
+			documented(file, out)
+		}
+		for _, one := range pkg.Imports {
+			walk(one)
+		}
+	}
+
+	for _, pkg := range s.Packages {
+		walk(pkg)
+	}
+	return out
+}
+
+// documented records every documented struct field in one file.
+//
+// Struct fields alone. An interface's methods and a function's parameters are
+// both *ast.Field and neither is a field of a subject, so recording them would
+// put entries under positions nothing looks up — harmless, but it would make
+// the map a claim about something wider than it is.
+func documented(file *ast.File, into map[token.Pos]*ast.CommentGroup) {
+	ast.Inspect(file, func(node ast.Node) bool {
+		structure, ok := node.(*ast.StructType)
+		if !ok || structure.Fields == nil {
+			return true
+		}
+
+		for _, field := range structure.Fields.List {
+			if field.Doc == nil {
+				continue
+			}
+			for _, name := range field.Names {
+				into[name.Pos()] = field.Doc
+			}
+
+			// An embedded field has no name written for it, and go/types gives
+			// it one anyway: the last identifier of the type it embeds. That
+			// identifier's position is what the variable reports, and it is not
+			// where the field starts — a *T begins at the star and a pkg.T at
+			// the package name, so keying on the field would file both under a
+			// position nothing ever looks up.
+			if len(field.Names) == 0 {
+				if at := embedded(field.Type); at.IsValid() {
+					into[at] = field.Doc
+				}
+			}
+		}
+		return true
+	})
+}
+
+// embedded returns the position go/types reports for an embedded field, which
+// is the position of the name it takes.
+//
+// The name an embedded field takes is the last identifier of the type: Buffer
+// for bytes.Buffer, and the same again through a pointer or a type argument.
+// Anything else is not a type that can be embedded, and reports no position
+// rather than a wrong one.
+func embedded(held ast.Expr) token.Pos {
+	switch held := held.(type) {
+	case *ast.Ident:
+		return held.Pos()
+	case *ast.StarExpr:
+		return embedded(held.X)
+	case *ast.SelectorExpr:
+		return held.Sel.Pos()
+	case *ast.IndexExpr:
+		return embedded(held.X)
+	case *ast.IndexListExpr:
+		return embedded(held.X)
+	default:
+		return token.NoPos
+	}
+}
+
 // Package returns the loaded package with the given import path.
 func (s *Session) Package(path string) (*packages.Package, bool) {
 	if s == nil {

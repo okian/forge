@@ -91,7 +91,7 @@ func TestStagedMarkersAreClaimedToo(t *testing.T) {
 // Generating from a stub is a diagnostic rather than a panic or an empty unit,
 // because both of those lie about what happened.
 func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
-	found, _ := layers.Builtins().Lookup(marker("Json"))
+	found, _ := layers.Builtins().Lookup(marker("Validate"))
 
 	unit, err := found.Generate(&layer.Context{
 		Model: &model.Model{Name: "Persons"},
@@ -111,7 +111,7 @@ func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
 	if got, want := reported.Code.String(), "FRG4900"; got != want {
 		t.Errorf("code is %s, want %s", got, want)
 	}
-	if !strings.Contains(reported.Message, "Json") {
+	if !strings.Contains(reported.Message, "Validate") {
 		t.Errorf("message %q does not name the layer", reported.Message)
 	}
 	if reported.Hint == "" {
@@ -125,7 +125,7 @@ func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
 func TestAStagedLayerSaysSoDifferently(t *testing.T) {
 	registry := layers.Builtins()
 
-	stub, _ := registry.Lookup(marker("Json"))
+	stub, _ := registry.Lookup(marker("Validate"))
 	staged, _ := registry.Lookup(marker("Csv"))
 
 	_, stubErr := stub.Generate(nil, shape.Shape{})
@@ -292,7 +292,8 @@ func TestLayersDescribeThemselves(t *testing.T) {
 
 	stages := map[string]layer.Stage{
 		"Slice": layer.StageReady,
-		"Json":  layer.StageStub,
+		"Json":  layer.StageReady,
+		"Clone": layer.StageStub,
 		"Csv":   layer.StageStaged,
 	}
 
