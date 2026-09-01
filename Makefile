@@ -5,6 +5,12 @@ GO ?= go
 COVER_MIN ?= 90
 COVER_PROFILE ?= cover.out
 
+# How long each fuzz target is given. A budget rather than a threshold: a run
+# that finds nothing is what a healthy one looks like, so what this buys is that
+# a change which breaks a codec is caught by the next push rather than by
+# whoever is unlucky.
+FUZZ_TIME ?= 30s
+
 # Tool versions live here rather than in the workflow, so that the tool CI runs
 # and the tool a contributor runs cannot drift apart. `make tools` installs
 # exactly these, and the workflow asks the Makefile which version to fetch.
@@ -89,6 +95,18 @@ cover: ## Run the test suite and enforce the coverage floor.
 .PHONY: bench
 bench: ## Run the benchmarks and hold each one to its recorded budget.
 	./scripts/bench.sh
+
+# Not part of `check` either, and for the opposite reason to the benchmarks: a
+# fuzz run has no natural end, so what it costs is whatever it is given. The
+# gate is that every target survives its budget rather than that it finds
+# nothing, since finding nothing is what a passing fuzz run always looks like.
+#
+# The corpus a run discovers is left in the build cache rather than committed. A
+# case that actually fails is written into testdata by the go command, and that
+# one belongs in the repository: it is a bug with a name.
+.PHONY: fuzz
+fuzz: ## Fuzz the codec targets against the standard library.
+	FUZZ_TIME=$(FUZZ_TIME) ./scripts/fuzz.sh
 
 # Regeneration is a target rather than a step of the build, which is the whole
 # arrangement forge is for: the output is committed, and it is remade when a

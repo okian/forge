@@ -148,6 +148,34 @@ jobs:
       - name: benchmarks are within budget
         run: make bench
 
+  # Fuzzing as a gate on the codecs, which are the part of the output that reads
+  # bytes somebody else wrote. Every target compares what forge generated
+  # against the standard library reading the same document, so a run fails when
+  # the two disagree about whether a document is valid or about what it says —
+  # which is a difference no test written by hand would think to try.
+  #
+  # A short time per target rather than a long one. Finding nothing is what a
+  # passing run always looks like, so the length is a budget rather than a
+  # threshold: this is here to catch what a change breaks, and the search that
+  # goes deep belongs to whoever is working on the codec.
+  #
+  # The corpus a run discovers stays in the build cache. A case that fails is
+  # written into the package's testdata by the go command, and that one is
+  # committed, because it is a bug with a reproduction.
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: every codec agrees with the standard library
+        run: make fuzz
+
   # Generated code has to compile wherever the subject's package does, and the
   # loader walks paths. Building for each platform is the cheap half of that
   # promise; the test matrix above covers the half that needs a real filesystem.

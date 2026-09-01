@@ -39,6 +39,31 @@ github.com/okian/forge/examples/people  SortedViewByHand       1   49152
 github.com/okian/forge/examples/people  Index                 22  262016
 github.com/okian/forge/examples/people  IndexByHand            5  131152
 
+# The generated JSON codec over a thousand elements, and the reflective encoder
+# over the same elements beside it. Every one of these is warmed before it is
+# measured: an encoder grows its buffer once to fit the largest document it has
+# written, and a figure that included that growth would report it divided by
+# however many iterations the run happened to do.
+#
+# What the pairs say, measured rather than assumed, is that the win is not where
+# the project first expected it. Writing costs nothing at all — no allocation
+# for a thousand elements, against two for the reflective path — and takes about
+# a fifth longer, because encoding/json/v2 writes a struct straight into its
+# buffer while a generated codec goes through the token API a caller could have
+# used themselves. Reading is the other way round: the same allocations, since
+# both make the same strings, and about a sixth quicker.
+#
+# So the encoder's claim is memory and the decoder's is time, and neither is the
+# order-of-magnitude the pre-v2 generators had. That is the caveat prd.md §14
+# opens with, now with numbers under it. The reflective figures are held to a
+# budget too, because a baseline that quietly stopped doing the work would make
+# the comparison meaningless while leaving both lines green.
+github.com/okian/forge/examples/people  JSONEncode                0      0
+github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
+github.com/okian/forge/examples/people  JSONDecode             2000  39920
+github.com/okian/forge/examples/people  JSONDecodeReflectively 2000  39920
+github.com/okian/forge/examples/people  JSONWriteTo              21   6656
+
 # The shared lazy view, benchmarked against its own template rather than
 # through a generated copy of it, so that a change to the view is caught where
 # it is written.

@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs 60c830a36b74b8ab
+// inputs 7abcc06e30d9b26c
 
 //go:build forgespec
 
@@ -37,7 +37,7 @@ func (c Recent) Ages() []int {
 
 func (c Recent) project[V any](of func(Person) V) []V { panic("forge stub") }
 
-const recentFixedCap = 8
+const recentFixedCap = 1024
 
 func NewRecent() *Recent { panic("forge stub") }
 

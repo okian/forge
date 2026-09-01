@@ -28,8 +28,8 @@ import "github.com/okian/forge"
 // holds, and the codec knows nothing about how many there are.
 //
 // Ring is what makes it bounded. A producer that outruns whatever reads this
-// costs eight elements of memory rather than an increasing amount, and the
-// eight is decided here rather than discovered in production.
+// costs a thousand elements of memory rather than an increasing amount, and the
+// thousand is decided here rather than discovered in production.
 //
-//forge:ring cap=8
+//forge:ring cap=1024
 type Recent forge.Collection[forge.Ring[forge.Json[Person]]]

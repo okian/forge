@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs 0563bd0c710dee2c
+// inputs 3938f38400d6e4ee
 
 //go:build !forgespec
 
@@ -76,7 +76,7 @@ func (c Recent) project[V any](of func(Person) V) []V {
 // than of a value: every container of this type holds the same number, the
 // compiler knows it, and no caller can be handed one sized differently from the
 // one it expected.
-const recentFixedCap = 8
+const recentFixedCap = 1024
 
 // Recent holds a fixed number of the most recent elements.
 //

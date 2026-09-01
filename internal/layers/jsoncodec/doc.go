@@ -34,6 +34,26 @@
 // as they are parsed, so a document is never held in memory beside the
 // container being filled from it.
 //
+// # What it is worth, measured
+//
+// A thousand elements through an encoder the caller owns, against the
+// reflective path writing the same elements through the same encoder: this
+// allocates nothing at all where the reflective path allocates twice, and takes
+// about a fifth longer. Reading is the other way round — the same allocations,
+// since both make the same strings, and about a sixth quicker.
+//
+// The encoder is slower because encoding/json/v2 writes a struct straight into
+// its own buffer, while generated code goes through the token API any caller
+// could use. Going around that — assembling each object by hand and writing it
+// as one value — was tried and is slower again, because a value written that
+// way is validated on the way in.
+//
+// So the reason to declare this layer is not speed. It is output that costs no
+// memory to produce, a codec whose behaviour is readable in the source rather
+// than inferred from tags at run time, and a binary with no reflection in it. A
+// subject whose encoding has to be the fastest thing in the program is one to
+// measure both ways before deciding.
+//
 // Three things still go through the standard library's encoder, and all three
 // are visible in the output. A field marked as a reflective boundary, which is
 // described below and is the author's own decision. A slice or array of bytes,
