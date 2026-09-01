@@ -1,0 +1,278 @@
+package generate_test
+
+import (
+	"bytes"
+	"go/token"
+	"go/types"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"golang.org/x/tools/go/packages"
+
+	"github.com/okian/forge/internal/generate"
+	"github.com/okian/forge/internal/goldentest"
+	"github.com/okian/forge/internal/load"
+	"github.com/okian/forge/internal/model"
+	subjects "github.com/okian/forge/internal/subject"
+)
+
+// sharedPkg is the fixture package the two subjects are declared in.
+const sharedPkg = "sharedfixture/model"
+
+// Whatever a layer writes about a type is written once for the package, however
+// many declarations reach it.
+//
+// It is the claim the shared file exists for and the one nothing else checks: a
+// package holding one function twice does not compile, so a layer that
+// contributed the same helper from two declarations would produce output that
+// fails to build — and it would fail only for a package that happened to have
+// two declarations, which is not the package anybody writes a test for.
+//
+// Two ways of reaching it, because they are different mistakes. Two
+// declarations over one subject each ask their element layers for the same
+// thing about the same type. Two declarations over *different* subjects that
+// each hold an Address ask about a type neither of them is.
+func TestWhatIsSharedIsWrittenOnce(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model", []generate.Request{
+		declaring(t, "People", "Person"),
+		declaring(t, "Everybody", "Person"),
+		declaring(t, "Employers", "Employer"),
+	}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("generating was refused:\n%s", diags.Render())
+	}
+
+	shared := string(written(t, files, generate.Shared()))
+
+	// One of each, for the type two subjects reach and for the type two
+	// declarations share.
+	once := map[string]string{
+		"the codec for the shared struct":   "func (v Address) MarshalJSONTo(",
+		"the reader for the shared struct":  "func (v *Address) UnmarshalJSONFrom(",
+		"the check for the shared struct":   "func (v Address) Validate() error {",
+		"the copy for the shared struct":    "func (v Address) Clone() Address {",
+		"the codec for the shared subject":  "func (v Person) MarshalJSONTo(",
+		"the copy for the shared subject":   "func (v Person) Clone() Person {",
+		"the codec for the other subject":   "func (v Employer) MarshalJSONTo(",
+		"the call-through for the subject":  "func encodeModelPersonJSONTo(",
+		"the call-through for the reached":  "func encodeModelAddressJSONTo(",
+		"the copy through for the subject":  "func clonePerson(v Person) Person {",
+		"the check through for the subject": "func validatePerson(v Person) error {",
+	}
+
+	for what, held := range once {
+		if got := strings.Count(shared, held); got != 1 {
+			t.Errorf("%s appears %d times, want once:\n%q", what, got, held)
+		}
+	}
+}
+
+// What is shared is in the shared file and not in the declarations' own.
+//
+// The division is what makes the sharing possible at all: a helper written into
+// one declaration's file is a helper the next declaration cannot reach without
+// writing it again.
+func TestWhatIsSharedIsNotAlsoWrittenPerDeclaration(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model", []generate.Request{
+		declaring(t, "People", "Person"),
+		declaring(t, "Employers", "Employer"),
+	}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("generating was refused:\n%s", diags.Render())
+	}
+
+	for _, name := range []string{generate.Named("People"), generate.Named("Employers")} {
+		held := string(written(t, files, name))
+
+		for _, want := range []string{
+			"func (v Address) MarshalJSONTo(",
+			"func (v Address) Clone() Address {",
+			"func (v Person) MarshalJSONTo(",
+		} {
+			if strings.Contains(held, want) {
+				t.Errorf("%s holds %q, which belongs to the package rather than to it", name, want)
+			}
+		}
+	}
+}
+
+// And the package the two declarations make compiles, which is the claim every
+// count above is standing in for.
+func TestAPackageOfSeveralDeclarationsCompiles(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model", []generate.Request{
+		declaring(t, "People", "Person"),
+		declaring(t, "Everybody", "Person"),
+		declaring(t, "Employers", "Employer"),
+	}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("generating was refused:\n%s", diags.Render())
+	}
+
+	spec := goldentest.Source{Name: "spec.go", Content: []byte(
+		"//go:build forgespec\n\npackage model\n\n" +
+			"type People struct{}\ntype Everybody struct{}\ntype Employers struct{}\n")}
+
+	sources := []goldentest.Source{{Name: "model.go", Content: sharedSource(t)}, spec}
+	for _, file := range files {
+		sources = append(sources, goldentest.Source{Name: file.Name, Content: file.Content, Generated: true})
+	}
+
+	for _, tags := range [][]string{nil, {"forgespec"}} {
+		if err := goldentest.Compiles(goldentest.Package{Path: "model", Tags: tags, Files: sources}); err != nil {
+			t.Errorf("the package does not compile with tags %v: %v", tags, err)
+		}
+	}
+}
+
+// declaring builds one spec declaration over a fixture subject, with every
+// element layer this build has.
+//
+// All of them, because what is being asked is whether the package holds one of
+// each helper — and a layer left out is a helper that cannot collide.
+func declaring(t *testing.T, declared, of string) generate.Request {
+	t.Helper()
+
+	return generate.Request{
+		Model: &model.Model{
+			Name: declared, Form: model.FormSpec, Subject: sharedSubject(t, of),
+			Pkg: sharedPackage(t),
+			Pos: declaredAt,
+			Stack: []model.LayerRef{
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Collection"}, Kind: model.KindRefining},
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Slice"}, Kind: model.KindStorage},
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Json"}, Kind: model.KindElement},
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Validate"}, Kind: model.KindElement},
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Clone"}, Kind: model.KindElement},
+			},
+		},
+	}
+}
+
+// sharedFixture loads the fixture module once for the whole file.
+var sharedFixture *load.Session
+
+// loadShared loads the fixture, keeping the one session: loading is what these
+// tests spend their time on, and the session is read and never written.
+func loadShared(t *testing.T) *load.Session {
+	t.Helper()
+
+	if sharedFixture != nil {
+		return sharedFixture
+	}
+
+	dir, err := filepath.Abs(filepath.Join("testdata", "shared"))
+	if err != nil {
+		t.Fatalf("resolving the fixture: %v", err)
+	}
+
+	loaded, err := load.Load(load.Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("loading the fixture: %v", err)
+	}
+	if !loaded.Diagnostics.Empty() {
+		t.Fatalf("the fixture does not load clean:\n%s", loaded.Diagnostics.Render())
+	}
+
+	sharedFixture = loaded
+	return loaded
+}
+
+// sharedPackage returns the fixture package the declarations are generated
+// into.
+func sharedPackage(t *testing.T) *packages.Package {
+	t.Helper()
+
+	pkg, ok := loadShared(t).Package(sharedPkg)
+	if !ok {
+		t.Fatalf("the fixture has no package %s", sharedPkg)
+	}
+	return pkg
+}
+
+// sharedSubject models one of the fixture's subjects.
+func sharedSubject(t *testing.T, name string) *model.Struct {
+	t.Helper()
+
+	loaded := loadShared(t)
+	obj := sharedPackage(t).Types.Scope().Lookup(name)
+	if obj == nil {
+		t.Fatalf("%s declares no %s", sharedPkg, name)
+	}
+
+	held, is := types.Unalias(obj.Type()).(*types.Named)
+	if !is {
+		t.Fatalf("%s is a %T, want a named type", name, obj.Type())
+	}
+
+	built, problems := subjects.New(subjects.Config{
+		Fset:      loaded.Fset,
+		Owned:     loaded.Owned(),
+		Docs:      loaded.FieldDocs(),
+		Generated: loaded.Generated(),
+	}).Build(held, subjects.At(token.Position{Filename: "model.go"}))
+	if !problems.Empty() {
+		t.Fatalf("modelling %s: %s", name, problems.Render())
+	}
+
+	return built
+}
+
+// sharedSource returns the fixture's own source, so that what is generated is
+// compiled against the types it was generated from.
+func sharedSource(t *testing.T) []byte {
+	t.Helper()
+
+	held, err := os.ReadFile(filepath.Join("testdata", "shared", "model", "model.go"))
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+	return held
+}
+
+// Generating one package twice produces one answer, byte for byte.
+//
+// The shared file is where this is most at risk and least visible: what goes in
+// it is gathered from maps keyed by type, and a map is walked in whatever order
+// it feels like. Output that varied would make every run a diff, in files that
+// are committed — and a repository whose generated code changes without anybody
+// changing anything is one where nobody reads it.
+//
+// Asked of a package with several declarations and several element layers,
+// because one of each would be one key in each map and no order to get wrong.
+func TestGeneratingOnePackageTwiceGivesOneAnswer(t *testing.T) {
+	asked := func() []generate.Request {
+		return []generate.Request{
+			declaring(t, "People", "Person"),
+			declaring(t, "Everybody", "Person"),
+			declaring(t, "Employers", "Employer"),
+		}
+	}
+
+	first, diags := generate.Package(sharedPkg, "model", asked(), config())
+	if !diags.Empty() {
+		t.Fatalf("generating was refused:\n%s", diags.Render())
+	}
+
+	second, diags := generate.Package(sharedPkg, "model", asked(), config())
+	if !diags.Empty() {
+		t.Fatalf("generating again was refused:\n%s", diags.Render())
+	}
+
+	if len(first) != len(second) {
+		t.Fatalf("one run wrote %d files and the next wrote %d", len(first), len(second))
+	}
+
+	for i, one := range first {
+		if one.Name != second[i].Name {
+			t.Fatalf("the runs wrote %s and %s in the same place", one.Name, second[i].Name)
+		}
+		if !bytes.Equal(one.Content, second[i].Content) {
+			t.Errorf("%s differs between two runs over the same declarations", one.Name)
+		}
+	}
+}
