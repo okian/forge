@@ -4,6 +4,8 @@
 // failure names the question rather than a line in a struct of forty fields.
 package model
 
+import "clonefixture/other"
+
 // Flat holds only what assignment already copies, so its copy is the assignment
 // and nothing else.
 type Flat struct {
@@ -123,4 +125,39 @@ type Misoptioned struct {
 type Misvalued struct {
 	//forge:clone aliasing=copy
 	Tags []string
+}
+
+// Elsewhere holds a struct declared in a package of its own, every way a struct
+// can hold one.
+//
+// The copy for that struct cannot be a method, because Go puts a method only
+// where its type is, so it is a function in this package — and every one of
+// these fields has to call it rather than call a method that cannot exist.
+type Elsewhere struct {
+	Home    other.Place
+	Work    *other.Place
+	Past    []other.Place
+	ByName  map[string]other.Place
+	Windows [2]other.Place
+}
+
+// Pair is a generic, so that an instantiation of it is a type this package
+// declares and still cannot carry a method.
+//
+// It is the other reason a copy has to be a function, and it is not the one a
+// reader would guess: the type is right here, and Go has nowhere to put the
+// method because the method would belong to the generic and so to every
+// instantiation of it.
+type Pair[A any, B any] struct {
+	First  A
+	Second B
+
+	// notes is unexported and is this package's, so a copy written here copies
+	// it — which is what tells the two reasons apart.
+	notes []string
+}
+
+// Instantiated holds one instantiation of that generic.
+type Instantiated struct {
+	Held Pair[string, int]
 }

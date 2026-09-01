@@ -25,6 +25,7 @@ var (
 	codeTwoClaimants  = diag.Register(4012, "two layers want one method name")
 	codeNameTaken     = diag.Register(4013, "a generated declaration collides with one the package already has")
 	codePackageClash  = diag.Register(4016, "two import paths bind one package name")
+	codeNameTwice     = diag.Register(4018, "two generated declarations want one package-level name")
 )
 
 // declared is what the package already holds, which is what generated code may
@@ -264,6 +265,51 @@ func claimed(sections []emit.Section, of policing, diags *diag.Set) {
 			"two layers of %s write %s", of.declared, held).
 			WithHint("%s", "drop one of them, or write the method yourself — a method the author "+
 				"declares is the one that is kept"))
+	}
+}
+
+// redeclared reports two generated declarations that want one package-level
+// name, against the position given.
+//
+// Asked of a whole build's worth of files rather than of one, because two
+// generated names meet across files as readily as within one: what an element
+// layer writes goes into the file a package shares, and what a container layer
+// writes goes into the declaration's own.
+//
+// It is a package's question rather than a layer's, and no layer can answer it:
+// a layer is handed one subject and names what it writes after that, so two
+// layers over two subjects — or one layer over two subjects reached from two
+// declarations — are the only place two names can meet. The names are built to
+// keep them apart, and building is not proving: a name is a fold of a package
+// and a type into one identifier, and a fold of two things into one has
+// collisions somewhere however it is written.
+//
+// So the fold stays readable and this is what makes it safe. Reported rather
+// than resolved, because renaming one of two things forge chose the names for
+// would leave a caller unable to guess either — and the case is rare enough
+// that being told to rename a type is a better answer than a scheme nobody can
+// predict.
+func redeclared(sections []emit.Section, at token.Position, diags *diag.Set) {
+	seen := make(map[string]bool)
+	var twice []string
+
+	for _, section := range sections {
+		for _, decl := range section.Decls {
+			for _, name := range declares(decl) {
+				if seen[name] && !slices.Contains(twice, name) {
+					twice = append(twice, name)
+				}
+				seen[name] = true
+			}
+		}
+	}
+
+	slices.Sort(twice)
+	for _, name := range twice {
+		diags.Add(diag.New(codeNameTwice, at,
+			"two of the declarations generated for this package are called %s", name).
+			WithHint("%s", "a generated name is built from the type it is for and the package that "+
+				"declares it, and two types have folded onto one — rename one of them"))
 	}
 }
 

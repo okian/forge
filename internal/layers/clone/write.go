@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/okian/forge/internal/emit"
 )
 
 // The names the generated code binds, written once so that every copy agrees on
@@ -37,15 +39,23 @@ func (w *writer) line(format string, args ...any) {
 // blank separates two declarations.
 func (w *writer) blank() { w.out.WriteByte('\n') }
 
+// wrapped writes a sentence as as many comment lines as it takes, so that a
+// long one does not run off the side of a file the rest of which is wrapped.
+func (w *writer) wrapped(text string) {
+	for _, line := range emit.Wrapped(text, emit.CommentWidth) {
+		w.line("// %s", line)
+	}
+}
+
 // String returns the assembled source.
 func (w *writer) String() string { return w.out.String() }
 
 // through writes the function everything generated calls, which forwards to the
-// method where the type can carry one.
+// method.
 func (w *writer) through(held *plan, name string) {
 	spelled := held.spelled.Text
 
-	w.line("// %s returns a copy of a %s that shares nothing with it.", name, spelled)
+	w.wrapped(name + " returns a copy of " + valueVar + " " + promise(held) + ".")
 	w.line("//")
 	w.line("// The value's own method holds the body; this is what generated code")
 	w.line("// calls, so that a caller names one function whether or not the type")
@@ -56,18 +66,48 @@ func (w *writer) through(held *plan, name string) {
 	w.blank()
 }
 
-// copy writes one type's whole copy.
-func (w *writer) copy(held *plan) {
+// copy writes one type's whole copy, as the method where the type can carry one
+// and as the function everything calls where it cannot.
+//
+// The second is not a lesser form of the first. A struct the subject reaches in
+// another package, and an instantiation of a generic anywhere, both have
+// nowhere to put a method — and a copy written as one there is a file that does
+// not compile rather than a copy that is missing something. Which of the two it
+// was goes into the comment, because a reader looking at a function where they
+// expected a method is asking exactly that.
+func (w *writer) copy(held *plan, name string) {
 	spelled := held.spelled.Text
 
-	w.line("// %s returns a copy of the %s that shares nothing with it.", method, spelled)
+	if held.attach {
+		w.wrapped(method + " returns a copy of the " + spelled + " " + promise(held) + ".")
+	} else {
+		w.wrapped(name + " returns a copy of " + valueVar + " " + promise(held) + ".")
+		w.line("//")
+		w.wrapped("A function rather than a method, because " + held.why + ".")
+	}
+
 	w.line("//")
-	w.line("// Everything reachable is copied, so what is done to the copy is invisible")
-	w.line("// in the original and the other way round. The copy starts as an assignment,")
-	w.line("// which is already the whole of it for a field holding a number, a string or")
-	w.line("// anything else made only of those; what follows is the fields for which an")
-	w.line("// assignment would have copied a reference rather than what it refers to.")
-	w.line("func (%s %s) %s() %s {", valueVar, spelled, method, spelled)
+	w.wrapped(reached(held) + " is copied, so what is done to the copy is invisible in the " +
+		"original and the other way round. The copy starts as an assignment, which is " +
+		"already the whole of it for a field holding a number, a string or anything else " +
+		"made only of those; what follows is the fields for which an assignment would " +
+		"have copied a reference rather than what it refers to.")
+
+	if held.carried {
+		w.line("//")
+		w.wrapped("What it cannot reach is the unexported fields of a type declared in another " +
+			"package, which are not this package's to name. The assignment carries those " +
+			"across as they are, so a reference held in one of them is shared with the " +
+			"original rather than copied. A type for which that is wrong can say so by " +
+			"declaring the copy itself.")
+	}
+
+	if held.attach {
+		w.line("func (%s %s) %s() %s {", valueVar, spelled, method, spelled)
+	} else {
+		w.line("func %s(%s %s) %s {", name, valueVar, spelled, spelled)
+	}
+
 	w.line("%s := %s", outVar, valueVar)
 
 	if len(held.fields) > 0 {
@@ -80,6 +120,29 @@ func (w *writer) copy(held *plan) {
 	w.line("return %s", outVar)
 	w.line("}")
 	w.blank()
+}
+
+// reached opens the paragraph about what a copy covers, which is everything for
+// most types and everything this package can name for the rest.
+func reached(held *plan) string {
+	if held.carried {
+		return "Everything this package can reach"
+	}
+	return "Everything reachable"
+}
+
+// promise is the claim a copy opens with, which is weaker where the copy could
+// not reach the whole of the value.
+//
+// Weaker rather than silent. A reader who is told a copy shares nothing will
+// write code that relies on it, and a copy that shares one field is exactly as
+// dangerous as no copy at all — so the sentence says which of the two this is
+// before it says anything else.
+func promise(held *plan) string {
+	if held.carried {
+		return "that shares nothing with it except the fields this package cannot name"
+	}
+	return "that shares nothing with it"
 }
 
 // value writes the statements that copy one value into a target.
@@ -106,7 +169,7 @@ func (w *writer) value(into, from string, of *form, depth int) {
 	case howMap:
 		w.mapping(into, from, of, depth)
 
-	case howAssign, howShare, howMethod, howOpaque:
+	case howAssign, howShare, howMethod, howThrough, howOpaque:
 		// Every one of these is an expression, so the branch above wrote it —
 		// except the opaque, which is refused while planning and never reaches
 		// a writer at all.
@@ -128,6 +191,9 @@ func expression(from string, of *form) (string, bool) {
 
 	case howMethod:
 		return from + "." + method + "()", true
+
+	case howThrough:
+		return of.call + "(" + from + ")", true
 
 	case howSlice:
 		if !needs(of.elem) {

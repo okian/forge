@@ -107,6 +107,7 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		out      []File
 		required []model.TypeRef
 		standing []emit.Section
+		written  []emit.Section
 		imported []emit.Import
 		about    = make(map[string]layer.Unit)
 		taken    = make(map[string]string, len(requests)+len(Reserved()))
@@ -146,6 +147,7 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 
 		out = append(out, file)
 		required = append(required, unit.Requires...)
+		written = append(written, unit.Sections...)
 
 		gather(about, unit.Provides)
 
@@ -163,7 +165,7 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		out = append(out, file)
 	}
 
-	file, shared, ok := sharing(path, name, required, about, requests, cfg, &diags)
+	file, shared, ok := sharing(path, name, required, about, requests, cfg, written, &diags)
 	if ok {
 		out = append(out, file)
 	}
@@ -234,7 +236,7 @@ type judgement struct {
 // copy for the package, however many declarations wanted it — and differ only
 // in who wrote them.
 func sharing(path, name string, required []model.TypeRef, about map[string]layer.Unit,
-	requests []Request, cfg Config, diags *diag.Set,
+	requests []Request, cfg Config, beside []emit.Section, diags *diag.Set,
 ) (File, map[string]claimable, bool) {
 	built, problems := helpers(path, required, requests)
 	diags.Merge(&problems)
@@ -243,6 +245,7 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 
 	held := merge.Units(append(contributed(about), asUnit(built))...)
 	if held.Empty() {
+		redeclared(beside, at(requests), diags)
 		return File{}, made, false
 	}
 
@@ -274,6 +277,18 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 			held.Imports = merged(held.Imports, imports)
 		}
 	}
+
+	// Every file of the build at once, which is the only granularity that
+	// answers. What an element layer writes belongs to the subject rather than
+	// to the declaration that asked for it, so two declarations over two
+	// subjects meet here and nowhere else — and a name written into this file
+	// can equally land on one written into a declaration's own.
+	//
+	// The build, rather than every file: what stands in for a spec declaration
+	// is the same names again under the opposite constraint, so a check that
+	// counted both would report every spec declaration as colliding with
+	// itself.
+	redeclared(append(slices.Clone(beside), held.Sections...), at(requests), diags)
 
 	var sum emit.Digest
 	FingerprintShared(&sum, required, name, cfg)

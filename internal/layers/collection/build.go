@@ -4,7 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"strings"
+
+	"github.com/okian/forge/internal/emit"
 )
 
 // A generated method of this layer is one expression: it hands one of the
@@ -182,45 +183,10 @@ func comment(text string) *ast.CommentGroup {
 	}
 
 	var lines []*ast.Comment
-	for _, line := range wrapped(text, commentWidth) {
+	for _, line := range emit.Wrapped(text, emit.CommentWidth) {
 		lines = append(lines, &ast.Comment{Text: "// " + line})
 	}
 	return &ast.CommentGroup{List: lines}
-}
-
-// commentWidth is how wide a built comment's text may be before the two slashes
-// and the space in front of it, so that a wrapped line is eighty columns.
-const commentWidth = 77
-
-// wrapped breaks a line of prose at the last space that fits.
-//
-// The file a built comment lands in also holds comments the template supplied,
-// and those are wrapped because somebody wrote them that way. A generated
-// method whose one-line summary ran to ninety columns beside them would look
-// like the machine-written half of a file that is meant to read as one thing.
-//
-// A word longer than the width is left long rather than broken: a type name is
-// one word, and hyphenating it would produce something that is not the name.
-func wrapped(text string, width int) []string {
-	var out []string
-
-	line := ""
-	for _, word := range strings.Fields(text) {
-		switch {
-		case line == "":
-			line = word
-		case len(line)+1+len(word) <= width:
-			line += " " + word
-		default:
-			out = append(out, line)
-			line = word
-		}
-	}
-
-	if line != "" {
-		out = append(out, line)
-	}
-	return out
 }
 
 // spelled turns a type written as source into the syntax a built declaration

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
+	"github.com/okian/forge/internal/goldentest"
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/clone"
 	"github.com/okian/forge/internal/load"
@@ -17,8 +18,12 @@ import (
 	"github.com/okian/forge/internal/subject"
 )
 
-// modelPkg is the fixture package the subjects are declared in.
-const modelPkg = "clonefixture/model"
+// The fixture packages: the one the subjects are declared in, and the one they
+// reach types in that no method of this run's can be attached to.
+const (
+	modelPkg = "clonefixture/model"
+	otherPkg = "clonefixture/other"
+)
 
 // loadFixture loads the fixture module.
 func loadFixture(t *testing.T) *load.Session {
@@ -145,7 +150,25 @@ func keys[V any](held map[string]V) func(func(string) bool) {
 func fixtureSource(t *testing.T) []byte {
 	t.Helper()
 
-	held, err := os.ReadFile(filepath.Join("testdata", "copies", "model", "model.go"))
+	return read(t, filepath.Join("testdata", "copies", "model", "model.go"))
+}
+
+// besideFixture returns the package the fixture reaches types in, so that a
+// copy naming one of them can be compiled.
+func besideFixture(t *testing.T) goldentest.Package {
+	t.Helper()
+
+	return goldentest.Package{
+		Path:  otherPkg,
+		Files: []goldentest.Source{{Name: "other.go", Content: read(t, filepath.Join("testdata", "copies", "other", "other.go"))}},
+	}
+}
+
+// read returns a fixture file's bytes.
+func read(t *testing.T, path string) []byte {
+	t.Helper()
+
+	held, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading the fixture: %v", err)
 	}

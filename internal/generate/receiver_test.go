@@ -62,7 +62,7 @@ func (marked) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	var (
 		held    = ctx.Model.Subject
 		into    = ctx.Model.Pkg.PkgPath
-		through = model.Through(held, "mark", "Text")
+		through = model.Through(held, "mark", "Text", into)
 		subject = ctx.Model.SubjectSpelling(nil)
 	)
 
@@ -144,13 +144,18 @@ func declaredIn(t *testing.T, path, name string) *model.Struct {
 	}
 }
 
-// The same declaration generates both ways, and what a caller writes is the
-// same either way.
+// The same declaration generates both ways, and a caller reaches the work the
+// same way either way.
 //
 // One flag decides it, and the flag is a fact rather than a setting: whether
 // the subject is declared in the package being written. What changes is where
-// the work goes; what does not is the name the container calls, which is why
-// nothing above the subject has to know.
+// the work goes; what does not is that a call reaches it, which is why nothing
+// above the subject has to know which way it went.
+//
+// The name of that call carries the subject's package where the subject is
+// somewhere else, because a package can reach two structs of one name and give
+// them one function between them otherwise. The layer builds the name the same
+// way in every case, so this costs nothing above.
 func TestWhereAnElementLayerPutsItsWork(t *testing.T) {
 	registry := layers.Builtins()
 	registry.MustRegister(marked{})
@@ -159,20 +164,27 @@ func TestWhereAnElementLayerPutsItsWork(t *testing.T) {
 
 	cases := map[string]struct {
 		subject  *model.Struct
+		through  string
 		attaches bool
 		builds   bool
 	}{
 		// Beside the declaration, which is the only place a method on it can
 		// be declared — and the only one of these the compile gate can build,
 		// since it resolves nothing outside the standard library.
-		"in the package being written": {subject: person(), attaches: true, builds: true},
+		"in the package being written": {
+			subject: person(), through: "markPersonText", attaches: true, builds: true,
+		},
 
 		// Same module, another package. Out of reach for the language's
 		// reason: a method belongs to the file declaring the type.
-		"in another package of this module": {subject: declaredIn(t, local+"/domain", "domain")},
+		"in another package of this module": {
+			subject: declaredIn(t, local+"/domain", "domain"), through: "markDomainPersonText",
+		},
 
 		// And another module, which is out of reach for two reasons at once.
-		"in another module": {subject: declaredIn(t, "other.example/lib", "lib")},
+		"in another module": {
+			subject: declaredIn(t, "other.example/lib", "lib"), through: "markLibPersonText",
+		},
 	}
 
 	for name, want := range cases {
@@ -199,9 +211,14 @@ func TestWhereAnElementLayerPutsItsWork(t *testing.T) {
 			held := everything(files)
 
 			// The call-through function, whichever way the layer went. It is
-			// the whole of what anything above the subject knows about, and it
-			// is the same name in all three.
-			if want := "func markPersonText("; !bytes.Contains(held, []byte(want)) {
+			// the whole of what anything above the subject knows about: one
+			// function, written the same way in all three, so nothing above
+			// has to ask which way the layer went.
+			//
+			// Its name carries the subject's package where the subject is not
+			// this one's, because a package may reach two structs of one name
+			// and two functions of one name is a package that does not build.
+			if want := "func " + want.through + "("; !bytes.Contains(held, []byte(want)) {
 				t.Errorf("the output does not hold %q:\n%s", want, held)
 			}
 

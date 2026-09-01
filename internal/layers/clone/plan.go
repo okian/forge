@@ -67,8 +67,13 @@ const (
 	howShare
 
 	// howMethod is a value that copies itself, which is either a struct this
-	// run writes for or a type whose author wrote Clone.
+	// run writes a method for or a type whose author wrote Clone.
 	howMethod
+
+	// howThrough is a struct this run writes for and cannot put a method on,
+	// because it is declared in another package. Its copy is a function in the
+	// package being generated into, and the call names that instead.
+	howThrough
 
 	// The three the language gives a shape to and generated code has to build
 	// again.
@@ -91,6 +96,10 @@ type form struct {
 
 	// how says which shape the copy takes.
 	how how
+
+	// call names the function a howThrough copy goes through, and is empty for
+	// every other shape.
+	call string
 
 	// elem is what a pointer, a slice, an array or a map holds, already
 	// decided. key is a map's key, which is copied by being assigned — a map
@@ -123,8 +132,15 @@ type plan struct {
 	fields []copied
 
 	// attach records that the type may carry the method, which is true only
-	// for a struct the package being generated into declares.
+	// for a struct the package being generated into declares. why says what
+	// stops it where it does not, for the comment the function is written with.
 	attach bool
+	why    string
+
+	// carried records that a field was left to the assignment because generated
+	// code here cannot name it, which is the one case where a copy shares
+	// something with what it was copied from.
+	carried bool
 }
 
 // planner decides what a subject's copy is made of.
@@ -178,6 +194,59 @@ func (p *planner) plan(held *model.Struct) {
 			p.fill(one)
 		}
 	}
+
+	p.spread()
+}
+
+// spread marks a plan as carrying something across wherever anything it holds
+// does.
+//
+// A copy that calls another type's copy is as shallow as that copy is, and what
+// the comment on it claims is about the whole value rather than about the
+// fields this type happens to own. So the answer travels up: a struct holding
+// one whose unexported fields could not be read shares them too, and says so.
+//
+// To a fixpoint, because the holder of a holder is in the same position and the
+// plans are in the order they were reached rather than in dependency order.
+func (p *planner) spread() {
+	for moved := true; moved; {
+		moved = false
+
+		for _, ref := range p.order {
+			held := p.plans[ref]
+			if held == nil || held.carried {
+				continue
+			}
+
+			for _, one := range held.fields {
+				if p.shallow(one.of, make(map[*form]bool)) {
+					held.carried, moved = true, true
+					break
+				}
+			}
+		}
+	}
+}
+
+// shallow reports whether copying a value goes through a type that carries
+// something across rather than copying it.
+//
+// A type whose author wrote the copy answers nothing, because this run has no
+// plan for it and no way to know what the author's copy reaches. Claiming
+// either way about somebody else's method would be a guess.
+func (p *planner) shallow(of *form, seen map[*form]bool) bool {
+	if of == nil || seen[of] {
+		return false
+	}
+	seen[of] = true
+
+	switch of.how {
+	case howMethod, howThrough:
+		held := p.plans[key(of.typ)]
+		return held != nil && held.carried
+	default:
+		return p.shallow(of.elem, seen)
+	}
 }
 
 // delegate drops the structs whose author already wrote the copy, and reports
@@ -223,6 +292,7 @@ func (p *planner) remember(held *model.Struct) {
 		of:      held,
 		spelled: model.Spell(held.Type(), p.into, nil),
 		attach:  held.Attachable(p.into),
+		why:     model.Unattachable(held, p.into),
 	}
 	p.order = append(p.order, ref)
 }
@@ -230,11 +300,17 @@ func (p *planner) remember(held *model.Struct) {
 // fill works out one struct's copy.
 func (p *planner) fill(held *plan) {
 	for _, field := range held.of.Fields {
-		// An unexported field of a struct declared elsewhere cannot be read
-		// from here, so nothing can be done about it beyond the assignment the
-		// copy already made. Silently, because the field is not the author's
-		// and the assignment is the honest answer for it.
-		if !field.Exported && held.of.External {
+		// An unexported field of a struct declared in another package cannot be
+		// read from here, so nothing can be done about it beyond the assignment
+		// the copy already made. Silently, because the field is not the
+		// author's to change and the assignment is the honest answer for it.
+		//
+		// The package rather than the module, which is the language's rule: a
+		// name is unexported to everything outside the package that declares
+		// it, and a copy written in this one that named it would not compile
+		// whether or not the two are in the same module.
+		if !field.Exported && !held.of.Local(p.into) {
+			held.carried = true
 			continue
 		}
 
@@ -328,9 +404,16 @@ func (p *planner) fillForm(out *form) {
 	// be copied properly.
 	//
 	// A struct this run reached is one of the two: either this run writes its
-	// copy or its author did, and the call reads the same. Everything else is
-	// asked whether it copies itself, which is a question about a type forge
-	// has never written anything for.
+	// copy or its author did. Which of the two decides how it is called, and
+	// only for the structs this run writes for and cannot attach to: those get
+	// a function in the package being generated into, because Go lets a method
+	// be declared only where its type is. Everything else is asked whether it
+	// copies itself, which is a question about a type forge has never written
+	// anything for.
+	if held, writing := p.plans[key(out.typ)]; writing && !held.attach {
+		out.how, out.call = howThrough, model.Through(held.of, verb, "", p.into)
+		return
+	}
 	if _, reached := p.known[key(out.typ)]; reached || declares(out.typ) {
 		out.how = howMethod
 		return

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/goldentest"
 )
 
@@ -233,7 +234,7 @@ func TestTheSubjectAlwaysGetsACheck(t *testing.T) {
 func TestWhatIsWrittenCompiles(t *testing.T) {
 	for _, name := range []string{
 		"Person", "Scalars", "Composites", "Named", "Nested", "Hooked", "Holder", "Quiet",
-		"Carrying", "Mistaken", "Zeroed", "Ranged",
+		"Carrying", "Mistaken", "Zeroed", "Ranged", "Elsewhere",
 	} {
 		t.Run(name, func(t *testing.T) {
 			held := source(t, written(t, name))
@@ -243,10 +244,98 @@ func TestWhatIsWrittenCompiles(t *testing.T) {
 				{Name: "zz_forge.go", Content: []byte(held), Generated: true},
 			}
 
-			if err := goldentest.Compiles(goldentest.Package{Path: "model", Files: sources}); err != nil {
+			pkg := goldentest.Package{
+				Path:     modelPkg,
+				Files:    sources,
+				Requires: []goldentest.Package{besideFixture(t)},
+			}
+			if err := goldentest.Compiles(pkg); err != nil {
 				t.Errorf("the check for %s does not compile: %v", name, err)
 			}
 		})
+	}
+}
+
+// A struct the subject reaches in a package of its own is checked by a function
+// rather than by a method, and everything holding one calls that function.
+//
+// Go puts a method only where its type is, so a check written as a method there
+// is not a check that is missing something — it is a file that does not
+// compile. A field holding one by pointer is dereferenced at the call, since a
+// function takes the value where a method took the receiver.
+func TestAStructInAnotherPackageIsCheckedByAFunction(t *testing.T) {
+	held := source(t, written(t, "Elsewhere"))
+
+	if !strings.Contains(held, "func validateOtherPlace(v other.Place) error {") {
+		t.Errorf("the check for a struct of another package is not a function:\n%s", held)
+	}
+	if strings.Contains(held, "func (v other.Place)") {
+		t.Errorf("a method was declared on another package's type:\n%s", held)
+	}
+
+	for _, want := range []string{
+		"if err := validateOtherPlace(v.Home); err != nil {",
+		"if err := validateOtherPlace(*v.Work); err != nil {",
+	} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the check does not hold %q:\n%s", want, held)
+		}
+	}
+}
+
+// A struct that declares something called Validate which is not a check is
+// reported rather than worked around.
+//
+// Both ways out are worse. Writing the check would redeclare the name, in a
+// file the author cannot edit; not writing it would leave the type without the
+// method every other type in the closure has, and the call sites would not
+// compile either.
+func TestAStructWhoseValidateIsNotOne(t *testing.T) {
+	_, err := generating(t, "Wrongly")
+	if err == nil {
+		t.Fatal("a check was written beside a method of the same name")
+	}
+
+	reported, ok := diag.From(err)
+	if !ok {
+		t.Fatalf("%v is not a diagnostic", err)
+	}
+	if got, want := reported.Code.String(), "FRG2019"; got != want {
+		t.Errorf("reported as %s, want %s: %s", got, want, reported.Message)
+	}
+	if !strings.Contains(reported.Message, "Confused") {
+		t.Errorf("the complaint does not name the type:\n%s", reported.Message)
+	}
+	if !strings.Contains(reported.Hint, "rename the method") {
+		t.Errorf("the hint does not say what to do:\n%s", reported.Hint)
+	}
+}
+
+// A struct in another package that checks itself is called rather than written
+// for, which is the same rule a struct in this one gets.
+//
+// It matters most where the type is not this package's. What such a type checks
+// is usually an invariant on a field nothing here can read, so a check derived
+// from the tags would pass a value the type itself refuses — and would do it
+// silently, since both are called Validate and both answer with an error.
+func TestAStructInAnotherPackageThatChecksItself(t *testing.T) {
+	held := source(t, written(t, "Trusting"))
+
+	if !strings.Contains(held, "if err := v.Where.Validate(); err != nil {") {
+		t.Errorf("a type in another package that checks itself is not called:\n%s", held)
+	}
+	if strings.Contains(held, "validateOtherGuarded") {
+		t.Errorf("a check the author wrote was written a second time:\n%s", held)
+	}
+}
+
+// A rule on an unexported field of a struct in another package is left where it
+// was written, because generated code here cannot read the field.
+func TestARuleOnWhatAnotherPackageKeepsToItself(t *testing.T) {
+	held := source(t, written(t, "Elsewhere"))
+
+	if strings.Contains(held, "unread") {
+		t.Errorf("a check names a field it cannot reach:\n%s", held)
 	}
 }
 

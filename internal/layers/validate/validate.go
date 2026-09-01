@@ -123,7 +123,7 @@ func provided(built *planner) (layer.Unit, error) {
 	out[sharedKey] = failures
 
 	for _, held := range built.written() {
-		unit, err := checkFor(held)
+		unit, err := checkFor(held, model.Through(held.of, verb, "", built.into))
 		if err != nil {
 			return layer.Unit{}, err
 		}
@@ -143,15 +143,16 @@ func provided(built *planner) (layer.Unit, error) {
 // function nothing declares.
 func contribution(spelled string) string { return verb + ": " + spelled }
 
-// checkFor builds the declarations for one type's check.
-func checkFor(held *plan) (layer.Unit, error) {
+// checkFor builds the declarations for one type's check, under the name
+// everything generated calls it by.
+func checkFor(held *plan, name string) (layer.Unit, error) {
 	w := &writer{}
 	w.patterns(held)
 
 	if held.attach {
-		w.through(held, model.Through(held.of, verb, ""))
+		w.through(held, name)
 	}
-	w.check(held)
+	w.check(held, name)
 
 	decls, comments, fset, err := parsed(w.String(), held.spelled.Text)
 	if err != nil {

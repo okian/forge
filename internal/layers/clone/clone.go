@@ -132,7 +132,7 @@ func provided(built *planner) (layer.Unit, error) {
 	out := make(map[string]layer.Unit, len(built.plans))
 
 	for _, held := range built.written() {
-		unit, err := copyFor(held)
+		unit, err := copyFor(held, model.Through(held.of, verb, "", built.into))
 		if err != nil {
 			return layer.Unit{}, err
 		}
@@ -142,14 +142,15 @@ func provided(built *planner) (layer.Unit, error) {
 	return layer.Unit{Provides: out}, nil
 }
 
-// copyFor builds the declarations for one type's copy.
-func copyFor(held *plan) (layer.Unit, error) {
+// copyFor builds the declarations for one type's copy, under the name
+// everything generated calls it by.
+func copyFor(held *plan, name string) (layer.Unit, error) {
 	w := &writer{}
 
 	if held.attach {
-		w.through(held, model.Through(held.of, verb, ""))
+		w.through(held, name)
 	}
-	w.copy(held)
+	w.copy(held, name)
 
 	decls, comments, fset, err := parsed(w.String(), held.spelled.Text)
 	if err != nil {

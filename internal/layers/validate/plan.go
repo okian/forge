@@ -21,6 +21,19 @@ var (
 	codeRuleShape   = diag.Register(2014, "validate rule cannot be asked of this type")
 )
 
+// codeNotACheck reports a type that declares something called Validate which is
+// not a check of itself.
+//
+// Generating one would redeclare it, in a file the author cannot edit; not
+// generating it would leave the type without the method every other type in the
+// closure has, and the call sites would not compile either. Saying so is the
+// only answer that leaves them somewhere to go.
+var codeNotACheck = diag.Register(2019, "a type declares a Validate that is not a check")
+
+// notACheckHint says what to do about one.
+const notACheckHint = "rename the method, or give it the signature a check has — " +
+	"no arguments, and an error as its result — and it will be called rather than written"
+
 // The method the subject carries, and the prefix a field's own check is
 // written under.
 const (
@@ -70,6 +83,11 @@ type checked struct {
 	nested   bool
 	indirect bool
 
+	// through names the function the nested check goes through, for a type
+	// this run writes for and cannot put a method on. It is empty where the
+	// type carries one, which is where the call is a method call.
+	through string
+
 	// pattern names the package-level variable a regexp rule is compiled into.
 	pattern string
 }
@@ -85,8 +103,10 @@ type plan struct {
 	fields []checked
 
 	// attach records that the type may carry the method, which is true only
-	// for a struct the package being generated into declares.
+	// for a struct the package being generated into declares. why says what
+	// stops it where it does not, for the comment the function is written with.
 	attach bool
+	why    string
 }
 
 // wanted reports whether the plan asks anything at all.
@@ -120,6 +140,12 @@ type planner struct {
 	plans map[string]*plan
 	order []string
 
+	// delegated holds the types whose author wrote the check, which is why this
+	// run has no plan for them. It is what tells a plan that was taken away
+	// because nothing needed writing from one that was taken away because
+	// somebody had already written it.
+	delegated map[string]bool
+
 	diags diag.Set
 }
 
@@ -127,20 +153,55 @@ type planner struct {
 func (p *planner) plan(held *model.Struct) *plan {
 	p.known = make(map[string]*model.Struct)
 	p.plans = make(map[string]*plan)
+	p.delegated = make(map[string]bool)
 
 	p.remember(held)
 	for _, reached := range held.Closure {
 		p.remember(reached)
 	}
 
+	p.delegate()
+
 	// Every struct is planned before any is asked whether it needs a method,
 	// because whether one needs it depends on whether the structs it holds do.
 	for _, ref := range p.order {
-		p.fill(p.plans[ref])
+		if one, writing := p.plans[ref]; writing {
+			p.fill(one)
+		}
 	}
 	p.settle()
 
 	return p.plans[key(held.Type())]
+}
+
+// delegate drops the structs whose author already wrote the check, and reports
+// the ones that wrote something else under the name.
+//
+// A hand-written check is the author overriding what would otherwise be
+// generated, which is the rule the copy and the codec follow and for the same
+// reason: a type whose invariants forge cannot see is checked properly by the
+// person who can see them — and for a struct in another package those
+// invariants are exactly the ones forge cannot see, since its unexported fields
+// cannot be read from here at all.
+//
+// A field holding one of them is checked by calling Validate either way, so
+// nothing downstream has to know which.
+func (p *planner) delegate() {
+	for _, ref := range p.order {
+		held := p.known[ref]
+		if held == nil || !held.HasMethod(method) {
+			continue
+		}
+
+		delete(p.plans, ref)
+		p.delegated[ref] = true
+
+		if !declares(held.Type()) {
+			p.diags.Add(diag.New(codeNotACheck, held.Pos,
+				"%s declares %s, which does not answer with an error alone", held.Ref().Name, method).
+				WithHint("%s", notACheckHint))
+		}
+	}
 }
 
 // remember records a struct and reserves its plan, in the order reached.
@@ -159,6 +220,7 @@ func (p *planner) remember(held *model.Struct) {
 		of:      held,
 		spelled: model.Spell(held.Type(), p.into, nil),
 		attach:  held.Attachable(p.into),
+		why:     model.Unattachable(held, p.into),
 	}
 	p.order = append(p.order, ref)
 }
@@ -176,17 +238,22 @@ func (p *planner) fill(held *plan) {
 			spelled: model.Spell(field.Type.Type, p.into, nil),
 		}
 
-		// An unexported field of a struct declared elsewhere cannot be read
-		// from here at all, so nothing about it can be checked. Silently,
+		// An unexported field of a struct declared in another package cannot be
+		// read from here at all, so nothing about it can be checked. Silently,
 		// because it is not the author's tag that is wrong: the field is not
 		// theirs and the rule may be enforced where it is.
-		if !field.Exported && held.of.External {
+		//
+		// The package rather than the module, which is the language's rule: a
+		// name is unexported to everything outside the package that declares
+		// it, whether or not the two are in the same module.
+		if !field.Exported && !held.of.Local(p.into) {
 			continue
 		}
 
 		p.rules(&one, held)
 		one.hook = held.of.HasMethod(method + field.Name)
 		one.nested, one.indirect = p.nested(field)
+		one.through = p.throughFor(field)
 
 		held.fields = append(held.fields, one)
 	}
@@ -211,7 +278,7 @@ func (p *planner) rules(one *checked, held *plan) {
 			continue
 		}
 		if asked.name == ruleRegexp {
-			one.pattern = model.Through(held.of, "pattern", one.field.Name)
+			one.pattern = model.Through(held.of, "pattern", one.field.Name, p.into)
 		}
 		one.rules = append(one.rules, asked)
 	}
@@ -341,6 +408,29 @@ func (p *planner) nested(field model.Field) (nested, indirect bool) {
 	return declares(held), indirect
 }
 
+// throughFor names the function a nested check goes through, and nothing where
+// the call is a method call.
+//
+// A struct this run writes for and cannot attach to gets a function in the
+// package being generated into, because Go puts a method only where its type
+// is. A struct that carries the method — its author's or this run's — is called
+// through it, which is what every check written before this one did.
+func (p *planner) throughFor(field model.Field) string {
+	held := field.Type.Type
+	if held == nil {
+		return ""
+	}
+	if pointer, behind := held.Underlying().(*types.Pointer); behind {
+		held = pointer.Elem()
+	}
+
+	one, writing := p.plans[key(held)]
+	if !writing || one.attach {
+		return ""
+	}
+	return model.Through(one.of, verb, "", p.into)
+}
+
 // declares reports whether a type has a check of its own, whichever receiver it
 // was declared with.
 func declares(t types.Type) bool {
@@ -417,7 +507,7 @@ func (p *planner) forget() {
 				continue
 			}
 			if p.dropped(one.field) {
-				one.nested = false
+				one.nested, one.through = false, ""
 			}
 		}
 	}
@@ -425,6 +515,12 @@ func (p *planner) forget() {
 
 // dropped reports whether a field's type was one this run planned for and has
 // since decided needs nothing.
+//
+// Two things take a plan away and they mean opposite things. Settling takes one
+// away because nobody will write that check, and a call into it has to go.
+// Delegating takes one away because somebody already wrote it, and the call is
+// the whole point — clearing it would leave the author's own check unreached,
+// in code that compiles and quietly stops enforcing whatever it enforced.
 func (p *planner) dropped(field model.Field) bool {
 	held := field.Type.Type
 	if held == nil {
@@ -435,7 +531,7 @@ func (p *planner) dropped(field model.Field) bool {
 	}
 
 	ref := key(held)
-	if _, ours := p.known[ref]; !ours {
+	if _, ours := p.known[ref]; !ours || p.delegated[ref] {
 		return false
 	}
 	_, still := p.plans[ref]

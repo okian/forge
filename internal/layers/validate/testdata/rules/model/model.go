@@ -5,6 +5,8 @@
 // fields.
 package model
 
+import "validatefixture/other"
+
 // Person carries one of every rule, on a field the rule applies to.
 type Person struct {
 	Name    string `validate:"required,min=2,max=64"`
@@ -158,4 +160,57 @@ type Coordinate struct {
 // Ranged lists the numbers a fraction may be.
 type Ranged struct {
 	Share float64 `validate:"oneof=0.25 0.5 1.0"`
+}
+
+// Elsewhere holds a struct declared in a package of its own, by value and by
+// pointer.
+//
+// The check for that struct cannot be a method, because Go puts a method only
+// where its type is, so it is a function in this package — and both fields have
+// to call it rather than call a method that cannot exist.
+type Elsewhere struct {
+	Home other.Place
+	Work *other.Place
+}
+
+// Trusting holds a struct in another package that checks itself, so that the
+// author's check is what runs rather than a second one derived from the tags.
+//
+// It is the case where the two would disagree. What the author checks is an
+// invariant on a field nothing here can read, so a check written here would
+// pass a value the type itself refuses.
+//
+// Beside a field whose type asks for nothing, which is what makes the case
+// worth writing twice: the plan for [Boring] is dropped because nothing would
+// be written for it, and the plan for [other.Guarded] is dropped because
+// somebody already wrote it. The two look alike from the inside and mean
+// opposite things.
+type Trusting struct {
+	Where  other.Guarded
+	Boring Boring
+}
+
+// Boring asks for nothing, so no check is written for it.
+type Boring struct {
+	Note string
+}
+
+// Wrongly holds a struct that declares something called Validate which is not a
+// check, so that the signature is what decides rather than the name.
+type Wrongly struct {
+	Held Confused
+}
+
+// Confused only looks like it checks itself.
+type Confused struct {
+	Name string `validate:"required"`
+}
+
+// Validate here takes an argument, so it is neither a check to call nor a name
+// generated code can write a second method under.
+func (c Confused) Validate(strict bool) error {
+	if strict && c.Name == "" {
+		return errBadPostcode
+	}
+	return nil
 }

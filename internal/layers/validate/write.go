@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/okian/forge/internal/emit"
 )
 
 // The names the generated code binds, written once so that every check agrees
@@ -37,6 +39,14 @@ func (w *writer) line(format string, args ...any) {
 // blank separates two declarations.
 func (w *writer) blank() { w.out.WriteByte('\n') }
 
+// wrapped writes a sentence as as many comment lines as it takes, so that a
+// long one does not run off the side of a file the rest of which is wrapped.
+func (w *writer) wrapped(text string) {
+	for _, line := range emit.Wrapped(text, emit.CommentWidth) {
+		w.line("// %s", line)
+	}
+}
+
 // String returns the assembled source.
 func (w *writer) String() string { return w.out.String() }
 
@@ -67,11 +77,11 @@ func (w *writer) patterns(held *plan) {
 }
 
 // through writes the function everything generated calls, which forwards to the
-// method where the type can carry one and holds the body where it cannot.
+// method.
 func (w *writer) through(held *plan, name string) {
 	spelled := held.spelled.Text
 
-	w.line("// %s reports every rule a %s does not satisfy.", name, spelled)
+	w.line("// %s reports every rule %s does not satisfy.", name, valueVar)
 	w.line("//")
 	w.line("// The value's own method holds the body; this is what generated code")
 	w.line("// calls, so that a caller names one function whether or not the type")
@@ -82,17 +92,39 @@ func (w *writer) through(held *plan, name string) {
 	w.blank()
 }
 
-// check writes one type's whole check.
-func (w *writer) check(held *plan) {
+// check writes one type's whole check, as the method where the type can carry
+// one and as the function everything calls where it cannot.
+//
+// The second is not a lesser form of the first. A struct the subject reaches in
+// another package, and an instantiation of a generic anywhere, both have
+// nowhere to put a method — and a check written as one there is a file that does
+// not compile rather than a check that is missing something. Which of the two it
+// was goes into the comment, because a reader looking at a function where they
+// expected a method is asking exactly that.
+func (w *writer) check(held *plan, name string) {
 	spelled := held.spelled.Text
 
-	w.line("// %s reports every rule the %s does not satisfy, and nothing when it", method, spelled)
-	w.line("// satisfies them all.")
+	if held.attach {
+		w.line("// %s reports every rule the %s does not satisfy, and nothing when it", method, spelled)
+		w.line("// satisfies them all.")
+	} else {
+		w.line("// %s reports every rule %s does not satisfy, and nothing when it", name, valueVar)
+		w.line("// satisfies them all.")
+		w.line("//")
+		w.wrapped("A function rather than a method, because " + held.why + ".")
+	}
+
 	w.line("//")
 	w.line("// Every failure rather than the first, because a value with three things")
 	w.line("// wrong is not three round trips. Nothing is allocated until something")
 	w.line("// fails, so a value that is in order costs the comparisons and no memory.")
-	w.line("func (%s %s) %s() error {", valueVar, spelled, method)
+
+	if held.attach {
+		w.line("func (%s %s) %s() error {", valueVar, spelled, method)
+	} else {
+		w.line("func %s(%s %s) error {", name, valueVar, spelled)
+	}
+
 	w.line("var %s ValidationErrors", failedVar)
 	w.blank()
 
@@ -165,7 +197,16 @@ func (w *writer) after(one checked) {
 			w.line("if %s.%s != nil {", valueVar, one.path)
 		}
 
-		w.line("if %s := %s.%s.%s(); %s != nil {", errVar, valueVar, one.path, method, errVar)
+		if one.through != "" {
+			// A pointer is dereferenced at the call, because a function takes
+			// the value where a method took the receiver and did it for us.
+			// Reached only inside the nil check above, so what is dereferenced
+			// is a pointer that is there.
+			w.line("if %s := %s(%s%s.%s); %s != nil {",
+				errVar, one.through, deref(one), valueVar, one.path, errVar)
+		} else {
+			w.line("if %s := %s.%s.%s(); %s != nil {", errVar, valueVar, one.path, method, errVar)
+		}
 		w.line("%s = nestedValidation(%s, %s, %s)", failedVar, failedVar, quoted(one.path), errVar)
 		w.line("}")
 
@@ -180,6 +221,15 @@ func (w *writer) after(one checked) {
 			failedVar, failedVar, quoted(one.path), errVar)
 		w.line("}")
 	}
+}
+
+// deref is the star a call through a function needs where a method call needed
+// nothing, and nothing where the field is not a pointer.
+func deref(one checked) string {
+	if one.indirect {
+		return "*"
+	}
+	return ""
 }
 
 // fails writes what a rule reports when it is not met.

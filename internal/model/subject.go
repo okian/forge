@@ -412,7 +412,45 @@ func (s *Struct) Type() types.Type {
 // put a method on Pair[string, int]: the type it would attach to is the generic
 // one, and the method would then be on every instantiation.
 func (s *Struct) Attachable(pkg string) bool {
-	return s != nil && s.Named != nil && !s.Instantiated && s.Ref().Pkg == pkg
+	return s != nil && s.Named != nil && !s.Instantiated && s.Local(pkg)
+}
+
+// Unattachable says why a method may not be declared on the struct from the
+// package given, and nothing at all where one may.
+//
+// It exists because the answer is written into generated code. A layer that
+// cannot attach writes a function instead and says in its comment why — and
+// there are two reasons, so a layer that assumed either would be putting a
+// sentence that is simply untrue into somebody's file. The wording is here
+// rather than in each layer for the ordinary reason: three copies of one
+// sentence is three places for it to stop being one sentence.
+func Unattachable(s *Struct, pkg string) string {
+	switch {
+	case s == nil || s.Named == nil:
+		// Nothing to attach to and nothing to say about it. A reason invented
+		// here would be written into a comment as a fact.
+		return ""
+	case s.Attachable(pkg):
+		return ""
+	case !s.Local(pkg):
+		return "the type is declared in another package, and Go lets a method be declared " +
+			"only in the package that declares its type"
+	default:
+		return "the type is an instantiation of a generic, and Go has nowhere to put a method " +
+			"on one: it would belong to the generic, and so to every instantiation of it"
+	}
+}
+
+// Local reports whether the struct is declared in the package given, which is
+// what decides whether generated code there can read its unexported fields.
+//
+// The other half of [Struct.Attachable], and separate from it because the two
+// answer different questions about the same struct. An instantiation declared
+// in this package is local — its unexported fields are as readable as any
+// other's — and no method may be attached to it, so a layer that asked only
+// whether it could attach would drop fields it was free to read.
+func (s *Struct) Local(pkg string) bool {
+	return s != nil && s.Named != nil && s.Ref().Pkg == pkg
 }
 
 // Reachable reports whether generating into the struct's own package could
@@ -453,7 +491,14 @@ func (s *Struct) Reachable() bool {
 // Pair[string, int] and Pair[int, string] are two types, neither of them one a
 // method can be attached to, so both take this path — and a name reading only
 // Pair would give them one function between them.
-func Through(of *Struct, verb, what string) string {
+//
+// So is the declaring package's name, for a struct declared somewhere other
+// than into — which is the package being generated into. A closure reaching an
+// Address from two packages reaches two structs needing two functions, and a
+// name reading only Address would declare one of them twice. The qualifier is
+// left off for a struct of the package itself, because that is the common case
+// and a name repeating the package it is written in reads as a stutter.
+func Through(of *Struct, verb, what, into string) string {
 	if of == nil {
 		return ""
 	}
@@ -463,7 +508,14 @@ func Through(of *Struct, verb, what string) string {
 		return ""
 	}
 
-	return verb + Upper(ref.Name) + identifier(ref.Args) + what
+	var where string
+	if !of.Local(into) {
+		if obj := of.Named.Obj(); obj != nil && obj.Pkg() != nil {
+			where = Upper(obj.Pkg().Name())
+		}
+	}
+
+	return verb + where + Upper(ref.Name) + identifier(ref.Args) + what
 }
 
 // identifier turns a type's arguments into something that can be part of a

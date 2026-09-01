@@ -67,6 +67,23 @@ type Package struct {
 
 	// Files holds the generated output and the fixture it was generated for.
 	Files []Source
+
+	// Requires holds the packages this one imports that are not in the
+	// standard library, each before the ones that import it. A required
+	// package's own Requires are resolved with it, so a fixture of any depth
+	// can be given.
+	//
+	// A subject reaches types in packages of its own, and what is generated for
+	// one of those is a function in this package naming that package's types —
+	// so a gate that could only see one package at a time could not compile the
+	// case where a method could not be declared, which is exactly the case
+	// worth compiling.
+	//
+	// They are type-checked and nothing more. What is held to a recorded copy,
+	// analysed and checked for formatting is the package under test; these are
+	// the fixture it is written against, and holding a fixture to the standards
+	// of output would be reporting on the test rather than on what it tests.
+	Requires []Package
 }
 
 // analyses are run over output that already compiles.
@@ -101,11 +118,74 @@ var analyses = []*analysis.Analyzer{
 // one way many times over, and being shown one of them per run is being shown a
 // tenth of the story per run.
 func Compiles(pkg Package) error {
+	beside := &beside{}
+	if err := alongside(pkg.Requires, beside); err != nil {
+		return err
+	}
+
+	checked, fset, files, err := typecheck(pkg, beside)
+	if err != nil {
+		return err
+	}
+
+	if found := analyse(fset, pkg, files, checked.pkg, checked.info); len(found) > 0 {
+		return fmt.Errorf("package %s compiles and does not hold up:\n%s", pkg.Path, strings.Join(found, "\n"))
+	}
+
+	if unformatted := formatting(pkg.Files); len(unformatted) > 0 {
+		return fmt.Errorf("package %s is not formatted:\n%s", pkg.Path, strings.Join(unformatted, "\n"))
+	}
+
+	return nil
+}
+
+// alongside type-checks the packages given with one under test, and the ones
+// given with those, deepest first.
+//
+// Depth first rather than in the order written, so that a package required by a
+// required package resolves too. It costs nothing to allow and would be a trap
+// to leave out: the field is a list of packages, so nesting is expressible, and
+// a caller who nested one would get an opaque missing-import error rather than
+// an answer.
+//
+// A package is claimed before its own are resolved rather than after, so that a
+// fixture written with a cycle in it ends rather than descends forever. Go has
+// no import cycles to represent, so such a fixture is a mistake in a test —
+// which is a thing to fail at, and not a thing to run out of stack on.
+func alongside(required []Package, beside *beside) error {
+	for _, one := range required {
+		if beside.claimed(one.Path) {
+			continue
+		}
+		if err := alongside(one.Requires, beside); err != nil {
+			return err
+		}
+		if _, _, _, err := typecheck(one, beside); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolved is a type-checked package and what the check learned about it.
+type resolved struct {
+	pkg  *types.Package
+	info *types.Info
+}
+
+// typecheck parses and type-checks one package, recording it under its import
+// path so that the packages checked after it can import it.
+//
+// The stages up to and including type-checking, which is everything a package
+// has to survive before anything can be said about it. What is said afterwards
+// — the analyses, the formatting — is about output rather than about a fixture,
+// so it stays with the caller that knows which of the two it is holding.
+func typecheck(pkg Package, beside *beside) (resolved, *token.FileSet, []*ast.File, error) {
 	if pkg.Path == "" {
-		return errors.New("a package with no import path")
+		return resolved{}, nil, nil, errors.New("a package with no import path")
 	}
 	if err := distinct(pkg.Files); err != nil {
-		return fmt.Errorf("package %s: %w", pkg.Path, err)
+		return resolved{}, nil, nil, fmt.Errorf("package %s: %w", pkg.Path, err)
 	}
 
 	fset := token.NewFileSet()
@@ -121,19 +201,21 @@ func Compiles(pkg Package) error {
 		parsed = append(parsed, file)
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("package %s does not parse:\n%s", pkg.Path, strings.Join(problems, "\n"))
+		return resolved{}, nil, nil, fmt.Errorf("package %s does not parse:\n%s", pkg.Path, strings.Join(problems, "\n"))
 	}
 
 	files, problems := selected(fset, parsed, pkg.Tags)
 	if len(problems) > 0 {
-		return fmt.Errorf("package %s has a build constraint that does not read:\n%s", pkg.Path, strings.Join(problems, "\n"))
+		return resolved{}, nil, nil, fmt.Errorf("package %s has a build constraint that does not read:\n%s",
+			pkg.Path, strings.Join(problems, "\n"))
 	}
 	if len(files) == 0 {
 		if len(parsed) > 0 {
-			return fmt.Errorf("package %s has no files left once %s is built: every one of them is constrained out",
+			return resolved{}, nil, nil, fmt.Errorf(
+				"package %s has no files left once %s is built: every one of them is constrained out",
 				pkg.Path, configuration(pkg.Tags))
 		}
-		return fmt.Errorf("package %s has no files in it", pkg.Path)
+		return resolved{}, nil, nil, fmt.Errorf("package %s has no files in it", pkg.Path)
 	}
 
 	info := &types.Info{
@@ -147,7 +229,7 @@ func Compiles(pkg Package) error {
 
 	var failures []types.Error
 	config := types.Config{
-		Importer: stdlib,
+		Importer: beside,
 		Sizes:    sizes,
 		Error:    func(err error) { failures = append(failures, reported(fset, err)) },
 	}
@@ -156,18 +238,71 @@ func Compiles(pkg Package) error {
 	// one of them reached failures — which is the list worth showing.
 	checked, _ := config.Check(pkg.Path, fset, files, info)
 	if len(failures) > 0 {
-		return fmt.Errorf("package %s does not compile:\n%s", pkg.Path, strings.Join(ordered(failures), "\n"))
+		return resolved{}, nil, nil, fmt.Errorf("package %s does not compile:\n%s",
+			pkg.Path, strings.Join(ordered(failures), "\n"))
 	}
 
-	if found := analyse(fset, pkg, files, checked, info); len(found) > 0 {
-		return fmt.Errorf("package %s compiles and does not hold up:\n%s", pkg.Path, strings.Join(found, "\n"))
+	beside.remember(pkg.Path, checked)
+
+	return resolved{pkg: checked, info: info}, fset, files, nil
+}
+
+// beside resolves the packages given alongside the one under test, and the
+// standard library, and nothing else.
+//
+// Two importers rather than one with a fallback written into it, because the
+// two answer for different things: the standard library is resolved from source
+// once for the process, and what is here is built for one call and thrown away
+// with it.
+type beside struct{ done map[string]*types.Package }
+
+// claimed reports whether a package has been taken on already — resolved, or
+// being resolved right now — and takes it on where it has not.
+//
+// The second half is what makes a descent end. A package required by two others
+// is checked once because the first claim stands; a package that requires
+// itself, however indirectly, meets its own claim and stops.
+func (b *beside) claimed(path string) bool {
+	if b.done == nil {
+		b.done = make(map[string]*types.Package)
+	}
+	if _, taken := b.done[path]; taken {
+		return true
 	}
 
-	if unformatted := formatting(pkg.Files); len(unformatted) > 0 {
-		return fmt.Errorf("package %s is not formatted:\n%s", pkg.Path, strings.Join(unformatted, "\n"))
-	}
+	// Claimed with nothing in it. What goes in its place is the checked package,
+	// and until then the entry says only that somebody is on it — which is why
+	// Import answers from it rather than trusting that a claim is a result.
+	b.done[path] = nil
+	return false
+}
 
-	return nil
+// remember records a package the ones checked after it may import.
+func (b *beside) remember(path string, pkg *types.Package) {
+	if pkg == nil {
+		return
+	}
+	if b.done == nil {
+		b.done = make(map[string]*types.Package)
+	}
+	b.done[path] = pkg
+}
+
+// Import resolves a package given alongside this one, falling back to the
+// standard library.
+//
+// A claim that has not been filled in yet is not an answer: it means the
+// package importing this one is somewhere up the same descent, which Go does
+// not allow and a fixture should not describe.
+func (b *beside) Import(path string) (*types.Package, error) {
+	held, ok := b.done[path]
+	switch {
+	case ok && held != nil:
+		return held, nil
+	case ok:
+		return nil, fmt.Errorf("%s is being resolved already, so the packages given alongside import each other", path)
+	}
+	return stdlib.Import(path)
 }
 
 // configuration names a build configuration the way somebody would say it.
@@ -346,11 +481,15 @@ var unixLike = map[string]bool{
 // stdlib resolves the imports of packages under test, and resolves nothing
 // else.
 //
-// Generated code imports the standard library and the package it is emitted
-// into, never a third party: a generated file that needed one would version-skew
-// against the binary that wrote it, which is the whole reason there is no
-// runtime package to depend on. That is a promise, and a promise a suite does
-// not check is a comment.
+// Generated code imports the standard library, the package it is emitted into,
+// and the packages the subject reaches — never a third party: a generated file
+// that needed one would version-skew against the binary that wrote it, which is
+// the whole reason there is no runtime package to depend on. That is a promise,
+// and a promise a suite does not check is a comment.
+//
+// The packages a subject reaches are the ones a caller gives as [Package].Requires,
+// and they are resolved before this is asked. So what reaches here is an import
+// that is neither of those, whoever wrote it.
 //
 // One importer for the process, because resolving a standard library package
 // from source costs tens to hundreds of milliseconds, and a suite that pays
@@ -372,7 +511,8 @@ type library struct {
 // Import resolves a standard library package and refuses everything else.
 func (l *library) Import(path string) (*types.Package, error) {
 	if !standard(path) {
-		return nil, fmt.Errorf("%s is not in the standard library, and generated code imports nothing else", path)
+		return nil, fmt.Errorf("%s is not in the standard library, and generated code imports "+
+			"nothing else it was not given alongside", path)
 	}
 
 	// Serialised rather than one importer per call: caching what it has already

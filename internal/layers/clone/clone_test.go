@@ -148,17 +148,123 @@ func TestSharingOnTheDeclaration(t *testing.T) {
 	}
 }
 
+// A struct the subject reaches in a package of its own is copied by a function
+// rather than by a method, and everything holding one calls that function.
+//
+// Go puts a method only where its type is, so a copy written as a method there
+// is not a copy that is missing something — it is a file that does not compile.
+func TestAStructInAnotherPackageIsCopiedByAFunction(t *testing.T) {
+	held := source(t, written(t, "Elsewhere"))
+
+	if !strings.Contains(held, "func cloneOtherPlace(v other.Place) other.Place {") {
+		t.Errorf("the copy for a struct of another package is not a function:\n%s", held)
+	}
+	if strings.Contains(held, "func (v other.Place)") {
+		t.Errorf("a method was declared on another package's type:\n%s", held)
+	}
+
+	for _, want := range []string{
+		"out.Home = cloneOtherPlace(v.Home)",
+		"held := cloneOtherPlace((*v.Work))",
+		"out.Past[i] = cloneOtherPlace(one)",
+		"out.ByName[key] = cloneOtherPlace(one)",
+		"out.Windows[i] = cloneOtherPlace(one)",
+	} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the copy does not hold %q:\n%s", want, held)
+		}
+	}
+}
+
+// The name of that function carries the package the struct came from, because a
+// subject may reach two structs of one name and two functions of one name is a
+// package that does not build.
+func TestTheFunctionIsNamedByThePackageItIsFor(t *testing.T) {
+	held := source(t, written(t, "Elsewhere"))
+
+	if strings.Contains(held, "func clonePlace(") {
+		t.Errorf("the function leaves out the package the struct came from:\n%s", held)
+	}
+}
+
+// An unexported field of a struct in another package is left to the assignment,
+// because generated code here cannot name it — and the copy says so.
+//
+// Saying so is the whole of what can be done about it. The copy for such a type
+// is shallower than a copy usually is, and a comment claiming it shares nothing
+// would be a sentence in somebody's file that is not true.
+func TestWhatAnotherPackageKeepsToItself(t *testing.T) {
+	held := source(t, written(t, "Elsewhere"))
+
+	if strings.Contains(held, "unread") {
+		t.Errorf("a copy names a field it cannot reach:\n%s", held)
+	}
+	for _, want := range []string{
+		"except the\n// fields this package cannot name",
+		"What it cannot reach is the unexported fields",
+	} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the copy does not hold %q:\n%s", want, held)
+		}
+	}
+
+	// The holder says it too, because a copy that calls a shallow one is as
+	// shallow as the one it calls — and its comment is a claim about the whole
+	// value rather than about the fields it happens to own.
+	if !strings.Contains(held, "func (v Elsewhere) Clone() Elsewhere {") {
+		t.Fatalf("the holder has no copy:\n%s", held)
+	}
+
+	// And a copy that reaches everything makes the whole claim.
+	full := source(t, written(t, "Holding"))
+	if strings.Contains(full, "cannot name") || strings.Contains(full, "What it cannot reach") {
+		t.Errorf("a copy that reaches every field says it did not:\n%s", full)
+	}
+}
+
+// An instantiation of a generic cannot carry a method either, and that is a
+// different reason from being somewhere else.
+//
+// The type is right here and its unexported fields are this package's to read,
+// so the copy is a full one — it is only the method that has nowhere to go. A
+// comment giving the other reason would be plainly wrong to anybody looking at
+// the type two lines away.
+func TestAnInstantiationIsCopiedByAFunctionToo(t *testing.T) {
+	held := source(t, written(t, "Instantiated"))
+
+	if !strings.Contains(held, "func clonePairStringInt(v Pair[string, int]) Pair[string, int] {") {
+		t.Errorf("the copy for an instantiation is not a function:\n%s", held)
+	}
+	if !strings.Contains(held, "the type is an instantiation of a") {
+		t.Errorf("the copy gives the wrong reason for being a function:\n%s", held)
+	}
+	if strings.Contains(held, "declared in another package") {
+		t.Errorf("the copy says the type is elsewhere, and it is here:\n%s", held)
+	}
+
+	// Its unexported field is this package's to read, so it is copied like any
+	// other — which is what the two reasons differ about.
+	if !strings.Contains(held, "out.notes = slices.Clone(v.notes)") {
+		t.Errorf("an unexported field of a local type was left to the assignment:\n%s", held)
+	}
+}
+
 // What every subject generates compiles, which is the claim no assertion about
 // a substring makes.
 func TestWhatIsWrittenCompiles(t *testing.T) {
-	for _, name := range []string{"Flat", "Referring", "Deep", "Holding", "Node", "Owning", "Marked"} {
+	for _, name := range []string{"Flat", "Referring", "Deep", "Holding", "Node", "Owning", "Marked", "Elsewhere", "Instantiated"} {
 		t.Run(name, func(t *testing.T) {
 			sources := []goldentest.Source{
 				{Name: "model.go", Content: fixtureSource(t)},
 				{Name: "zz_forge.go", Content: []byte(source(t, written(t, name))), Generated: true},
 			}
 
-			if err := goldentest.Compiles(goldentest.Package{Path: "model", Files: sources}); err != nil {
+			held := goldentest.Package{
+				Path:     "clonefixture/model",
+				Files:    sources,
+				Requires: []goldentest.Package{besideFixture(t)},
+			}
+			if err := goldentest.Compiles(held); err != nil {
 				t.Errorf("the copy for %s does not compile: %v", name, err)
 			}
 		})

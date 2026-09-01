@@ -100,6 +100,95 @@ func TestAnOverrideThatBreaksTheContract(t *testing.T) {
 	}
 }
 
+// Two generated declarations that fold onto one name are reported rather than
+// written.
+//
+// A name an element layer writes is built from the type it is for and the
+// package that declares it, so that a subject reaching an Address from two
+// packages gets two functions. Folding two things into one identifier has
+// collisions somewhere however it is written, and this is one: a local
+// DomainPerson and a domain.Person reach the same name.
+//
+// Nothing else would catch it. The package's own names are checked against what
+// is generated, and two layers writing one method on one type are checked
+// against each other — but two element layers over two subjects write
+// package-level functions that neither of them can see the other's. Without
+// this the author gets a redeclaration inside a file that says DO NOT EDIT.
+func TestTwoGeneratedDeclarationsOfOneName(t *testing.T) {
+	_, diags := generate.Package(collidePkg, "model", []generate.Request{
+		copying(t, "Locals", subjectNamed(t, collidePkg, "DomainPerson")),
+		copying(t, "Foreigners", subjectFrom(t, "collidefixture/domain")),
+	}, collideConfig(t))
+
+	if diags.Empty() {
+		t.Fatal("two declarations of one name were written")
+	}
+
+	found := reported(t, diags, "FRG4018")
+	if !strings.Contains(found.Message, "cloneDomainPerson") {
+		t.Errorf("the complaint does not name the collision:\n%s", found.Message)
+	}
+	if found.Hint == "" {
+		t.Error("the complaint says nothing to do about it")
+	}
+}
+
+// Two generated files of one build are one namespace, and a name written into
+// both is reported.
+//
+// Neither file can see the other. What an element layer writes goes into the
+// file a package shares, and what a container layer writes goes into the
+// declaration's own — so a declaration named after something the shared file
+// holds is a collision nothing but the package can find.
+func TestOneNameInTwoGeneratedFiles(t *testing.T) {
+	asked := copying(t, "ValidationErrors", collideSubject(t))
+	asked.Model.Stack = append(asked.Model.Stack,
+		model.LayerRef{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Validate"}, Kind: model.KindElement})
+
+	_, diags := generate.Package(collidePkg, "model", []generate.Request{asked}, collideConfig(t))
+
+	if diags.Empty() {
+		t.Fatal("one name was written into two files of one build")
+	}
+
+	found := reported(t, diags, "FRG4018")
+	if !strings.Contains(found.Message, "ValidationErrors") {
+		t.Errorf("the complaint does not name the collision:\n%s", found.Message)
+	}
+}
+
+// One of those two on its own is not a collision, which is what says the check
+// is about two names meeting rather than about the name.
+func TestOneGeneratedDeclarationOfThatNameIsFine(t *testing.T) {
+	_, diags := generate.Package(collidePkg, "model", []generate.Request{
+		copying(t, "Foreigners", subjectFrom(t, "collidefixture/domain")),
+	}, collideConfig(t))
+
+	if !diags.Empty() {
+		t.Errorf("one declaration was reported as colliding with itself:\n%s", diags.Render())
+	}
+}
+
+// copying builds one spec declaration that copies a subject, which is the shape
+// an element layer's contribution to a package takes.
+func copying(t *testing.T, declared string, over *model.Struct) generate.Request {
+	t.Helper()
+
+	return generate.Request{
+		Model: &model.Model{
+			Name: declared, Form: model.FormSpec, Subject: over,
+			Pkg: collidePackage(t),
+			Pos: declaredAt,
+			// The element layer innermost, which is where the rules put one: it
+			// attaches to the subject, so nothing may stand between them.
+			Stack: []model.LayerRef{
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Slice"}, Kind: model.KindStorage},
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Clone"}, Kind: model.KindElement},
+			},
+		},
+	}
+}
+
 // What a previous run wrote is not what the author declared, so a package is
 // not reported as colliding with its own output.
 //
@@ -229,6 +318,12 @@ func collideSubject(t *testing.T) *model.Struct {
 // declaration can be generated over a subject that is not the local package's.
 func subjectFrom(t *testing.T, path string) *model.Struct {
 	t.Helper()
+	return subjectNamed(t, path, "Person")
+}
+
+// subjectNamed models one named type of one fixture package.
+func subjectNamed(t *testing.T, path, name string) *model.Struct {
+	t.Helper()
 
 	loaded := loadCollide(t)
 
@@ -237,14 +332,14 @@ func subjectFrom(t *testing.T, path string) *model.Struct {
 		t.Fatalf("the fixture has no package %s", path)
 	}
 
-	obj := pkg.Types.Scope().Lookup("Person")
+	obj := pkg.Types.Scope().Lookup(name)
 	if obj == nil {
-		t.Fatalf("%s declares no Person", path)
+		t.Fatalf("%s declares no %s", path, name)
 	}
 
 	held, is := types.Unalias(obj.Type()).(*types.Named)
 	if !is {
-		t.Fatalf("Person is a %T, want a named type", obj.Type())
+		t.Fatalf("%s is a %T, want a named type", name, obj.Type())
 	}
 
 	built, problems := subjects.New(subjects.Config{
@@ -254,7 +349,7 @@ func subjectFrom(t *testing.T, path string) *model.Struct {
 		Generated: loaded.Generated(),
 	}).Build(held, subjects.At(token.Position{Filename: "model.go"}))
 	if !problems.Empty() {
-		t.Fatalf("modelling Person: %s", problems.Render())
+		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
 	return built

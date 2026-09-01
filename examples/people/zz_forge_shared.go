@@ -20,7 +20,7 @@ import (
 	"strings"
 )
 
-// clonePerson returns a copy of a Person that shares nothing with it.
+// clonePerson returns a copy of v that shares nothing with it.
 //
 // The value's own method holds the body; this is what generated code
 // calls, so that a caller names one function whether or not the type
@@ -31,11 +31,11 @@ func clonePerson(v Person) Person {
 
 // Clone returns a copy of the Person that shares nothing with it.
 //
-// Everything reachable is copied, so what is done to the copy is invisible
-// in the original and the other way round. The copy starts as an assignment,
-// which is already the whole of it for a field holding a number, a string or
-// anything else made only of those; what follows is the fields for which an
-// assignment would have copied a reference rather than what it refers to.
+// Everything reachable is copied, so what is done to the copy is invisible in
+// the original and the other way round. The copy starts as an assignment, which
+// is already the whole of it for a field holding a number, a string or anything
+// else made only of those; what follows is the fields for which an assignment
+// would have copied a reference rather than what it refers to.
 func (v Person) Clone() Person {
 	out := v
 
@@ -311,7 +311,7 @@ func (v Person) LogValue() slog.Value {
 // is the same every time because it was written in the source.
 var patternPersonEmail = regexp.MustCompile("^[^@[:space:]]+@[^@[:space:]]+$")
 
-// validatePerson reports every rule a Person does not satisfy.
+// validatePerson reports every rule v does not satisfy.
 //
 // The value's own method holds the body; this is what generated code
 // calls, so that a caller names one function whether or not the type

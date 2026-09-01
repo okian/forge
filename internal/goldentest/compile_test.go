@@ -155,6 +155,94 @@ func TestAFixtureThatReachesOutsideTheStandardLibrary(t *testing.T) {
 	}
 }
 
+// A package given alongside the one under test resolves, so that output naming
+// a type the subject reached in a package of its own can be compiled.
+//
+// It is the case that matters most for an element layer: what it writes about a
+// struct in another package is a function in this one, naming that package's
+// types, and a gate that could only see one package at a time could not build
+// the very case where a method could not be declared.
+func TestAPackageGivenAlongsideResolves(t *testing.T) {
+	beside := goldentest.Package{
+		Path: "example.com/model/domain",
+		Files: []goldentest.Source{
+			{Name: "domain.go", Content: []byte("package domain\n\ntype Place struct {\n\tCity string\n}\n")},
+		},
+	}
+
+	err := goldentest.Compiles(goldentest.Package{
+		Path:     "example.com/model",
+		Requires: []goldentest.Package{beside},
+		Files: []goldentest.Source{
+			{Name: "person.go", Content: []byte("package model\n\nimport \"example.com/model/domain\"\n\ntype Person struct {\n\tHome domain.Place\n}\n")},
+			generated("import \"example.com/model/domain\"\n\n" +
+				"func cloneDomainPlace(v domain.Place) domain.Place { return v }\n"),
+		},
+	})
+	if err != nil {
+		t.Errorf("output naming a package given alongside was refused: %v", err)
+	}
+}
+
+// A package given alongside may have packages of its own, and they resolve too.
+//
+// The field is a list of packages, so nesting is expressible; a caller who
+// nested one and got a missing-import error would be reading a complaint about
+// their fixture when the harness was the thing that could not see it.
+func TestAPackageGivenAlongsideMayHaveItsOwn(t *testing.T) {
+	deepest := goldentest.Package{
+		Path: "example.com/model/domain/geo",
+		Files: []goldentest.Source{
+			{Name: "geo.go", Content: []byte("package geo\n\ntype Point struct {\n\tLat float64\n}\n")},
+		},
+	}
+
+	beside := goldentest.Package{
+		Path:     "example.com/model/domain",
+		Requires: []goldentest.Package{deepest},
+		Files: []goldentest.Source{
+			{Name: "domain.go", Content: []byte("package domain\n\nimport \"example.com/model/domain/geo\"\n\ntype Place struct {\n\tAt geo.Point\n}\n")},
+		},
+	}
+
+	err := goldentest.Compiles(goldentest.Package{
+		Path:     "example.com/model",
+		Requires: []goldentest.Package{beside},
+		Files: []goldentest.Source{
+			{Name: "person.go", Content: []byte("package model\n\nimport \"example.com/model/domain\"\n\ntype Person struct {\n\tHome domain.Place\n}\n")},
+			generated("import \"example.com/model/domain\"\n\n" +
+				"func cloneDomainPlace(v domain.Place) domain.Place { return v }\n"),
+		},
+	})
+	if err != nil {
+		t.Errorf("a package given alongside could not see its own: %v", err)
+	}
+}
+
+// What is given alongside has to compile too, and a failure in one says which
+// package it was in.
+func TestAPackageGivenAlongsideIsCheckedItself(t *testing.T) {
+	beside := goldentest.Package{
+		Path: "example.com/model/domain",
+		Files: []goldentest.Source{
+			{Name: "domain.go", Content: []byte("package domain\n\ntype Place struct {\n\tCity nothing\n}\n")},
+		},
+	}
+
+	err := goldentest.Compiles(goldentest.Package{
+		Path:     "example.com/model",
+		Requires: []goldentest.Package{beside},
+		Files:    []goldentest.Source{generated("type Persons []int\n")},
+	})
+
+	if err == nil {
+		t.Fatal("a package given alongside that does not compile was accepted")
+	}
+	if !strings.Contains(err.Error(), "example.com/model/domain does not compile") {
+		t.Errorf("failure does not say which package was wrong:\n%v", err)
+	}
+}
+
 // The standard library itself has to keep resolving, including the parts a
 // generated file leans on hardest.
 func TestOutputThatReachesIntoTheStandardLibrary(t *testing.T) {

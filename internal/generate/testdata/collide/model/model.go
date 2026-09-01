@@ -115,3 +115,21 @@ func (r Renamed) All() iter.Seq[slices.Person] {
 		}
 	}
 }
+
+// DomainPerson is a local type whose name is what a generated name for
+// [domain.Person] folds to.
+//
+// A generated name is built from the type and the package that declares it, and
+// folding two things into one identifier has collisions somewhere however it is
+// written. This is one of them, written down so that what happens next is a
+// report rather than a file that does not build.
+type DomainPerson struct {
+	Name string
+}
+
+// ValidationErrors is a collection named after a type the validation layer
+// writes into the file a package shares.
+//
+// Two generated files of one build, one name: nothing about either file can see
+// the other, so the collision has to be found where the package is.
+type ValidationErrors []Person

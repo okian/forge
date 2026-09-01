@@ -512,7 +512,7 @@ func TestStructString(t *testing.T) {
 func TestWhatAContainerCallsToReachASubject(t *testing.T) {
 	person := &model.Struct{Named: namedStruct(t, subjectPkg, "domain", "Person")}
 
-	if got, want := model.Through(person, "encode", "JSONTo"), "encodePersonJSONTo"; got != want {
+	if got, want := model.Through(person, "encode", "JSONTo", subjectPkg), "encodePersonJSONTo"; got != want {
 		t.Errorf("the function is %q, want %q", got, want)
 	}
 
@@ -520,7 +520,8 @@ func TestWhatAContainerCallsToReachASubject(t *testing.T) {
 	first := instantiation(t, "Pair", types.Typ[types.String], types.Typ[types.Int])
 	second := instantiation(t, "Pair", types.Typ[types.Int], types.Typ[types.String])
 
-	if a, b := model.Through(first, "encode", "To"), model.Through(second, "encode", "To"); a == b {
+	a := model.Through(first, "encode", "To", subjectPkg)
+	if b := model.Through(second, "encode", "To", subjectPkg); a == b {
 		t.Errorf("Pair[string, int] and Pair[int, string] are both called %q", a)
 	}
 
@@ -530,9 +531,44 @@ func TestWhatAContainerCallsToReachASubject(t *testing.T) {
 		"nothing at all": nil,
 		"unresolved":     {},
 	} {
-		if got := model.Through(held, "encode", "To"); got != "" {
+		if got := model.Through(held, "encode", "To", subjectPkg); got != "" {
 			t.Errorf("a subject that is %s is reached through %q", name, got)
 		}
+	}
+}
+
+// A struct declared somewhere other than the package being generated into
+// carries that package's name, and one declared in it does not.
+//
+// Two structs of one name in two packages are two types needing two functions,
+// so a name that left the package out would declare one of them twice. Leaving
+// it out where the struct is local is not the same compromise: there is one
+// package it could be, and a name repeating it reads as a stutter.
+func TestAStructElsewhereIsNamedByItsPackageToo(t *testing.T) {
+	person := &model.Struct{Named: namedStruct(t, subjectPkg, "domain", "Person")}
+
+	if got, want := model.Through(person, "clone", "", "example.com/other"), "cloneDomainPerson"; got != want {
+		t.Errorf("a struct of another package is reached through %q, want %q", got, want)
+	}
+	if got, want := model.Through(person, "clone", "", subjectPkg), "clonePerson"; got != want {
+		t.Errorf("a struct of this package is reached through %q, want %q", got, want)
+	}
+}
+
+// Local is the half of Attachable that is about the package alone, so that a
+// layer asking what it may read gets a different answer from one asking what it
+// may attach to.
+func TestWhatIsLocalIsNotAlwaysAttachable(t *testing.T) {
+	held := instantiation(t, "Pair", types.Typ[types.String], types.Typ[types.Int])
+
+	if !held.Local(subjectPkg) {
+		t.Error("an instantiation declared in this package is reported as being elsewhere")
+	}
+	if held.Attachable(subjectPkg) {
+		t.Error("an instantiation is reported as something a method can be attached to")
+	}
+	if (*model.Struct)(nil).Local(subjectPkg) {
+		t.Error("nothing at all is reported as local")
 	}
 }
 
