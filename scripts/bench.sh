@@ -20,6 +20,13 @@
 #              than most regressions do, and a gate that cries wolf is a gate
 #              somebody switches off.
 #
+# The run has to be long enough that a fixed cost is not a per-operation one.
+# A benchmark that pays for a buffer once and runs two hundred times reports a
+# two-hundredth of that buffer per operation, which is a number about the run
+# length rather than about the code — and a budget written around it moves every
+# time somebody passes a different -benchtime. Long enough that the fixed costs
+# round away is the only length a budget can be written against.
+#
 # A budget is a band and not a ceiling. Something spending far less than its
 # budget has usually stopped doing the work rather than got faster — shrink the
 # fixture a benchmark builds and every figure collapses, the gate stays green,
@@ -36,14 +43,14 @@
 # Environment:
 #   BENCH_BUDGET  path to the budget file (default scripts/budget.txt)
 #   BENCH_PKGS    packages to benchmark (default ./...)
-#   BENCH_TIME    -benchtime value (default 200x)
+#   BENCH_TIME    -benchtime value (default 2000x)
 #   BENCH_FILTER  -bench value (default .)
 
 set -euo pipefail
 
 budget="${BENCH_BUDGET:-scripts/budget.txt}"
 pkgs="${BENCH_PKGS:-./...}"
-benchtime="${BENCH_TIME:-200x}"
+benchtime="${BENCH_TIME:-2000x}"
 filter="${BENCH_FILTER:-.}"
 
 # Bytes are compared with this much room above the budget, in parts per

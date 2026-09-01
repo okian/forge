@@ -148,6 +148,13 @@ jobs:
       - name: benchmarks are within budget
         run: make bench
 
+      # The comparisons against other people's libraries, which live in a module
+      # of their own so that the module everybody builds keeps its two
+      # dependencies. Run here rather than in the step above because they fetch
+      # a dependency tree that has nothing to do with building forge.
+      - name: the comparisons are within budget
+        run: make bench-against
+
   # Fuzzing as a gate on the codecs, which are the part of the output that reads
   # bytes somebody else wrote. Every target compares what forge generated
   # against the standard library reading the same document, so a run fails when

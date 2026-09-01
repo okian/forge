@@ -6,6 +6,7 @@ import (
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/layers/ring"
 	"github.com/okian/forge/internal/layers/slice"
+	"github.com/okian/forge/internal/layers/validate"
 	"github.com/okian/forge/internal/model"
 )
 
@@ -24,6 +25,7 @@ func written() []layer.Layer {
 		jsoncodec.New(),
 		ring.New(),
 		slice.New(),
+		validate.New(),
 	}
 }
 

@@ -156,6 +156,25 @@ func packagePathQualifier(p *types.Package) string { return p.Path() }
 // noQualifier names no package at all.
 func noQualifier(*types.Package) string { return "" }
 
+// TypeIdentity spells a type so that no two types share a spelling.
+//
+// Every package qualified by its import path, which is the opposite choice from
+// [TypeString] and made for the opposite reason. This is what a stage keys by
+// when two things under one key would be merged: a subject reaching an Address
+// from two packages reaches two structs, and generated code that wrote one
+// codec for both would encode one of them wrongly and compile perfectly.
+//
+// Not for showing anybody. A path in the middle of a type is unreadable, which
+// is exactly why [TypeString] exists and why the two are not one function with
+// a flag: a caller has to say which of the two questions it is asking, because
+// answering the wrong one is invisible in both directions.
+func TypeIdentity(t types.Type) string {
+	if t == nil {
+		return "?"
+	}
+	return types.TypeString(t, packagePathQualifier)
+}
+
 // TypeString spells a type the way a rendered declaration spells it: as
 // [types.TypeString] would, with every package qualifier dropped, so that a
 // stack and the type at the bottom of it read as one line of source rather

@@ -215,7 +215,7 @@ func (p *planner) spellingOf(t types.Type) model.Spelling {
 // The fully qualified spelling rather than the one the file uses: two types
 // from two packages of the same name are one string under the second and two
 // under this, and merging them would write one codec for two types.
-func key(t types.Type) string { return model.TypeString(t) }
+func key(t types.Type) string { return model.TypeIdentity(t) }
 
 // plan decides the codec for a subject and everything it reaches.
 func (p *planner) plan(held *model.Struct) *form {

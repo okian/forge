@@ -7,20 +7,29 @@ import "github.com/okian/forge"
 // An ordinary struct, written without regard for what will be generated from
 // it. That is the whole of the contract a subject has: forge reads the fields
 // that are there, and a subject is not required to know it is one.
+//
+// The validate tags are the exception that proves it: they are read by the
+// generated check, and they are also the ordinary tags every validation library
+// in Go reads. A field says what a valid one looks like, beside the field,
+// where somebody changing it will see it.
 type Person struct {
 	// ID identifies the person, and is what the generated lookup is keyed by.
-	ID int
+	ID int `validate:"min=1"`
 
 	// Name is how the person is listed, and is the first declared sort key.
-	Name string
+	Name string `validate:"required,max=64"`
 
 	// Email reaches them. It is projected like any other field; nothing about
 	// a projection needs the field to be interesting.
-	Email string
+	//
+	// The pattern is deliberately the loose one: a check that insists on a
+	// stricter shape than the world uses rejects real addresses, and the only
+	// way to know an address works is to send to it.
+	Email string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$"`
 
 	// Age is the second declared sort key, so that the example has a sorted
 	// view over something that is not a string.
-	Age int
+	Age int `validate:"min=0,max=150"`
 }
 
 // Persons is a directory of people.

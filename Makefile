@@ -96,6 +96,24 @@ cover: ## Run the test suite and enforce the coverage floor.
 bench: ## Run the benchmarks and hold each one to its recorded budget.
 	./scripts/bench.sh
 
+# The comparisons that need somebody else's library, in a module of their own so
+# that the module everybody builds keeps the dependencies it has. Nested, which
+# the go command reads as not part of the module above it, so `./...` at the
+# root does not reach them.
+#
+# Gated on the allocation figures like everything else, and run separately
+# because it fetches a dependency tree that has nothing to do with building
+# forge.
+#
+# Run for longer than the module's own benchmarks are. What is measured here is
+# a single check rather than a pass over a thousand elements, so a fixed cost
+# paid once divided by two hundred iterations is still a byte per operation —
+# and a budget written around that would be a budget about the run length.
+.PHONY: bench-against
+bench-against: ## Measure the generated code against the libraries it replaces.
+	cd benchmarks/validator && \
+		BENCH_BUDGET=../../scripts/budget-against.txt BENCH_TIME=20000x ../../scripts/bench.sh
+
 # Not part of `check` either, and for the opposite reason to the benchmarks: a
 # fuzz run has no natural end, so what it costs is whatever it is given. The
 # gate is that every target survives its budget rather than that it finds

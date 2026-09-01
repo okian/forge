@@ -1,0 +1,31 @@
+# What the comparisons against other people's libraries may spend.
+#
+# Same format and same gate as scripts/budget.txt, for the benchmarks that live
+# in their own module under benchmarks/ so that the module everybody builds
+# keeps the dependencies it has. Run with `make bench-against`.
+#
+# Measured on go1.27 for a 64-bit word.
+
+# Validation, against go-playground/validator over the same subject with the
+# same rules written both ways.
+#
+# What the figures say, and it is not what the plan predicted. The allocation
+# claim is met outright: the generated check allocates nothing where the
+# reflective one allocates six times, because the generated one compares values
+# and the reflective one builds a description of what it is about to compare.
+# The speed claim is not: about two and a half times rather than the five the
+# plan asked for.
+#
+# The reason is in the rules rather than in either implementation. This subject
+# carries a pattern, and a pattern is run by the same regexp engine on both
+# sides — the example's own benchmarks put that engine at about nine tenths of
+# the work. Neither generation nor reflection can be much better than the other
+# at running somebody else's regexp, so a rule set that is mostly patterns
+# converges on a small constant factor, and one with no pattern at all is where
+# the larger multiple lives.
+#
+# So the honest claim is the one about memory, and the speed multiple is a
+# property of the rules rather than of forge. prd.md §14 says so with these
+# numbers under it.
+github.com/okian/forge/benchmarks/validator  Generated    0     0
+github.com/okian/forge/benchmarks/validator  Reflective   6   136

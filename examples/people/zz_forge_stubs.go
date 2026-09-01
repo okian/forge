@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs 7abcc06e30d9b26c
+// inputs 61abf3b254c26bd1
 
 //go:build forgespec
 

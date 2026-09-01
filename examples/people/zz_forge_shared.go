@@ -9,9 +9,13 @@ package people
 
 import (
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"iter"
+	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 )
 
 // encodePeoplePersonJSONTo writes a Person as JSON.
@@ -182,6 +186,171 @@ func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	}
 	_, err := dec.ReadToken()
 	return err
+}
+
+// patternPersonEmail is the pattern Email is checked against.
+//
+// Compiled when the package loads rather than at each check: compiling a
+// pattern costs many times what matching against one does, and the pattern
+// is the same every time because it was written in the source.
+var patternPersonEmail = regexp.MustCompile("^[^@[:space:]]+@[^@[:space:]]+$")
+
+// validatePerson reports every rule a Person does not satisfy.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func validatePerson(v Person) error {
+	return v.Validate()
+}
+
+// Validate reports every rule the Person does not satisfy, and nothing when it
+// satisfies them all.
+//
+// Every failure rather than the first, because a value with three things
+// wrong is not three round trips. Nothing is allocated until something
+// fails, so a value that is in order costs the comparisons and no memory.
+func (v Person) Validate() error {
+	var failed ValidationErrors
+
+	if v.ID < 1 {
+		failed = append(failed, ValidationError{Path: "ID", Rule: "min=1", Want: "at least 1"})
+	}
+	switch {
+	case v.Name == "":
+		failed = append(failed, ValidationError{Path: "Name", Rule: "required", Want: "a value"})
+	case len(v.Name) > 64:
+		failed = append(failed, ValidationError{Path: "Name", Rule: "max=64", Want: "at most 64 characters"})
+	}
+	switch {
+	case v.Email == "":
+		failed = append(failed, ValidationError{Path: "Email", Rule: "required", Want: "a value"})
+	case !patternPersonEmail.MatchString(string(v.Email)):
+		failed = append(failed, ValidationError{Path: "Email", Rule: "regexp=^[^@[:space:]]+@[^@[:space:]]+$", Want: "a value matching ^[^@[:space:]]+@[^@[:space:]]+$"})
+	}
+	switch {
+	case v.Age < 0:
+		failed = append(failed, ValidationError{Path: "Age", Rule: "min=0", Want: "at least 0"})
+	case v.Age > 150:
+		failed = append(failed, ValidationError{Path: "Age", Rule: "max=150", Want: "at most 150"})
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return failed
+}
+
+// ValidationError is one rule a value did not satisfy.
+//
+// It carries where rather than only what. A form with a bad postcode is not a
+// form that is invalid; it is a form whose Address.Postcode is too short, and
+// the difference is whether the caller can put the message beside the field it
+// is about.
+type ValidationError struct {
+	// Path reaches the field from the value that was checked: "Email", or
+	// "Address.City" for a field inside another struct.
+	Path string
+
+	// Rule is the rule that was not met, written as it was written in the tag,
+	// so that the failure and the source read alike. It is empty for a failure
+	// that came from a check the author wrote themselves.
+	Rule string
+
+	// Want says what the rule wanted, in words, so that a message can be shown
+	// to somebody who has never seen the tag.
+	Want string
+
+	// Cause is what a check the author wrote returned. It is nil for a failure
+	// of a rule, which has nothing underneath it.
+	Cause error
+}
+
+// Error describes the failure, naming the field first.
+func (e ValidationError) Error() string {
+	switch {
+	case e.Cause != nil:
+		return e.Path + ": " + e.Cause.Error()
+	case e.Want != "":
+		return e.Path + ": " + e.Rule + " wants " + e.Want
+	default:
+		return e.Path + ": " + e.Rule
+	}
+}
+
+// Unwrap returns what a check the author wrote returned, so that errors.Is and
+// errors.As reach it.
+func (e ValidationError) Unwrap() error { return e.Cause }
+
+// ValidationErrors is every rule a value did not satisfy, in the order the
+// fields are declared and the rules are written.
+//
+// Every failure rather than the first, because a caller showing a form to
+// somebody wants to show them everything that is wrong with it at once.
+type ValidationErrors []ValidationError
+
+// Error describes every failure, one per line where there is more than one.
+//
+// A line each rather than a sentence joined by commas: the failures are about
+// different fields, and a reader scanning for their own field finds it faster
+// down the left edge than in the middle of a paragraph.
+func (e ValidationErrors) Error() string {
+	switch len(e) {
+	case 0:
+		// Nothing failed, which is not a state a caller reaches through this:
+		// a check that found nothing wrong returns no error at all rather than
+		// an empty list of them.
+		return "nothing failed"
+	case 1:
+		return e[0].Error()
+	}
+
+	var out strings.Builder
+	out.WriteString(strconv.Itoa(len(e)))
+	out.WriteString(" failures:")
+
+	for _, one := range e {
+		out.WriteString("\n\t")
+		out.WriteString(one.Error())
+	}
+	return out.String()
+}
+
+// Unwrap returns the failures as errors, so that errors.Is and errors.As reach
+// each of them.
+func (e ValidationErrors) Unwrap() []error {
+	out := make([]error, len(e))
+	for i, one := range e {
+		out[i] = one
+	}
+	return out
+}
+
+// nestedValidation folds what a field's own check reported into the failures of
+// the value that holds it, under the path that reaches the field.
+//
+// The path is what makes a nested check worth having. A City that is too short
+// is reported by Address as "City", and the value holding the address has to
+// say "Address.City" or a caller has no way to know which of two addresses it
+// was.
+//
+// An error that is not a list of failures is carried whole, under the field's
+// own path. That is what a check the author wrote returns, and what a type from
+// somewhere else returns, and neither is this package's to take apart.
+//
+// Found through the chain rather than in the hand, so that failures wrapped by
+// a check of somebody's own still reach the caller as failures with paths. A
+// wrapper that meant to hide them can say so by not wrapping them.
+func nestedValidation(into ValidationErrors, at string, err error) ValidationErrors {
+	var held ValidationErrors
+	if !errors.As(err, &held) {
+		return append(into, ValidationError{Path: at, Cause: err})
+	}
+
+	for _, one := range held {
+		one.Path = at + "." + one.Path
+		into = append(into, one)
+	}
+	return into
 }
 
 // Seq is a lazy view over a sequence of elements.

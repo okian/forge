@@ -184,6 +184,19 @@ linters:
         - name: import-shadowing
           disabled: true
 
+        # The validate tag's vocabulary is forge's own, closed and documented in
+        # internal/layers/validate — and it is not go-playground/validator's,
+        # which is the one this rule knows. The two overlap on most of it and
+        # not on all of it, and a rule forge accepts is not a typo whichever
+        # list it is missing from.
+        #
+        # Named rather than the whole tag ignored, so that a real typo in a tag
+        # is still caught: what this adds is the rules forge has and the
+        # ecosystem does not.
+        - name: struct-tag
+          arguments:
+            - validate,regexp,nonzero
+
         # An unexported helper spelled like the exported function it implements
         # is this module's convention, not a mistake.
         - name: confusing-naming

@@ -48,7 +48,7 @@ github.com/okian/forge/examples/people  IndexByHand            5  131152
 # What the pairs say, measured rather than assumed, is that the win is not where
 # the project first expected it. Writing costs nothing at all — no allocation
 # for a thousand elements, against two for the reflective path — and takes about
-# a fifth longer, because encoding/json/v2 writes a struct straight into its
+# a quarter longer, because encoding/json/v2 writes a struct straight into its
 # buffer while a generated codec goes through the token API a caller could have
 # used themselves. Reading is the other way round: the same allocations, since
 # both make the same strings, and about a sixth quicker.
@@ -63,6 +63,24 @@ github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
 github.com/okian/forge/examples/people  JSONDecodeReflectively 2000  39920
 github.com/okian/forge/examples/people  JSONWriteTo              21   6656
+
+# The generated check over a value that satisfies its rules, which is the path
+# a check spends its life on: validation runs on every request and almost always
+# finds nothing.
+#
+# Zero is the figure that matters and the one the whole layer is for. The two
+# hand-written versions beside it are what say where the time goes, and they
+# have to be read together: against the scan the generated check looks an order
+# of magnitude slower, and almost all of that is the regexp engine the tag asked
+# for; against the same pattern, what is left is what generation costs, which is
+# within the noise of writing it out by hand.
+#
+# So a rule set with a pattern in it is a rule set whose cost is the pattern.
+# The comparison against go-playground/validator lives in its own module — see
+# scripts/budget-against.txt — and says the same thing from the other side.
+github.com/okian/forge/examples/people  Validate                       0  0
+github.com/okian/forge/examples/people  ValidateByHand                 0  0
+github.com/okian/forge/examples/people  ValidateByHandWithThePattern   0  0
 
 # The shared lazy view, benchmarked against its own template rather than
 # through a generated copy of it, so that a change to the view is caught where

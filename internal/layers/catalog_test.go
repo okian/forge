@@ -45,7 +45,7 @@ var catalog = map[string]entry{
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
 	},
 	"Validate": {
-		kind: model.KindElement, stage: layer.StageStub,
+		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured},
 	},
 	"Clone": {kind: model.KindElement, stage: layer.StageStub},

@@ -247,11 +247,22 @@ func provided(built *planner) (layer.Unit, error) {
 		if err != nil {
 			return layer.Unit{}, err
 		}
-		out[held] = unit
+		out[contribution(held)] = unit
 	}
 
 	return layer.Unit{Provides: out}, nil
 }
+
+// contribution names what a codec for one type is, so that two contributions
+// are the same one when they are.
+//
+// The layer as well as the type. Two element layers may sit over one subject —
+// a codec and a check, which is an ordinary stack — and each contributes
+// something about it; keyed by the type alone the package would keep whichever
+// arrived first and silently drop the other, leaving generated code calling a
+// function nothing declares. What makes two contributions the same is that they
+// are about the same type *and* come from the same layer.
+func contribution(spelled string) string { return markerName + ": " + spelled }
 
 // codecFor builds the declarations for one type's codec.
 func codecFor(of *form) (layer.Unit, error) {

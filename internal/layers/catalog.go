@@ -161,11 +161,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Validate"), kind: model.KindElement, stage: layer.StageStub,
-		requires: []shape.Cap{shape.Structured},
-		doc:      "rules read from the subject's validate tags, checked in declaration order",
-	},
-	{
 		origin: marker("Clone"), kind: model.KindElement, stage: layer.StageStub,
 		options: []layer.OptionDef{
 			{
