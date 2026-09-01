@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
@@ -225,5 +226,36 @@ func TestTheExampleCarriesForgesHeader(t *testing.T) {
 		case header.Inputs == "":
 			t.Errorf("%s records no fingerprint, so a staleness check would have nothing to compare", path)
 		}
+	}
+}
+
+// Explaining a package that has already been generated says nothing about
+// collisions.
+//
+// The example is committed with its generated files beside it, which is the
+// arrangement forge is built for and the one this verb is most often run in:
+// somebody generates, reads the file, and asks what produced it. Every name in
+// that file is one that generating the declaration again would write, so a
+// collision check unable to tell a previous run's work from the author's
+// reports a diagnostic for every name it wrote last time — above a report that
+// was correct all along, about a package with nothing wrong with it.
+//
+// Against the real example rather than a declaration built here, because the
+// fault needs a package whose generated files are on disk and loaded, and a
+// stand-in session has neither.
+func TestExplainingAPackageThatIsAlreadyGenerated(t *testing.T) {
+	var out, errs bytes.Buffer
+	env := &environment{stdout: &out, stderr: &errs, pipeline: stages()}
+
+	cmd, _ := lookup("explain")
+	if err := cmd.run(env, cmd, []string{"-t", "Persons", example}); err != nil {
+		t.Fatalf("explaining the generated example: %v\n%s", err, errs.String())
+	}
+
+	if errs.Len() != 0 {
+		t.Errorf("explaining a generated package complained:\n%s", errs.String())
+	}
+	if !strings.Contains(out.String(), "Persons") {
+		t.Errorf("the question was not answered:\n%s", out.String())
 	}
 }

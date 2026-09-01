@@ -110,19 +110,31 @@ func emitting(env *environment, found resolved, hold, show bool) error {
 	return nil
 }
 
-// configured returns what generation is given: the catalog of layers this
-// binary knows, and the three versions a generated file records.
+// against returns what generation is given: the catalog of layers this binary
+// knows, the three versions a generated file records, and what the load found
+// was written by a generator rather than by hand.
 //
-// One place, because it is a description of this build rather than of a run.
-// Anything assembling it a second time would be generating against a catalog or
-// a version that the command does not use, and would agree with it right up
-// until one of them changed.
+// One place, because a second one would work against a catalog, a version or a
+// load the command does not use, and would agree with it right up until one of
+// them changed. There was a second one, and the load is what it left out:
+// explaining a package reported its own generated file as a collision with
+// itself.
 //
 // The registry is passed in rather than read here, so that a verb which also
 // describes a stack composes it against the same catalog it generates against.
 // Two registries would answer alike today and would be the reason a report and
 // a file disagreed the day somebody registered a layer into one of them.
-func configured(catalog *layer.Registry) generated.Config {
+//
+// The session is passed in for a different reason: it could not be read here at
+// all. Everything else in this configuration describes the build, and a load is
+// what one run found. What it answers is which declarations a generator wrote,
+// which is what the collision check needs to tell a name the author chose from
+// one a previous run left behind — and the file names cannot settle that, since
+// a package may hold a generated file under any name.
+//
+// Every verb that builds this has a load already — including the one that only
+// describes a stack, and does so by generating it and throwing the files away.
+func against(catalog *layer.Registry, session *load.Session) generated.Config {
 	self, markers, toolchain := versions()
 
 	return generated.Config{
@@ -131,20 +143,8 @@ func configured(catalog *layer.Registry) generated.Config {
 			DefaultStorage: layers.DefaultStorage(),
 		},
 		Forge: self, Markers: markers, Toolchain: toolchain,
+		Generated: session.Generated(),
 	}
-}
-
-// against returns the same configuration with what the load found already
-// generated, which is what the collision check needs and nothing else does.
-//
-// Separate from the description of the build because it is a fact about a run:
-// a verb that composes a stack without generating one has no load to answer it
-// from, and would have to be given a load it has no other use for.
-func against(catalog *layer.Registry, session *load.Session) generated.Config {
-	cfg := configured(catalog)
-	cfg.Generated = session.Generated()
-
-	return cfg
 }
 
 // placing does what the flags asked with one package's files.

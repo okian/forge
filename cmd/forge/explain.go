@@ -14,6 +14,7 @@ import (
 	generated "github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
+	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
 )
@@ -122,7 +123,7 @@ func wrong(found resolved, one request, catalog *layer.Registry) diag.Set {
 	out := found.Diagnostics
 	out.Merge(&one.Diagnostics)
 
-	refusals := refused(one, catalog)
+	refusals := refused(one, catalog, found.Session)
 	out.Merge(&refusals)
 
 	return out
@@ -158,7 +159,13 @@ func wrong(found resolved, one request, catalog *layer.Registry) diag.Set {
 //
 // A declaration with no model generates nothing and is refused for a reason
 // already reported — the subject builder said it — so nothing is asked here.
-func refused(one request, catalog *layer.Registry) diag.Set {
+//
+// Against the load, like the verbs that keep their files. This one is usually
+// run on a package that has already been generated, so a collision check unable
+// to tell a previous run's declarations from the author's would answer about
+// every name the last run left in the package; [against] says why the load is
+// what settles that.
+func refused(one request, catalog *layer.Registry, session *load.Session) diag.Set {
 	if one.Model == nil {
 		return diag.Set{}
 	}
@@ -170,7 +177,7 @@ func refused(one request, catalog *layer.Registry) diag.Set {
 
 	_, problems := generated.Package(pkg.PkgPath, pkg.Name,
 		[]generated.Request{{Model: built(one), Directives: one.Declaration.Candidate.Directives}},
-		configured(catalog))
+		against(catalog, session))
 
 	// By code rather than by wording, and the code holds because a stub reports
 	// a diagnostic rather than a plain error: an ordinary error is given a code
