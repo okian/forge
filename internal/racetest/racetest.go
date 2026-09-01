@@ -42,6 +42,21 @@ const (
 	// container reaches before the readers are done, and far below where the
 	// run stops being one anybody waits for.
 	writes = rounds * 256
+
+	// least is how many rounds a writer does before it will listen to the flag
+	// at all.
+	//
+	// Nothing schedules a goroutine. On one processor the readers can run every
+	// round they have and finish before a writer has run once — the readers
+	// never block, because there is nothing yet to contend with — and the flag
+	// is set as soon as they are done. A writer that then found it already set
+	// would exit without writing, leaving a run that read an empty container
+	// four times and proved nothing about writing at all.
+	//
+	// The floor is what makes the run mean something whatever the scheduler
+	// does. It is small against the ceiling, so a container that grows is still
+	// stopped by the readers rather than by this.
+	least = 64
 )
 
 // The names the written test gives itself.
@@ -230,6 +245,7 @@ func routes(of Asked) string {
 // in and with the name each one binds where the path does not give that name.
 func imports(w *strings.Builder, of Asked) {
 	held := []model.Import{
+		{Path: "runtime", Name: "runtime"},
 		{Path: "slices", Name: "slices"},
 		{Path: "sync", Name: "sync"},
 		{Path: "sync/atomic", Name: "atomic"},
@@ -361,11 +377,17 @@ func writing(w *strings.Builder, of Asked) {
 	w.WriteString("\t// readers' end long before it, and one that does would otherwise feed\n")
 	w.WriteString("\t// itself — each element added makes every later reading round slower,\n")
 	w.WriteString("\t// which gives the writers longer to add more.\n")
+	w.WriteString("\t//\n")
+	w.WriteString("\t// The floor is what makes the run mean something whatever the scheduler\n")
+	w.WriteString("\t// does. Nothing schedules a goroutine: on one processor the readers can\n")
+	w.WriteString("\t// finish every round they have before a writer runs once, and a writer\n")
+	w.WriteString("\t// that then found the flag already set would leave the run having proved\n")
+	w.WriteString("\t// nothing about writing.\n")
 	w.WriteString("\tfor range " + count(writers) + " {\n")
 	w.WriteString("\t\t" + writingGroup + ".Go(func() {\n")
 	w.WriteString("\t\t\tvar " + elemName + " " + of.Elem + "\n\n")
-	w.WriteString("\t\t\tfor range " + count(writes) + " {\n")
-	w.WriteString("\t\t\t\tif " + stopFlag + ".Load() {\n")
+	w.WriteString("\t\t\tfor round := range " + count(writes) + " {\n")
+	w.WriteString("\t\t\t\tif round >= " + count(least) + " && " + stopFlag + ".Load() {\n")
 	w.WriteString("\t\t\t\t\tbreak\n")
 	w.WriteString("\t\t\t\t}\n\n")
 	w.WriteString("\t\t\t\t" + valueName + "." + of.Scope + "(func(" + viewName + " " + of.View + ") {\n")
@@ -378,14 +400,34 @@ func writing(w *strings.Builder, of Asked) {
 	w.WriteString("\t}\n\n")
 }
 
-// reading writes the goroutines that read it, by every route there is.
-func reading(w *strings.Builder, of Asked) {
+// waiting writes the wait a reader does before its first round.
+//
+// A read of an empty container walks nothing and copies nothing, so readers
+// that got every round in before a writer ran would leave a green run that
+// exercised none of what it is for — and nothing schedules a goroutine, so on
+// one processor that is exactly what happens. The wait ends because a writer
+// does its first round before it consults anything.
+func waiting(w *strings.Builder) {
 	w.WriteString("\t// The readers. Each round takes every route out of the container that\n")
 	w.WriteString("\t// does not change it, so the detector sees them overlapping with the\n")
 	w.WriteString("\t// writers above and with each other.\n")
+	w.WriteString("\t//\n")
+	w.WriteString("\t// Each waits for the first element before it starts. A read of an empty\n")
+	w.WriteString("\t// container walks nothing and copies nothing, so readers that got their\n")
+	w.WriteString("\t// rounds in before any writer ran would leave a green run that exercised\n")
+	w.WriteString("\t// none of what it is for. The wait ends because a writer does its first\n")
+	w.WriteString("\t// round before it consults anything.\n")
 	w.WriteString("\tfor range " + count(readers) + " {\n")
 	w.WriteString("\t\t" + readingGroup + ".Go(func() {\n")
+	w.WriteString("\t\t\tfor " + wroteCount + ".Load() == 0 {\n")
+	w.WriteString("\t\t\t\truntime.Gosched()\n")
+	w.WriteString("\t\t\t}\n\n")
 	w.WriteString("\t\t\tfor range " + count(rounds) + " {\n")
+}
+
+// reading writes the goroutines that read it, by every route there is.
+func reading(w *strings.Builder, of Asked) {
+	waiting(w)
 
 	for _, one := range plain(of) {
 		w.WriteString("\t\t\t\t_ = " + valueName + "." + one + "()\n")

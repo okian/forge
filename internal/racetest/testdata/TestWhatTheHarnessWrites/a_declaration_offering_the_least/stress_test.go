@@ -6,6 +6,7 @@
 package model
 
 import (
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -54,12 +55,18 @@ func TestPersonsUnderConcurrentUse(t *testing.T) {
 	// readers' end long before it, and one that does would otherwise feed
 	// itself — each element added makes every later reading round slower,
 	// which gives the writers longer to add more.
+	//
+	// The floor is what makes the run mean something whatever the scheduler
+	// does. Nothing schedules a goroutine: on one processor the readers can
+	// finish every round they have before a writer runs once, and a writer
+	// that then found the flag already set would leave the run having proved
+	// nothing about writing.
 	for range 4 {
 		writing.Go(func() {
 			var one Person
 
-			for range 16384 {
-				if done.Load() {
+			for round := range 16384 {
+				if round >= 64 && done.Load() {
 					break
 				}
 
@@ -74,8 +81,18 @@ func TestPersonsUnderConcurrentUse(t *testing.T) {
 	// The readers. Each round takes every route out of the container that
 	// does not change it, so the detector sees them overlapping with the
 	// writers above and with each other.
+	//
+	// Each waits for the first element before it starts. A read of an empty
+	// container walks nothing and copies nothing, so readers that got their
+	// rounds in before any writer ran would leave a green run that exercised
+	// none of what it is for. The wait ends because a writer does its first
+	// round before it consults anything.
 	for range 4 {
 		reading.Go(func() {
+			for wrote.Load() == 0 {
+				runtime.Gosched()
+			}
+
 			for range 64 {
 
 				held.RDo(func(v PersonsView) {
