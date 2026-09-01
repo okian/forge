@@ -91,7 +91,7 @@ func TestStagedMarkersAreClaimedToo(t *testing.T) {
 // Generating from a stub is a diagnostic rather than a panic or an empty unit,
 // because both of those lie about what happened.
 func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
-	found, _ := layers.Builtins().Lookup(marker("Hash"))
+	found, _ := layers.Builtins().Lookup(marker("Builder"))
 
 	unit, err := found.Generate(&layer.Context{
 		Model: &model.Model{Name: "Persons"},
@@ -111,7 +111,7 @@ func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
 	if got, want := reported.Code.String(), "FRG4900"; got != want {
 		t.Errorf("code is %s, want %s", got, want)
 	}
-	if !strings.Contains(reported.Message, "Hash") {
+	if !strings.Contains(reported.Message, "Builder") {
 		t.Errorf("message %q does not name the layer", reported.Message)
 	}
 	if reported.Hint == "" {
@@ -293,7 +293,8 @@ func TestLayersDescribeThemselves(t *testing.T) {
 	stages := map[string]layer.Stage{
 		"Slice": layer.StageReady,
 		"Json":  layer.StageReady,
-		"Hash":  layer.StageStub,
+		"Hash":  layer.StageReady,
+		"Patch": layer.StageStub,
 		"Csv":   layer.StageStaged,
 	}
 
@@ -339,14 +340,15 @@ func TestLayersDescribeThemselves(t *testing.T) {
 	}
 }
 
-// The catalog's field-scoped options are the two that say "not this one".
+// The catalog's field-scoped options are the ones that say "not this one".
 //
-// Both mark an exception to what the layer otherwise does — the codec's
-// reflective boundary and the copy's shared reference — and an exception is per
-// field by nature: turning reflection on for every field at once, or sharing
-// every reference at once, is the opposite of marking one out. Anything a layer
-// does uniformly belongs on the declaration, and this is what keeps the two
-// kinds from drifting into each other.
+// Each marks an exception to what the layer otherwise does — the codec's
+// reflective boundary, the copy's shared reference, the field that is not part
+// of what a value is — and an exception is per field by nature: turning
+// reflection on for every field at once, or sharing every reference at once, is
+// the opposite of marking one out. Anything a layer does uniformly belongs on
+// the declaration, and this is what keeps the two kinds from drifting into each
+// other.
 func TestWhichOptionsAreAboutFields(t *testing.T) {
 	var about []string
 
@@ -358,7 +360,8 @@ func TestWhichOptionsAreAboutFields(t *testing.T) {
 		}
 	}
 
-	if want := []string{"Clone.aliasing", "Json.fallback"}; strings.Join(about, ", ") != strings.Join(want, ", ") {
+	want := []string{"Clone.aliasing", "Hash.ignore", "Json.fallback"}
+	if strings.Join(about, ", ") != strings.Join(want, ", ") {
 		t.Errorf("the options about fields are %v, want %v", about, want)
 	}
 }

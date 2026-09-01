@@ -161,11 +161,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Hash"), kind: model.KindElement, stage: layer.StageStub,
-		adds: []shape.Cap{shape.Comparable},
-		doc:  "stable content hash, which is what lets a subject with no comparable form be a set member",
-	},
-	{
 		origin: marker("Builder"), kind: model.KindElement, stage: layer.StageStub,
 		requires: []shape.Cap{shape.Structured},
 		doc:      "fluent builder whose required fields are enforced at Build rather than at each setter",

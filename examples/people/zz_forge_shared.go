@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -61,6 +62,110 @@ func (v Person) String() string {
 
 	return b.String()
 }
+
+// hashPerson returns a content hash of v.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func hashPerson(v Person) uint64 {
+	return v.Hash()
+}
+
+// Hash returns a content hash of the Person.
+//
+// Two values that are the same all the way down hash to the same number,
+// in this process and in every other, on any machine and in any build. Two
+// that differ almost certainly do not: this is a hash rather than an
+// identity, so a caller who cannot afford a collision compares as well.
+//
+// It allocates nothing, which is what makes it affordable to take on every
+// lookup rather than once and cache.
+func (v Person) Hash() uint64 {
+	h := fnvSeed
+	h = fnvUint64(h, uint64(v.ID))
+	h = fnvString(h, string(v.Name))
+	h = fnvString(h, string(v.Email))
+	h = fnvUint64(h, uint64(v.Age))
+	h = fnvBool(h, v.Aliases != nil)
+	h = fnvUint64(h, uint64(len(v.Aliases)))
+	for _, one := range v.Aliases {
+		h = fnvString(h, string(one))
+	}
+	return h
+}
+
+// The two numbers FNV-1a is made of: what an empty stream hashes to, and the
+// multiplier each byte is mixed with.
+//
+// Written out rather than taken from hash/fnv. That package answers through an
+// interface, so a hash taken through it allocates and is called rather than
+// inlined — and what is wanted here is arithmetic in the middle of a method,
+// not an object with a lifetime.
+const (
+	fnvSeed  uint64 = 14695981039346656037
+	fnvPrime uint64 = 1099511628211
+)
+
+// fnvUint64 mixes a whole number into a hash, eight bytes at a time.
+//
+// Eight whatever the number was declared as, so that a value held in an int
+// hashes the same where an int is four bytes and where it is eight. A number
+// that hashed differently depending on the machine would not be a stable
+// identity, which is the only thing this is for.
+func fnvUint64(h, v uint64) uint64 {
+	for range 8 {
+		h = (h ^ (v & 0xff)) * fnvPrime
+		v >>= 8
+	}
+	return h
+}
+
+// fnvString mixes a string's length and then its bytes.
+//
+// The length as well as the bytes, because the bytes alone do not say where one
+// string ended and the next began: "ab" beside "c" and "a" beside "bc" are the
+// same five bytes in the same order and are not the same pair of values.
+func fnvString(h uint64, s string) uint64 {
+	h = fnvUint64(h, uint64(len(s)))
+	for i := range len(s) {
+		h = (h ^ uint64(s[i])) * fnvPrime
+	}
+	return h
+}
+
+// fnvBool mixes the one byte a boolean is worth.
+func fnvBool(h uint64, b bool) uint64 {
+	if b {
+		return (h ^ 1) * fnvPrime
+	}
+	return h * fnvPrime
+}
+
+// fnvFloat mixes a floating-point number by its bits, with the two values
+// whose bits are not a function of the number written down first.
+//
+// Zero is one number with two spellings, since the sign bit is free, and a hash
+// taken straight off the bits would give positive and negative zero two answers
+// though they compare equal. Not-a-number is the opposite case: it is many bit
+// patterns, no one of which equals any other or even itself, so no answer
+// agrees with comparison and the least surprising one is that they all hash
+// alike.
+func fnvFloat(h uint64, f float64) uint64 {
+	switch {
+	case math.IsNaN(f):
+		return fnvUint64(h, fnvNaN)
+	case f == 0:
+		return fnvUint64(h, 0)
+	default:
+		return fnvUint64(h, math.Float64bits(f))
+	}
+}
+
+// fnvNaN is what every not-a-number hashes as. A constant of this file rather
+// than the bits of math.NaN, so that what a value hashes to is decided here and
+// cannot move under a library release.
+const fnvNaN uint64 = 0x7ff8000000000001
 
 // encodePeoplePersonJSONTo writes a Person as JSON.
 //

@@ -50,7 +50,7 @@ var catalog = map[string]entry{
 	},
 	"Clone": {kind: model.KindElement, stage: layer.StageReady},
 	"Hash": {
-		kind: model.KindElement, stage: layer.StageStub,
+		kind: model.KindElement, stage: layer.StageReady,
 		adds: []shape.Cap{shape.Comparable},
 	},
 	"Builder": {
