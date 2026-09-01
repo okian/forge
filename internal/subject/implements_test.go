@@ -76,6 +76,42 @@ func TestInterfacesAlreadyImplementedAreRecorded(t *testing.T) {
 	}
 }
 
+// An interface a type satisfies only because a previous run wrote the method is
+// not one it satisfies.
+//
+// It is the same distinction the collision list makes, on the other question.
+// An implementation that came from a generator is not an author overriding
+// anything — it is what forge is about to write again — so a layer that saw it
+// and delegated would delegate to what this run is producing. The answer would
+// change after the first generation and never change back, and the fingerprint
+// that records it would report every file stale exactly once.
+func TestAnInterfaceAPreviousRunSatisfiedIsNotSatisfied(t *testing.T) {
+	loaded := session(t)
+	stringer := stringerLike(model.TypeRef{Pkg: "fmt", Name: "Stringer"})
+
+	// The fixture holds no generated file, so what a generator wrote is said
+	// rather than found: what is being tested is what the builder does with the
+	// answer.
+	regenerated := subject.New(subject.Config{
+		Fset:       loaded.Fset,
+		Owned:      loaded.Owned(),
+		Interfaces: []subject.Interface{stringer},
+		Generated:  func(token.Pos) bool { return true },
+	})
+
+	built, diags := regenerated.Build(named(t, loaded, "Holder"), subject.At(token.Position{}))
+	if !diags.Empty() {
+		t.Fatalf("Holder does not model clean:\n%s", diags.Render())
+	}
+
+	if one, _ := built.Field("One"); len(one.Implements) != 0 {
+		t.Errorf("One implements %v, and a generator wrote the method", one.Implements)
+	}
+	if named := built.Closure[0]; named.Satisfies(stringer.Ref) {
+		t.Errorf("%s implements %v, and a generator wrote the method", named, stringer.Ref)
+	}
+}
+
 // Nothing is recorded when nothing is asked for, which is honest: no interface
 // is claimed rather than every interface denied.
 func TestNoInterfacesAreRecordedWhenNoneAreGiven(t *testing.T) {

@@ -255,7 +255,7 @@ func TestWhatARealLayerSaysItWillEmit(t *testing.T) {
 	if storage.Pending {
 		t.Error("a layer that generates is reported as one whose generator is not written")
 	}
-	if want := "Len, All, Backward, AppendSeq"; strings.Join(storage.Methods, ", ") != want {
+	if want := "Len, All, Backward, AppendSeq, Reset"; strings.Join(storage.Methods, ", ") != want {
 		t.Errorf("it emits %v, want %s", storage.Methods, want)
 	}
 

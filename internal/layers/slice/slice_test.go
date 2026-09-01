@@ -328,7 +328,7 @@ func TestWhichMethodsAValueHas(t *testing.T) {
 		receivers[method.name] = method.pointer
 	}
 
-	want := map[string]bool{"Len": false, "All": false, "Backward": false, "AppendSeq": true}
+	want := map[string]bool{"Len": false, "All": false, "Backward": false, "AppendSeq": true, "Reset": true}
 	for name, pointer := range want {
 		if got, has := receivers[name]; !has {
 			t.Errorf("no method %s was emitted", name)

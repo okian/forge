@@ -16,7 +16,12 @@
 // the form the documentation leads with and the one most declarations use.
 //
 // The surface is the source and sink half of the streaming contract — All,
-// Backward, Len and AppendSeq — plus a constructor. Everything above it in a
-// stack is written against those four, which is what lets a refining layer be
-// written once rather than once per storage.
+// Backward, Len, AppendSeq and Reset — plus a constructor. Everything above it
+// in a stack is written against those five, which is what lets a refining layer
+// be written once rather than once per storage.
+//
+// Reset is there for the sake of the layers above rather than for the sake of
+// this one, where a caller could as easily assign an empty container. A codec
+// reading a document into a container has to drop what the container held, and
+// a sink with no way of being emptied is one a document can only be added to.
 package slice

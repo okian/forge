@@ -94,6 +94,22 @@ type Config struct {
 	// one: a layer sees a field with no options written, which is the ordinary
 	// case anyway.
 	Docs map[token.Pos]*ast.CommentGroup
+
+	// Generated reports whether a declaration was written by a generator rather
+	// than by hand, as [load.Session.Generated] answers it.
+	//
+	// It is what keeps [model.Struct.Methods] a list of what the *author*
+	// declared. A generated file is loaded like any other source — the package
+	// calls the methods in it, so a load without them is a package that does
+	// not type-check — and go/types reports a method forge wrote last run
+	// exactly as it reports one somebody typed. A layer reading that list to
+	// decide whether the author has already written what it was about to write
+	// would be told yes on every run after the first, stop writing it, and
+	// leave the package naming a method nothing declares.
+	//
+	// No function means nothing was generated, which is what a caller with no
+	// load has and what is true of the run before the first one.
+	Generated func(token.Pos) bool
 }
 
 // Builder builds subject models, sharing the structs it has already built.
@@ -371,7 +387,7 @@ func (b *Builder) structFor(named *types.Named, depth int, run *run) *model.Stru
 	out := &model.Struct{
 		Named:        named,
 		Implements:   b.implements(named),
-		Methods:      methodNames(named),
+		Methods:      b.methodNames(named),
 		External:     b.external(named),
 		Instantiated: named.TypeArgs().Len() > 0,
 		Pos:          b.position(named.Obj().Pos()),
@@ -402,18 +418,28 @@ func (b *Builder) structFor(named *types.Named, depth int, run *run) *model.Stru
 	return out
 }
 
-// methodNames returns the names of the methods declared on a type, sorted.
+// methodNames returns the names of the methods the author declared on a type,
+// sorted.
 //
 // Declared on it, not promoted into it: a method a type embeds is not one
 // generated code would collide with, because a method declared on the type
 // legally shadows it.
-func methodNames(named *types.Named) []string {
+//
+// And declared by the author, not by a generator. A generated file is part of
+// the package and go/types reports its methods like any others, so a list built
+// without the distinction would grow every time forge ran — and a layer reading
+// it to decide whether the author had already written what it was about to
+// write would be told yes by its own previous answer.
+func (b *Builder) methodNames(named *types.Named) []string {
 	if named.NumMethods() == 0 {
 		return nil
 	}
 
 	names := make([]string, 0, named.NumMethods())
 	for method := range named.Methods() {
+		if b.cfg.Generated != nil && b.cfg.Generated(method.Pos()) {
+			continue
+		}
 		names = append(names, method.Name())
 	}
 	slices.Sort(names)
@@ -607,14 +633,50 @@ func (b *Builder) implements(t types.Type) []model.TypeRef {
 		if iface.Type == nil {
 			continue
 		}
-		if types.Implements(t, iface.Type) || types.Implements(types.NewPointer(t), iface.Type) {
-			found = append(found, iface.Ref)
+		if !types.Implements(t, iface.Type) && !types.Implements(types.NewPointer(t), iface.Type) {
+			continue
 		}
+		if b.regenerated(t, iface.Type) {
+			continue
+		}
+		found = append(found, iface.Ref)
 	}
 
 	slices.SortFunc(found, model.TypeRef.Compare)
 
 	return found
+}
+
+// regenerated reports whether a type satisfies an interface only because a
+// previous run wrote one of the methods.
+//
+// The same distinction [Builder.methodNames] makes, on the other question. An
+// implementation that came from a generator is not an author overriding
+// anything: it is what forge is about to write again, so a layer that delegated
+// to it would delegate to what this run is producing — and the answer would
+// flip after the first generation and never flip back.
+//
+// One generated method is enough, because an interface is satisfied by all of
+// them together: a type that would not implement it without forge's work does
+// not implement it for the purposes of deciding what forge should do.
+//
+// Looked up through a pointer, since a method with a pointer receiver
+// implements an interface for the pointer and is still the method that would be
+// redeclared.
+func (b *Builder) regenerated(t types.Type, iface *types.Interface) bool {
+	if b.cfg.Generated == nil {
+		return false
+	}
+
+	for i := range iface.NumMethods() {
+		want := iface.Method(i)
+
+		obj, _, _ := types.LookupFieldOrMethod(types.NewPointer(t), true, want.Pkg(), want.Name())
+		if obj != nil && b.cfg.Generated(obj.Pos()) {
+			return true
+		}
+	}
+	return false
 }
 
 // external reports whether a type is declared outside the module being

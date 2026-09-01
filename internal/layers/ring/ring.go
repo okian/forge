@@ -205,7 +205,8 @@ func (l Layer) methods(ctx *layer.Context, elem model.TypeRef) []shape.Method {
 		shape.Method{Name: "Cap", Signature: "() int", Owner: l.Origin(), Pointer: true, Doc: "how many elements the container can hold"},
 		shape.Method{Name: "Len", Signature: "() int", Owner: l.Origin(), Pointer: true, Doc: "how many elements the container holds"},
 		shape.Method{Name: "All", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the oldest element to the newest"},
-		shape.Method{Name: "Backward", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the newest element to the oldest"})
+		shape.Method{Name: "Backward", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the newest element to the oldest"},
+		shape.Method{Name: "Reset", Signature: "()", Owner: l.Origin(), Pointer: true, Doc: "empties the container, keeping the buffer it was constructed with"})
 
 	pushes := "adds an element, dropping the oldest to make room"
 	appends := "adds every element a sequence yields, dropping older ones as it fills"

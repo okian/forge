@@ -112,6 +112,18 @@ func (r *Persons) AppendSeq(seq iter.Seq[Person]) {
 	}
 }
 
+// Reset empties the container, keeping the buffer it was constructed with.
+//
+// The capacity is what the container is rather than what it holds, so emptying
+// does not give it up: a container that has been reset takes as many elements
+// as it did when it was new, and takes them without allocating again.
+//
+// The elements that were there stay in the buffer until they are pushed over,
+// so a container holding the last reference to something large holds it until
+// then. Nothing can read them: what a walk covers is the count, and the count
+// is what this sets to none.
+func (r *Persons) Reset() { r.head, r.n = 0, 0 }
+
 // built stops a container that was never constructed from being added to.
 //
 // A zero value has no buffer, so it can hold nothing and never will. Under the

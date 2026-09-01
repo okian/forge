@@ -346,7 +346,9 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 			continue
 		}
 
-		unit, err := generated(found, layer.ContextFor(held, step.Layer), step.Below)
+		ctx := layer.ContextFor(held, step.Layer).Generating(composed.Exposed)
+
+		unit, err := generated(found, ctx, step.Below)
 		if err != nil {
 			diags.Add(refusal(err, held, step.Layer))
 			continue

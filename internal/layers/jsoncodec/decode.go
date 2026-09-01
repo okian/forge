@@ -67,7 +67,16 @@ func (w *writer) readBody(of *form) {
 	// Checked rather than assumed. Reading a member name out of an array would
 	// otherwise produce a value assembled from whatever the tokens happened to
 	// be, and an error naming what arrived is what says where to look.
+	//
+	// A decoder that failed is the other thing a peek answers, and it answers
+	// it with no kind at all — so a document that stops halfway would be
+	// reported as an object of no kind, which says nothing about where it
+	// stopped. Reading is what has the answer, and the read is only reached
+	// when there is no object to read.
 	w.line("if kind := %s.PeekKind(); kind != '{' {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("return err")
+	w.line("}")
 	w.line("return fmt.Errorf(%s, kind)", strconv.Quote("cannot read "+of.spelled.Text+" from a JSON %s"))
 	w.line("}")
 	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)

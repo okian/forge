@@ -296,7 +296,7 @@ func (p *planner) fill(out *form, where blamed) {
 	// rather than a null on the wire. What the pointer points at is asked
 	// instead, once the pointer itself has been taken apart below.
 	if _, indirect := out.typ.(*types.Pointer); !indirect {
-		if declaresCodec(out.typ) {
+		if p.declaresCodec(out.typ) {
 			out.how = writtenDelegate
 			return
 		}
@@ -306,7 +306,7 @@ func (p *planner) fill(out *form, where blamed) {
 		// cannot edit; generating neither would leave the type written by a
 		// marshaler nobody wrote a reader for. Saying so is the only answer
 		// that leaves them somewhere to go.
-		if half := halfCodec(out.typ); half != "" {
+		if half := p.halfCodec(out.typ); half != "" {
 			p.diags.Add(diag.New(codeHalfCodec, where.pos,
 				"%s declares %s and not the other half", out.spelled.Text, half).
 				WithHint("%s", halfHint))
@@ -405,7 +405,7 @@ func (p *planner) fillMap(out *form, under *types.Map, where blamed) {
 	// A key that brought its own codec writes itself, and what it writes is a
 	// value rather than a member name — so a map keyed by one is not written as
 	// this would write it.
-	if declaresCodec(under.Key()) {
+	if p.declaresCodec(under.Key()) {
 		p.refuse(where, "a %s, whose key type writes itself and so cannot be a member name",
 			out.spelled.Text)
 		return
@@ -587,7 +587,7 @@ func (p *planner) promoted(field model.Field, path string, guards []guard, walke
 
 	// A type with a codec of its own is written by that codec, which writes an
 	// object — so its members are not available to be promoted into this one.
-	if declaresCodec(under) {
+	if p.declaresCodec(under) {
 		p.refuse(blamed{field.Name, field.Pos},
 			"embedded and declares a codec of its own, which writes an object rather than members")
 		return nil

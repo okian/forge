@@ -67,3 +67,16 @@ func (s Slice[T]) Backward() iter.Seq[T] {
 // It appends rather than replaces, so several sequences can be gathered into
 // one container by calling it more than once.
 func (s *Slice[T]) AppendSeq(seq iter.Seq[T]) { *s = slices.AppendSeq(*s, seq) }
+
+// Reset empties the container, keeping the memory it has already taken.
+//
+// It is what makes a container fillable a second time without allocating a
+// second time: reading a document into one that has been reset costs nothing
+// the first read did not already pay for.
+//
+// The elements that were there stay in the memory behind the container until
+// something is appended over them, so a container holding the last reference to
+// something large holds it until then. That is the ordinary bargain of reusing
+// a buffer, and a caller who would rather have the memory back can assign a new
+// container instead.
+func (s *Slice[T]) Reset() { *s = (*s)[:0] }

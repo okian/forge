@@ -223,14 +223,34 @@ const (
 // embeds, so writing a codec for the second is legal, and is what the author of
 // the enclosing struct almost certainly meant.
 //
-// Asked of the type rather than of the model, because it is asked about types
-// the model never built: a field may be a named integer in another module, and
-// what matters is only whether the method is there. A type that declares one
-// half and not the other is not treated as having a codec — half a codec is a
-// mistake worth a compile error in the output rather than a silent decision
-// here.
-func declaresCodec(t types.Type) bool {
-	return hasMethod(t, marshalMethod) && hasMethod(t, unmarshalMethod)
+// Asked of the type where the model never built one: a field may be a named
+// integer in another module, and what matters is only whether the method is
+// there. A type that declares one half and not the other is not treated as
+// having a codec — half a codec is a mistake worth a compile error in the
+// output rather than a silent decision here.
+func (p *planner) declaresCodec(t types.Type) bool {
+	return p.declares(t, marshalMethod) && p.declares(t, unmarshalMethod)
+}
+
+// declares reports whether the author declared a method on a type.
+//
+// The model where this run has one, and go/types otherwise, and the difference
+// between them is forge's own output. A generated file is part of the package
+// and is loaded with it — it has to be, or a call site naming a generated type
+// would stop the load — so go/types reports the codec this layer wrote last
+// time exactly as it reports one somebody typed. Believing it would make the
+// second run delegate to what the second run has stopped writing, in a package
+// that then names a method nothing declares.
+//
+// The model is built from what the author wrote, which is the question being
+// asked, and it holds every type this run is writing a codec for: the subject
+// and everything reachable from it. Everything else is a type forge has never
+// written anything for, so what go/types says about it is the author's.
+func (p *planner) declares(t types.Type, name string) bool {
+	if held, ours := p.known[key(t)]; ours {
+		return held.HasMethod(name)
+	}
+	return hasMethod(t, name)
 }
 
 // valueMethod reports whether a method can be called on a value of the type,
@@ -250,8 +270,8 @@ func valueMethod(t types.Type, name string) bool {
 // Two halves is a codec and none is a type this layer writes one for. One is
 // neither, and it is worth naming: whichever half is there is the one a
 // generated pair would redeclare.
-func halfCodec(t types.Type) string {
-	writes, reads := hasMethod(t, marshalMethod), hasMethod(t, unmarshalMethod)
+func (p *planner) halfCodec(t types.Type) string {
+	writes, reads := p.declares(t, marshalMethod), p.declares(t, unmarshalMethod)
 
 	switch {
 	case writes && !reads:

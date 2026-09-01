@@ -180,9 +180,10 @@ func (p pipeline) follow(env *environment, cfg load.Config) (resolved, error) {
 	// rather than being merged here as well: a diagnostic in both would be
 	// reported twice by a verb that reads both.
 	requests, _ := p.modelling.Model(subject.Config{
-		Fset:  session.Fset,
-		Owned: session.Owned(),
-		Docs:  session.FieldDocs(),
+		Fset:      session.Fset,
+		Owned:     session.Owned(),
+		Docs:      session.FieldDocs(),
+		Generated: session.Generated(),
 	}, declarations)
 	found.Requests = requests
 	env.progress("modelled %d subjects", modelled(requests))

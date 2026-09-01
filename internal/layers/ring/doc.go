@@ -22,6 +22,14 @@
 // container that can refuse and says so only through a comment is a container
 // whose callers do not check.
 //
+// # What emptying keeps
+//
+// Reset drops the elements and keeps the buffer, so a container emptied and
+// filled again allocates nothing the first filling did not. The capacity is
+// part of what the type is rather than of what a value holds, and giving it up
+// on the way to empty would mean a container that had been read into twice was
+// a different size from one read into once.
+//
 // # Why the representation is not the author's to write
 //
 // The underlying type is a struct of a buffer, a head and a count, and those

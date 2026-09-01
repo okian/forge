@@ -153,6 +153,10 @@ func (l Layer) methods(elem model.TypeRef) []shape.Method {
 			Name: "AppendSeq", Signature: "(seq " + seq + ")", Owner: l.Origin(), Pointer: true,
 			Doc: "adds every element a sequence yields",
 		},
+		{
+			Name: "Reset", Signature: "()", Owner: l.Origin(), Pointer: true,
+			Doc: "empties the container, keeping the memory it has taken",
+		},
 	}
 }
 

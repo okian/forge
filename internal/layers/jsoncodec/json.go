@@ -34,7 +34,9 @@ var imports = []model.Import{
 	{Path: "bytes", Name: "bytes"},
 	{Path: "encoding/json/jsontext", Name: "jsontext"},
 	{Path: "encoding/json/v2", Name: "json"},
+	{Path: "errors", Name: "errors"},
 	{Path: "fmt", Name: "fmt"},
+	{Path: "io", Name: "io"},
 	{Path: "maps", Name: "maps"},
 	{Path: "slices", Name: "slices"},
 }
@@ -54,9 +56,16 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 
 // Kind says where in a stack the layer may appear.
 //
-// An element layer: what it writes is about the subject rather than about the
-// container holding subjects, which is why its receiver is the subject and why
-// two declarations over one subject share what it produces.
+// An element layer: the codec it writes is about the subject rather than about
+// the container holding subjects, which is why its receiver is the subject and
+// why two declarations over one subject share what it produces.
+//
+// The declared type gets a codec as well, and that does not make this something
+// else. It is written out of the subject's codec and out of the walk the
+// container exposes, and it belongs to the declaration rather than to the
+// package — so it goes in the declaration's own file while the subject's goes
+// in the package's shared one, which is exactly the division an element layer's
+// kind describes.
 func (Layer) Kind() model.Kind { return model.KindElement }
 
 // Stage says how far along the layer is.
@@ -64,7 +73,7 @@ func (Layer) Stage() layer.Stage { return layer.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
-	return "streaming codec over the subject's own fields, driven by its json tags"
+	return "streaming codec over the subject's own fields, and over the container holding them"
 }
 
 // OptionSchema declares every option the layer accepts.
@@ -103,10 +112,24 @@ func (Layer) Accepts(below shape.Shape) error {
 
 // Shape returns what the layer exposes to the layer above it.
 //
-// Encodable, and no methods. What this layer writes goes on the subject rather
-// than on the declared type, and a surface describes the declared type — so a
-// container above it learns that its elements can be encoded, which is what it
-// needs, and does not learn method names that are not its to call.
+// Encodable, and no methods. A container above it learns that its elements can
+// be encoded, which is what it needs, and learns no method names that are not
+// its to call: the codec for the subject goes on the subject, and a surface
+// describes the declared type.
+//
+// The codec for the *declared* type is not on it either, and that one is a gap
+// rather than a decision. It is written and it is not describable here: a
+// surface is asked for while the stack is being composed, innermost first, so
+// this layer is asked before there is a container above it to be walked — and
+// whether there will be one to walk is what decides whether those four methods
+// exist. A layer that promised them would be describing a stack a decorator may
+// yet take the walk away from.
+//
+// What it costs is that the explain command under-reports this layer, and that
+// an author who wrote WriteTo on the declared type themselves finds out from
+// the compiler rather than from forge. Closing it needs composition to settle a
+// shape rather than build one in a single pass, which is a change the layers
+// that mask a surface will want anyway.
 func (Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 	below.Caps = below.Caps.With(shape.Encodable)
 	return below
@@ -133,13 +156,71 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 		style:    style(ctx.Options),
 		omitZero: flag(ctx.Options, optionOmitZero),
 	}
-	built.plan(held)
+	root := built.plan(held)
 
 	if err := built.diags.Err(); err != nil {
 		return layer.Unit{}, err
 	}
 
-	return provided(built)
+	unit, err := provided(built)
+	if err != nil {
+		return layer.Unit{}, err
+	}
+
+	over, err := streaming(ctx, root)
+	if err != nil {
+		return layer.Unit{}, err
+	}
+
+	return declaring(unit, over)
+}
+
+// declaring adds the declared type's own codec to what the subject's codec
+// already contributed.
+//
+// The two go to different places and are written by one layer, which is the
+// whole of what this layer being an element layer over a container means. What
+// is about the subject is handed over for the package to hold once however many
+// declarations asked for it; what is about the container is this declaration's,
+// and goes in this declaration's file.
+func declaring(unit layer.Unit, over stack) (layer.Unit, error) {
+	if !over.writes && !over.reads {
+		// Nothing above this layer offers a walk or a sink, so the declared
+		// type is not something a JSON array can be read into or written out
+		// of. The subject still has its codec, which is what was asked for.
+		return unit, nil
+	}
+
+	w := newWriter()
+	w.container(over)
+
+	decls, comments, fset, err := parsed(w.String(), over.declared)
+	if err != nil {
+		return layer.Unit{}, err
+	}
+
+	unit.Decls, unit.Comments, unit.Fset = decls, comments, fset
+	unit.Imports = spelling(over, decls)
+
+	return unit, nil
+}
+
+// spelling returns the imports the declared type's codec uses.
+//
+// Gathered from what this layer binds and what the element's own spelling
+// needs, then narrowed to what the declarations name — the same bargain the
+// subject's codec makes, and for the same reason: a file missing an import does
+// not compile, and neither does one carrying an import it never names.
+func spelling(over stack, decls []ast.Decl) []emit.Import {
+	out := make([]emit.Import, 0, len(imports)+len(over.imports))
+	for _, one := range imports {
+		out = append(out, emit.Import{Path: one.Path, Name: one.Name})
+	}
+	for _, one := range over.imports {
+		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
+	}
+
+	return emit.Reaching(decls, out)
 }
 
 // provided turns a plan into the units the package emits, one per type.

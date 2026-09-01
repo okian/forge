@@ -158,6 +158,40 @@ func TestDeclaredMethodsAreRecorded(t *testing.T) {
 	}
 }
 
+// A method a previous run generated is not one the author declared, so it is
+// not in the collision list.
+//
+// The list is what a layer reads to decide whether the author has already
+// written what it was about to write. Generated files are loaded with the
+// package they belong to — they have to be, or a call site naming a generated
+// type would stop the load — so a list that counted them would grow every time
+// forge ran, and every layer reading it would be told yes by its own last
+// answer.
+func TestWhatAPreviousRunWroteIsNotACollision(t *testing.T) {
+	loaded := session(t)
+
+	// The fixture holds no generated file, so what a generator wrote is said
+	// rather than found: the question is what the builder does with the answer,
+	// and a fixture carrying a generated copy of a method would be a second
+	// place for the two to disagree about which method that is.
+	regenerated := subject.New(subject.Config{
+		Fset:      loaded.Fset,
+		Owned:     loaded.Owned(),
+		Generated: func(token.Pos) bool { return true },
+	})
+
+	built, diags := regenerated.Build(named(t, loaded, "Holder"), subject.At(token.Position{}))
+	if !diags.Empty() {
+		t.Fatalf("modelling Holder: %s", diags.Render())
+	}
+
+	for _, reached := range built.Closure {
+		if len(reached.Methods) != 0 {
+			t.Errorf("%s reports %v as the author's, and a generator wrote all of it", reached, reached.Methods)
+		}
+	}
+}
+
 // A subject that is still generic has no fields yet, only type parameters, and
 // a model built from one would describe nothing in particular.
 func TestOpenSubjectsAreRefused(t *testing.T) {

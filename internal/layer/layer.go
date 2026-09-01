@@ -85,6 +85,56 @@ type Context struct {
 	// Options are the options written for this layer, already validated against
 	// its schema, so a layer reads them without checking them again.
 	Options model.Options
+
+	// Exposed is what the declared type offers once every layer has been asked
+	// what it exposes, which is not the same question as what is beneath this
+	// one.
+	//
+	// An element layer needs it and nothing else does. What an element layer
+	// writes is about the subject, so it sits at the bottom of a stack and is
+	// handed the subject — and a codec for the container holding subjects is
+	// written against a walk it can only learn about by looking up. Everything
+	// else reads the shape it is given.
+	//
+	// It is the zero shape while a stack is being composed, because it is what
+	// composing works out: a layer asked what it exposes is being asked for one
+	// of the answers this is made of, and reading it there would be reading a
+	// tally of the layers that happened to have been asked first. Nothing may
+	// be decided from it except what to generate.
+	//
+	// What is here has already been through every layer above, masking
+	// included. A decorator that withdraws the walk leaves an element layer
+	// with nothing to write a container codec over, which is the correct
+	// answer rather than an obstacle: the decorator withdrew the walk because
+	// walking is no longer safe, and it owns whatever replaces it.
+	Exposed shape.Shape
+}
+
+// Generating returns the context a layer is asked to generate against, which is
+// what it was composed against plus what the composed stack turned out to
+// expose.
+//
+// A method rather than a parameter on [ContextFor], because the two are known
+// at different times: the options a layer reads are picked out while the stack
+// is still being composed, and what the stack exposes is the result of having
+// composed it. A constructor taking both would have to be called with a shape
+// nobody has yet, at the only call site that has no use for one.
+//
+// A copy rather than a field written in place, so that what a layer is handed
+// is decided in one place. A context built by [ContextFor] describes a layer of
+// a declaration and nothing about a run; one that has been through here
+// describes a layer of a run that is generating. Writing the field would leave
+// the two indistinguishable, and a stage that read a context it had not built
+// would have no way of knowing which it had.
+func (c *Context) Generating(exposed shape.Shape) *Context {
+	if c == nil {
+		return nil
+	}
+
+	out := *c
+	out.Exposed = exposed
+
+	return &out
 }
 
 // ContextFor returns what one layer of a declaration is asked against, or nil

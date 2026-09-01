@@ -8,9 +8,181 @@
 package people
 
 import (
+	"encoding/json/jsontext"
+	"fmt"
 	"iter"
 	"slices"
 )
+
+// encodePeoplePersonJSONTo writes a Person as JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func encodePeoplePersonJSONTo(enc *jsontext.Encoder, v Person) error {
+	return v.MarshalJSONTo(enc)
+}
+
+// MarshalJSONTo writes the Person as a JSON object.
+//
+// Members are written in the order the fields are declared, an embedded
+// struct's where the embedded field is. A field that takes a name from a
+// shallower one keeps its own place rather than the excluded one's.
+func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("ID")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.Int(int64(v.ID))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Name")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String(string(v.Name))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Email")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String(string(v.Email))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Age")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.Int(int64(v.Age))); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
+}
+
+// decodePeoplePersonJSONFrom reads a Person from JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func decodePeoplePersonJSONFrom(dec *jsontext.Decoder, v *Person) error {
+	return v.UnmarshalJSONFrom(dec)
+}
+
+// UnmarshalJSONFrom reads a JSON object into the Person.
+//
+// A member the object holds and the type does not is skipped, which is
+// what keeps a reader working against a writer that has since added one.
+func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if dec.PeekKind() == 'n' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		var zero Person
+		*v = zero
+		return nil
+	}
+	if kind := dec.PeekKind(); kind != '{' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		return fmt.Errorf("cannot read Person from a JSON %s", kind)
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return err
+	}
+	for dec.PeekKind() != '}' {
+		name, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		switch name.String() {
+		case "ID":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero int
+					v.ID = zero
+				case '0':
+					number, err := raw.Int()
+					if err != nil {
+						return err
+					}
+					if int64(int(number)) != number {
+						return fmt.Errorf("%d is out of range for int", number)
+					}
+					v.ID = int(number)
+				default:
+					return fmt.Errorf("cannot read int from a JSON %s", raw.Kind())
+				}
+			}
+		case "Name":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero string
+					v.Name = zero
+				case '"':
+					v.Name = string(raw.String())
+				default:
+					return fmt.Errorf("cannot read string from a JSON %s", raw.Kind())
+				}
+			}
+		case "Email":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero string
+					v.Email = zero
+				case '"':
+					v.Email = string(raw.String())
+				default:
+					return fmt.Errorf("cannot read string from a JSON %s", raw.Kind())
+				}
+			}
+		case "Age":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero int
+					v.Age = zero
+				case '0':
+					number, err := raw.Int()
+					if err != nil {
+						return err
+					}
+					if int64(int(number)) != number {
+						return fmt.Errorf("%d is out of range for int", number)
+					}
+					v.Age = int(number)
+				default:
+					return fmt.Errorf("cannot read int from a JSON %s", raw.Kind())
+				}
+			}
+		default:
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := dec.ReadToken()
+	return err
+}
 
 // Seq is a lazy view over a sequence of elements.
 //

@@ -3,7 +3,7 @@ Persons Collection[Ring[Json[Person]]]
 
 Step  Layer       Kind      Effect
 1     Person      subject   struct model: 4 fields, 4 tags
-2     Json        element   streaming codec over the subject's own fields, driven by its json tags
+2     Json        element   streaming codec over the subject's own fields, and over the container holding them
 3     Ring        storage   fixed-capacity circular buffer, so a long-running producer cannot grow memory without bound
 4     Collection  refining  query, projection and sort methods built from the subject's fields
 
@@ -15,8 +15,8 @@ Step  Layer       Adds                                 Masks  Exposes
 4     Collection  —                                    —      Sized, Ordered, Structured, Encodable, Streamable, Bounded
 
 Methods
-Step  Layer       Emits                                     Withdraws
-1     Person      —                                         —
-2     Json        —                                         —
-3     Ring        Cap, Len, All, Backward, Push, AppendSeq  —
-4     Collection  Seq                                       —
+Step  Layer       Emits                                            Withdraws
+1     Person      —                                                —
+2     Json        —                                                —
+3     Ring        Cap, Len, All, Backward, Reset, Push, AppendSeq  —
+4     Collection  Seq                                              —

@@ -237,6 +237,66 @@ func (s *Session) Owned() map[string]bool {
 	return out
 }
 
+// Generated reports, for a position in this load, whether what is there was
+// written by a generator rather than by hand.
+//
+// Forge's own output is loaded like any other source, and it has to be: the
+// package being generated for calls the methods of the last run, and a load
+// without them is a package that does not type-check. So a stage asking
+// go/types what a type declares is told about forge's previous run as though
+// somebody had written it — and a layer that delegates to what the author
+// already wrote would delegate to itself, stop writing it, and leave the
+// package naming a method nothing declares. That failure appears on the second
+// run over a repository, which is every run after the first commit.
+//
+// The convention is the language's own rather than forge's: any file whose
+// first comments carry the generated line is one, whoever wrote it. A type
+// whose methods came from another generator is as much not the author's as one
+// whose methods came from here.
+//
+// A function rather than a set of file names, because the two halves of the
+// answer — which files are generated, and which file a position is in — are
+// only correct together, and a caller given one of them would have to be given
+// the other and keep them in step.
+func (s *Session) Generated() func(token.Pos) bool {
+	if s == nil {
+		return func(token.Pos) bool { return false }
+	}
+
+	written := make(map[string]bool)
+	seen := make(map[string]bool)
+
+	var walk func(pkg *packages.Package)
+	walk = func(pkg *packages.Package) {
+		if pkg == nil || seen[pkg.PkgPath] {
+			return
+		}
+		seen[pkg.PkgPath] = true
+
+		for _, file := range pkg.Syntax {
+			if ast.IsGenerated(file) {
+				written[s.FileName(file)] = true
+			}
+		}
+		for _, one := range pkg.Imports {
+			walk(one)
+		}
+	}
+
+	for _, pkg := range s.Packages {
+		walk(pkg)
+	}
+
+	fset := s.Fset
+
+	return func(pos token.Pos) bool {
+		if !pos.IsValid() || fset == nil || len(written) == 0 {
+			return false
+		}
+		return written[fset.Position(pos).Filename]
+	}
+}
+
 // FieldDocs returns the comment written above each struct field in the load,
 // keyed by the position of the field's name.
 //
