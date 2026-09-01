@@ -368,3 +368,88 @@ func (p panicking) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 func (p panicking) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
 	return layer.Unit{}, nil
 }
+
+// A capability a decorator masked is gone for the layers above it.
+//
+// The rule that makes masking worth having. A lock takes the walk away and
+// offers scoped access instead, and a layer written against a walk has to be
+// told — at generate time, by name, rather than by a race detector at two in
+// the morning or by a deadlock inside whatever the caller does with an element.
+//
+// Collection over Guarded is the case the catalog already holds: the collection
+// is written against a walk, the lock masks Streamable, and nothing else about
+// the stack is wrong.
+func TestACapabilityADecoratorMasked(t *testing.T) {
+	_, diags := compose.Compose(declaration("Collection", "Guarded", "Slice"), catalog())
+
+	if diags.Empty() {
+		t.Fatal("a layer written against a capability the decorator masked was allowed")
+	}
+
+	held := diags.Render()
+	if !strings.Contains(held, "FRG1006") {
+		t.Errorf("the refusal is not the one about sitting on the stack beneath:\n%s", held)
+	}
+	for _, want := range []string{"Collection", "Streamable"} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the refusal does not mention %q:\n%s", want, held)
+		}
+	}
+}
+
+// And the same stack over a decorator that masks nothing composes.
+//
+// The half that makes the other half mean anything, and the control that says
+// what the other half is about. Dropping the decorator entirely would only show
+// that a collection can sit over a slice; keeping one that masks nothing shows
+// that a collection can sit over a decorator, so what refused the first stack
+// was the mask rather than the shape.
+func TestTheSameStackOverADecoratorThatMasksNothing(t *testing.T) {
+	_, diags := compose.Compose(declaration("Collection", "Atomic", "Slice"), catalog())
+
+	if !diags.Empty() {
+		t.Errorf("a collection over a decorator that masks nothing was refused:\n%s", diags.Render())
+	}
+}
+
+// A method a decorator withdrew is gone from the surface the layers above see.
+//
+// The other half of masking, and the half a capability cannot express.
+// Streamable going missing tells a layer above that it may not be written
+// against a walk; it tells nothing to a reader looking at a list of methods
+// that still holds All.
+func TestAMethodADecoratorWithdrew(t *testing.T) {
+	held, diags := compose.Compose(declaration("Guarded", "Slice"), catalog())
+	if !diags.Empty() {
+		t.Fatalf("a lock over a slice was refused:\n%s", diags.Render())
+	}
+
+	for _, gone := range []string{"All", "Backward", "AppendSeq"} {
+		if _, has := held.Exposed.Method(gone); has {
+			t.Errorf("%s is still on the surface a lock exposes: %v", gone, held.Exposed.Names())
+		}
+	}
+
+	// Len stays, because a length is one number read under the lock and handed
+	// back — nothing a caller can hold open.
+	if _, has := held.Exposed.Method("Len"); !has {
+		t.Errorf("withdrawing the walk took the length with it: %v", held.Exposed.Names())
+	}
+}
+
+// And a method withdrawn from a layer other than the storage goes too.
+//
+// Seq is the collection's, not the slice's, so a lock over a slice alone never
+// has one to take. It is the name that says withdrawal reads what is beneath
+// rather than what the storage happens to emit — and it is the one that would
+// still be there if withdrawal were written against a particular layer.
+func TestAWithdrawnMethodFromAnotherLayer(t *testing.T) {
+	held, diags := compose.Compose(declaration("Guarded", "Collection", "Slice"), catalog())
+	if !diags.Empty() {
+		t.Fatalf("a lock over a collection was refused:\n%s", diags.Render())
+	}
+
+	if _, has := held.Exposed.Method("Seq"); has {
+		t.Errorf("the collection's lazy view survived the lock: %v", held.Exposed.Names())
+	}
+}
