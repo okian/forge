@@ -455,23 +455,24 @@ func assembled(source string, held plan) (layer.Unit, error) {
 	}, nil
 }
 
-// imports names what the generated code may reach for.
+// imports names what the generated code may reach for, in the shape a unit
+// carries.
 //
 // Widely, and narrowed by what turns out to be written: the lock's own two, the
 // codec's where there is a codec, and whatever the signatures the view forwards
 // happen to name. Which of those the file ends up with is not decidable before
 // the declarations exist, so the list is the union and the pruning is done
 // afterwards.
+//
+// Read off [Layer.Binds] rather than written out again. The two answer one
+// question — what this layer's output imports — for two readers, and the day
+// they were two lists is the day one of them would be missing a path: the
+// spelling would not move a subject out of the way of a name the file went on
+// to bind, and nothing would notice until somebody's package was called slices.
 func imports() []emit.Import {
-	held := naming()
+	held := Layer{}.Binds()
 
-	out := make([]emit.Import, 0, len(held)+3)
-	out = append(out,
-		emit.Import{Path: stdSync.Path, Name: stdSync.Name},
-		emit.Import{Path: stdSlices.Path, Name: stdSlices.Name},
-		emit.Import{Path: stdJSONText.Path, Name: stdJSONText.Name},
-	)
-
+	out := make([]emit.Import, 0, len(held))
 	for _, one := range held {
 		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}

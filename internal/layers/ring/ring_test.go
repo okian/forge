@@ -60,7 +60,7 @@ func declaration(name string, written ...string) *layer.Context {
 		entries = append(entries, model.Option{Key: key, Value: value})
 	}
 
-	return &layer.Context{
+	ctx := &layer.Context{
 		Model: &model.Model{
 			Name:    name,
 			Form:    model.FormSpec,
@@ -71,6 +71,13 @@ func declaration(name string, written ...string) *layer.Context {
 		},
 		Options: model.Options{Layer: "ring", Entries: entries, Pos: declaredAt},
 	}
+
+	// What the file will bind, which generation works out from the whole stack
+	// and hands to every layer in it. A stack of this layer alone binds what
+	// this layer binds — but it has to be said rather than assumed, since a
+	// layer given none spells against nothing and would write a subject from a
+	// package called errors under the name the template already has.
+	return ctx.Binding(ring.New().Binds())
 }
 
 // generate asks the layer for its unit, failing the test if it refuses.
@@ -381,5 +388,43 @@ func TestTheUnwrittenPolicyIsTheDeclaredDefault(t *testing.T) {
 
 	if !bytes.Equal(unwritten, written) {
 		t.Errorf("writing overflow=%s generates something other than writing nothing", declared)
+	}
+}
+
+// A subject from a package named like one the template imports is bound to a
+// name of its own and spelled by that.
+//
+// This layer's own name for it is errors, which a full ring reaches for: the
+// error a push into one returns is declared with it. A subject from a package
+// of that name, spelled bare, would leave the file importing two things under
+// one name — in generated code the author cannot edit, over a collision they
+// caused by naming a package errors.
+//
+// What the subject is moved out of the way of is what the whole package's files
+// will bind, which reaches the layer through the context rather than being
+// looked up here: see [layer.Context.Bound]. A stack of this layer alone binds
+// what this layer binds, which is what the helper hands over.
+//
+// The refusing policy, because that is the one that reaches for errors: it
+// declares the error a full ring returns. Under the other the template imports
+// nothing of the name and the subject would keep it, which is correct and is
+// not what this is about.
+func TestASubjectWhosePackageNameIsAlreadyTaken(t *testing.T) {
+	ctx := declaration("Persons", "overflow=error")
+	ctx.Model.Subject = person("example.com/util/errors", "errors")
+
+	out := generated(t, ctx)
+
+	for _, want := range []string{
+		`errors2 "example.com/util/errors"`,
+		"errors2.Person",
+
+		// And the template's own is still spelled bare, since moving the
+		// subject aside is the whole of what leaves that name free.
+		"errors.New(",
+	} {
+		if !bytes.Contains(out, []byte(want)) {
+			t.Errorf("the output does not hold %q:\n%s", want, out)
+		}
 	}
 }

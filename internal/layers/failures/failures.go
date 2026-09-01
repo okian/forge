@@ -16,6 +16,7 @@ package failures
 import (
 	_ "embed"
 	"fmt"
+	"slices"
 
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/embedded"
@@ -62,6 +63,13 @@ var binds = []model.Import{
 	{Path: "strconv", Name: "strconv"},
 	{Path: "strings", Name: "strings"},
 }
+
+// Binds names what these files import, for a layer answering what its own
+// output binds.
+//
+// A copy, because the caller folds it into a union and a shared slice appended
+// to is a shared slice changed for everybody who holds it.
+func Binds() []model.Import { return slices.Clone(binds) }
 
 // Unit returns the failure types as a contribution the package holds once.
 func Unit() (layer.Unit, error) {

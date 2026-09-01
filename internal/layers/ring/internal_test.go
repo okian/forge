@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/tools/go/packages"
+
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/model"
@@ -296,4 +298,49 @@ func TestRenamingWhatCallsAMethod(t *testing.T) {
 
 	// And nothing at all to rename is not a walk worth taking.
 	calls(decls, nil)
+}
+
+// What the template imports is written down, and what is written down is what
+// every layer of the stack spells against — so a template that grows an import
+// nobody recorded, or records one it no longer has, is a name the subject is
+// moved out of the way of wrongly in files this layer does not write.
+//
+// It cannot be caught by reading the paths. A subject in a package called
+// errors, under a list that had lost the template's errors, is spelled
+// errors.Person beside an import of the real one — two packages under one name,
+// in generated code, silently. Only the build answers it.
+//
+// A load rather than a parse. What an import binds is what the package it
+// resolves to declares itself to be, which is a question about that package and
+// not about the line naming it.
+func TestTheTemplateBindsWhatItSaysItDoes(t *testing.T) {
+	loaded, err := packages.Load(&packages.Config{
+		Mode: packages.NeedName | packages.NeedImports,
+	}, "./tmpl")
+	if err != nil {
+		t.Fatalf("loading the template package: %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("loaded %d packages, want the template", len(loaded))
+	}
+
+	found := make(map[string]string, len(loaded[0].Imports))
+	for path, imported := range loaded[0].Imports {
+		found[path] = imported.Name
+
+		switch recorded, is := templateImports[path]; {
+		case !is:
+			t.Errorf("the template imports %s and nothing recorded a name for it", path)
+		case recorded != imported.Name:
+			t.Errorf("%s binds %q, and it is recorded as binding %q", path, imported.Name, recorded)
+		}
+	}
+
+	// And nothing recorded that the template no longer imports, which is a name
+	// the subject is moved out of the way of for no reason.
+	for path := range templateImports {
+		if _, imported := found[path]; !imported {
+			t.Errorf("%s is recorded and the template does not import it", path)
+		}
+	}
 }

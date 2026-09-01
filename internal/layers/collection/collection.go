@@ -267,13 +267,17 @@ func accounted(imports []emit.Import) string {
 	return ""
 }
 
-// taken returns what the template's imports bind, sorted, which is what every
-// type this layer spells is spelled against.
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
 //
 // Path and name both. A field typed iter.Seq joins the import the template
 // already has rather than being aliased away from it — an alias there would
 // leave one path bound twice across the file, since the storage layer beneath
 // binds it under its own name.
+func (Layer) Binds() []model.Import { return taken() }
+
+// taken returns what the template's imports bind, sorted so that what is built
+// from them does not depend on the order a map was walked in.
 func taken() []model.Import {
 	out := make([]model.Import, 0, len(templateImports))
 	for path, name := range templateImports {

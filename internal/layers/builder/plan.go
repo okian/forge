@@ -92,6 +92,11 @@ type plan struct {
 	// signature may name.
 	into string
 
+	// bound is what the file will bind, which every spelling is written
+	// against so that a field's type from a package a layer of the stack
+	// already imports is written under a name the file has not taken.
+	bound []model.Import
+
 	// of is the subject, and spelled how it is written in the file being
 	// generated into.
 	of      *model.Struct
@@ -113,11 +118,12 @@ type plan struct {
 }
 
 // planned works out what a subject's builder is made of.
-func planned(held *model.Struct, into string) *plan {
+func planned(held *model.Struct, into string, bound []model.Import) *plan {
 	out := &plan{
 		into:     into,
+		bound:    bound,
 		of:       held,
-		spelled:  model.Spell(held.Type(), into, nil),
+		spelled:  model.Spell(held.Type(), into, bound),
 		declared: model.Through(held, "", suffix, into),
 	}
 	out.made = "New" + out.declared
@@ -168,7 +174,7 @@ func (p *plan) consider(field model.Field) {
 	one := settable{
 		field:    field,
 		name:     field.Name,
-		spelled:  model.Spell(field.Type.Type, p.into, nil),
+		spelled:  model.Spell(field.Type.Type, p.into, p.bound),
 		demanded: demanded,
 	}
 	if demanded {

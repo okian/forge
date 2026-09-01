@@ -6,9 +6,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"slices"
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers/failures"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shape"
 )
@@ -37,6 +39,18 @@ func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// The regexp a pattern rule compiles through, and the failure vocabulary a
+// check reports in. Both are named whether or not the subject in hand turns out
+// to need either, because what this decides is which names the subject is moved
+// out of the way of — and a name reserved and not used costs an alias nobody
+// needed, where one used and not reserved costs a file that does not build.
+func (Layer) Binds() []model.Import {
+	return append(slices.Clone(imports), failures.Binds()...)
+}
 
 // Kind says where in a stack the layer may appear.
 //
@@ -96,7 +110,7 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 			ctx.Model.Name)
 	}
 
-	built := &planner{into: ctx.Model.Pkg.PkgPath}
+	built := &planner{into: ctx.Model.Pkg.PkgPath, bound: ctx.Bound()}
 	built.plan(held)
 
 	if err := built.diags.Err(); err != nil {
@@ -211,7 +225,7 @@ func spelt(held *plan, field model.Field) []emit.Import {
 	}
 
 	out := make([]emit.Import, 0, 2)
-	for _, one := range model.Spell(field.Type.Type, held.spelled.Local, nil).Imports {
+	for _, one := range model.Spell(field.Type.Type, held.spelled.Local, held.bound).Imports {
 		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
 	return out

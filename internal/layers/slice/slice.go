@@ -45,14 +45,9 @@ const (
 const constructorInTemplate = "New"
 
 // templateImports names every package the template imports, and what a file
-// importing it binds that package to.
-//
-// Written down rather than read off the paths, because a path does not say what
-// it binds: encoding/json/v2 binds json and math/rand/v2 binds rand, so taking
-// the last element under-reports exactly the names most worth knowing. And
-// under-reporting is the harmful direction — a name this does not mention is a
-// name the subject is not moved out of the way of, which is the collision the
-// spelling exists to prevent.
+// importing it binds that package to. It is what [Layer.Binds] answers with,
+// and [layer.Layer.Binds] says why the names are written down rather than taken
+// off the paths.
 //
 // Neither half of it is left to be kept in step by hand. Generate refuses a
 // template whose imports have grown past this list, and this package's tests
@@ -65,11 +60,6 @@ var templateImports = map[string]string{
 
 // taken returns what the template's imports bind, sorted so that a spelling
 // built from them does not depend on a map.
-//
-// Path and name both, because a spelling given only names would alias a subject
-// from a package the template already imports — the file would then bind one
-// path twice, which is the mistake the names were passed to prevent, wearing
-// the other face.
 func taken() []model.Import {
 	out := make([]model.Import, 0, len(templateImports))
 	for path, name := range templateImports {
@@ -92,6 +82,15 @@ func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// Path and name both, because a spelling given only names would alias a subject
+// from a package the template already imports — the file would then bind one
+// path twice, which is the mistake the names were passed to prevent, wearing
+// the other face.
+func (Layer) Binds() []model.Import { return taken() }
 
 // Kind says where in a stack the layer may appear.
 func (Layer) Kind() model.Kind { return model.KindStorage }
@@ -194,8 +193,9 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 
 	// Spelled against what the file will already bind, so that a subject from a
 	// package called slices is written as something else rather than as a
-	// second import under a name the template has.
-	subject := ctx.Model.SubjectSpelling(taken())
+	// second import under a name the template has. The whole stack's bindings
+	// rather than this layer's, because the file is the whole stack's.
+	subject := ctx.Model.SubjectSpelling(ctx.Bound())
 
 	out, diags := l.apply(ctx, subject)
 	if err := diags.Err(); err != nil {

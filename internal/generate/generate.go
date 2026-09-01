@@ -33,6 +33,7 @@ var (
 	codeLayerFailed   = diag.Register(4008, "layer could not generate")
 	codeNothingGiven  = diag.Register(4014, "a layer handed over nothing where a declaration should be")
 	codeImportUnnamed = diag.Register(4015, "a layer named an import path that is empty")
+	codeBindsDisagree = diag.Register(4021, "two layers disagree about the name an import binds")
 )
 
 // Request is one declaration to generate for.
@@ -131,12 +132,17 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 	// left behind.
 	willRead := reading(requests)
 
+	// And what every file this package gets written will bind, decided across
+	// all of them for the reason [willBind] gives: two of the three files a
+	// declaration reaches are shared with its neighbours.
+	bound := willBind(requests, cfg, &diags)
+
 	for _, req := range requests {
 		if req.Model == nil {
 			continue
 		}
 
-		file, unit, was, ok := one(req, name, cfg, taken, willRead, &diags)
+		file, unit, was, ok := one(req, name, cfg, taken, willRead, bound, &diags)
 		if !ok {
 			continue
 		}
@@ -414,7 +420,7 @@ func subjects(requests []Request) []*model.Struct {
 // refused here does not need a second path out.
 func one(
 	req Request, name string, cfg Config,
-	taken map[string]string, reads map[string]bool, diags *diag.Set,
+	taken map[string]string, reads map[string]bool, bound []model.Import, diags *diag.Set,
 ) (File, merge.Unit, claimable, bool) {
 	into := Named(req.Model.Name)
 	if first, twice := taken[into]; twice {
@@ -430,7 +436,7 @@ func one(
 	var sum emit.Digest
 	Fingerprint(&sum, req, name, cfg)
 
-	unit, was, problems := declaration(req, cfg, reads)
+	unit, was, problems := declaration(req, cfg, reads, bound)
 	diags.Merge(&problems)
 
 	if !problems.Empty() {
@@ -529,7 +535,7 @@ func asUnit(held merge.Unit) layer.Unit {
 
 // declaration generates for one declaration: what its options mean, what its
 // stack composes to, and what each of its layers contributes.
-func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, claimable, diag.Set) {
+func declaration(req Request, cfg Config, reads map[string]bool, bound []model.Import) (merge.Unit, claimable, diag.Set) {
 	var diags diag.Set
 
 	held := req.Model
@@ -567,7 +573,7 @@ func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, cl
 	// written: a refining layer over no storage has one filled in.
 	held.Stack = composed.Stack()
 
-	units := earned(held, contributions(held, composed, cfg, &diags), cfg, reads, &diags)
+	units := earned(held, contributions(held, composed, cfg, bound, &diags), cfg, reads, &diags)
 
 	if !diags.Empty() {
 		return merge.Unit{}, claimable{}, diags
@@ -709,11 +715,138 @@ func merged(held, adding []emit.Import) []emit.Import {
 	return held
 }
 
+// willBind returns what the files this package's declarations write into will
+// bind: the union of what every layer any of them names says it imports, sorted
+// by path.
+//
+// Worked out before anything generates, because it is the one thing a layer
+// needs and cannot work out for itself. What makes it necessary at all is
+// [layer.Layer.Binds]; what is decided here is how wide the answer is.
+//
+// The package, and it is not a choice. A stack writes into three files, and the
+// declaration's own is the only one it has to itself: what an element layer
+// writes goes into the file a package's subjects share, and a spec
+// declaration's stand-ins go into another that is assembled out of each
+// declaration's own imports. That last one is what settles it — the stand-in
+// file's spelling *is* the declaration file's spelling, carried over
+// unchanged — so a narrower answer per declaration would be two declarations
+// writing one foreign package two ways into a file built from both. One answer
+// for the package is the only consistent width available.
+//
+// What that costs is worth saying plainly, because somebody will meet it: what
+// a declaration generates is a function of its neighbours. Adding a codec
+// anywhere in a package reserves json, io and half a dozen other ordinary
+// names, and a neighbouring declaration whose subject comes from a package
+// called io regenerates as io2.Thing — a diff in a file whose own declaration
+// nobody touched.
+//
+// The storage a refining layer gets when none is written is counted whether or
+// not anything asked for it. Working out which packages will be given one means
+// writing composition's rule a second time, and two walks written to the same
+// rule stay in step until the day one of them is edited. A marker nothing in
+// the catalog claims is skipped rather than refused: what is wrong with it is
+// reported by the stage whose business it is, and a second complaint from here
+// would name the same declaration twice.
+func willBind(requests []Request, cfg Config, diags *diag.Set) []model.Import {
+	var out []model.Import
+
+	// Who reserved each path, and which disagreements have already been
+	// reported. A package naming one layer from three declarations reaches the
+	// same conflict three times, and three copies of one complaint is worse
+	// than one: what is wrong is a fact about two layers, not about any of the
+	// declarations that happen to name them.
+	from := make(map[string]string)
+	said := make(map[string]bool)
+
+	where := at(requests)
+
+	claim := func(ref model.TypeRef) {
+		found, claims := cfg.Catalog.Registry.Lookup(ref)
+		if !claims {
+			return
+		}
+
+		for _, one := range found.Binds() {
+			if one.Path == "" {
+				continue
+			}
+
+			held, taken := from[one.Path]
+			if !taken {
+				from[one.Path] = ref.Name
+				out = append(out, one)
+				continue
+			}
+			if slices.Contains(out, one) || said[one.Path] {
+				continue
+			}
+			said[one.Path] = true
+
+			// One path, one name. A disagreement is reported rather than
+			// settled here: whichever name were kept, the other output would
+			// name a package under one the file does not bind it to, and
+			// choosing silently would make what is generated depend on which
+			// declaration the author happened to write first.
+			//
+			// The first name is kept and the run goes on, which is not a
+			// judgement that it was the right one. Nothing is written — a
+			// package with a diagnostic against it is not written at all — and
+			// carrying on is what lets the run report the rest of what is wrong
+			// rather than a cascade of spellings computed against a set with a
+			// path missing from it.
+			diags.Add(diag.New(codeBindsDisagree, where, "%s", disagreement(held, ref.Name, one)).
+				WithHint("%s", bindsFault))
+		}
+	}
+
+	claim(cfg.Catalog.DefaultStorage)
+	for _, req := range requests {
+		if req.Model == nil {
+			continue
+		}
+		for _, ref := range req.Model.Stack {
+			claim(ref.Origin)
+		}
+	}
+
+	// Sorted, so that what a layer spells against is the same list however the
+	// declarations were walked — and so that a name a spelling has to number is
+	// numbered the same way in every file a run writes. Paths are unique by
+	// now, so there is nothing left for a stable sort to keep in order.
+	slices.SortFunc(out, func(a, b model.Import) int { return strings.Compare(a.Path, b.Path) })
+
+	return out
+}
+
+// disagreement says which two layers cannot agree about a path, or which one
+// cannot agree with itself.
+//
+// Two wordings, because they are two faults and only one of them is about a
+// pair. A layer that names one path twice under two names is a bug its author
+// can see and fix without knowing what else is in the stack, and reporting it
+// as a disagreement with itself would read as forge being unable to count.
+func disagreement(held, second string, one model.Import) string {
+	if held == second {
+		return fmt.Sprintf("the %s layer names %s twice, and not under one name", held, one.Path)
+	}
+	return fmt.Sprintf("the %s and %s layers disagree about what %s binds", held, second, one.Path)
+}
+
+// bindsFault says what an author can do about two layers that will not agree,
+// which is nothing except say so.
+const bindsFault = "one path binds one name, so forge cannot spell against both; " +
+	"this is a fault in the layers rather than in the declaration, and reporting it " +
+	"is better than choosing between them — a file built on either would name a package " +
+	"under a name it does not bind"
+
 // contributions asks every layer of a composed stack what it writes.
 //
 // Outermost first in the file, innermost first in the walk: a layer is
 // generated against what is beneath it, and read above what is above it.
-func contributions(held *model.Model, composed compose.Composed, cfg Config, diags *diag.Set) []layer.Unit {
+func contributions(
+	held *model.Model, composed compose.Composed, cfg Config,
+	bound []model.Import, diags *diag.Set,
+) []layer.Unit {
 	units := make([]layer.Unit, 0, len(composed.Steps))
 
 	for i := len(composed.Steps) - 1; i >= 0; i-- {
@@ -727,7 +860,8 @@ func contributions(held *model.Model, composed compose.Composed, cfg Config, dia
 		ctx := layer.ContextFor(held, step.Layer).
 			Generating(composed.Exposed).
 			Declaring(step.Declared).
-			Holding(step.Holds)
+			Holding(step.Holds).
+			Binding(bound)
 
 		unit, err := generated(found, ctx, step.Below)
 		if err != nil {

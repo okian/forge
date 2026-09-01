@@ -3,6 +3,7 @@ package layer
 import (
 	"go/ast"
 	"go/token"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -63,6 +64,46 @@ type Layer interface {
 	// holds: a layer that left it unset and wrapped a method would be reported
 	// as having done nothing, since the name did not change either.
 	Shape(ctx *Context, below shape.Shape) shape.Shape
+
+	// Binds names every package this layer's output imports, and the name a
+	// file importing it binds that package to.
+	//
+	// It is asked before anything generates, because it is the half of the
+	// answer no layer can work out for itself. A layer spells the subject the
+	// way its file has to write it, and a subject from a package called cmp, in
+	// a file where somebody bound the standard library's, has to be written
+	// under another name — so the spelling has to be told what is taken. What
+	// is taken reaches a layer as [Context.Bound], and a layer that spelled
+	// against its own imports instead would be right about that half of a file
+	// that does not compile: two layers would write one package under two
+	// names, or two packages under one.
+	//
+	// Written down by each layer rather than read off the paths it imports,
+	// because a path does not say what it binds — encoding/json/v2 binds json
+	// and math/rand/v2 binds rand, so taking the last element under-reports
+	// exactly the names most worth knowing. Under-reporting is the harmful
+	// direction: a name left out is a name the subject is not moved out of the
+	// way of.
+	//
+	// Answered wide rather than exactly. What a layer imports for one
+	// declaration depends on what that declaration turns out to need, and this
+	// is asked before that is known — so a layer names everything it might bind
+	// and the file drops what nothing in it uses. A name reserved and not
+	// imported costs a subject an alias it did not strictly need; a name
+	// imported and not reserved costs a file that does not build.
+	//
+	// One entry per path, and Aliased is not read: what is described here is
+	// what the package's files bind, which is a fact rather than a request. A
+	// layer naming one path twice under two names is asking for the fault this
+	// exists to prevent, and is refused rather than resolved — as are two
+	// layers of one stack that name a path differently from each other. Neither
+	// can be settled by choosing, because whichever name were kept, the other
+	// layer's output would name a package under one the file does not bind.
+	//
+	// Nil is a fair answer, and means the layer's output names no package of
+	// its own — only the ones the subject's own types come from, which the
+	// spelling finds without being told.
+	Binds() []model.Import
 
 	// Generate returns the declarations this layer contributes.
 	Generate(ctx *Context, below shape.Shape) (Unit, error)
@@ -126,6 +167,50 @@ type Context struct {
 	// container that cannot start as its zero value. Read through
 	// [Context.Holds].
 	holds *Constructor
+
+	// bound is what the files this layer writes into will bind: the union of
+	// [Layer.Binds] across the package, sorted by path.
+	//
+	// Held here rather than reached for, because it is the one fact about a
+	// layer's neighbours it is allowed to know. A layer asks what is taken so
+	// that it can spell a type around it; it may not ask who took it, which
+	// would be a layer generating differently for the company it keeps. Read
+	// through [Context.Bound].
+	bound []model.Import
+}
+
+// Bound returns what the files this layer writes into will bind.
+//
+// Pass it to [model.Spell] or [model.Model.SubjectSpelling] wherever a type from
+// another package is written out. Every layer generating for a package is handed
+// the same answer, which is what makes their spellings agree: the alternative is
+// each being right about its own half of a file that binds one package twice.
+// [Layer.Binds] is where that answer comes from and says why it is that wide.
+//
+// A copy, because a layer that appended to it would be appending to what its
+// neighbours are still holding — and the fault would be a package spelled two
+// ways by two layers, which is the one this exists to prevent, arrived at from
+// the other side.
+func (c *Context) Bound() []model.Import {
+	if c == nil {
+		return nil
+	}
+	return slices.Clone(c.bound)
+}
+
+// Binding returns the context told what the file it writes into will bind.
+//
+// A copy, like [Context.Generating] and [Context.Declaring], and for the same
+// reason: a context is handed to one layer and read by it.
+func (c *Context) Binding(bound []model.Import) *Context {
+	if c == nil {
+		return nil
+	}
+
+	held := *c
+	held.bound = bound
+
+	return &held
 }
 
 // Holds returns how the type this layer encloses is made, and whether it has to

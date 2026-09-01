@@ -189,6 +189,11 @@ type planner struct {
 	// method may be declared on and what an unexported field may be read from.
 	into string
 
+	// bound is what the file will bind, which every spelling is written
+	// against so that a type from a package called math is not written under
+	// the name the arithmetic's own import has.
+	bound []model.Import
+
 	// known holds every struct the subject reaches, by the identity that tells
 	// two apart, so that a field whose type is one of them is hashed by calling
 	// its own hash rather than by inlining what it holds. It is also what makes
@@ -419,7 +424,7 @@ func (p *planner) remember(held *model.Struct) {
 	p.known[ref] = held
 	p.plans[ref] = &plan{
 		of:      held,
-		spelled: model.Spell(held.Type(), p.into, nil),
+		spelled: model.Spell(held.Type(), p.into, p.bound),
 		attach:  held.Attachable(p.into),
 		why:     model.Unattachable(held, p.into),
 	}
@@ -519,7 +524,7 @@ func (p *planner) decide(t types.Type, where blamed) *form {
 		return found
 	}
 
-	out := &form{typ: t, spelled: model.Spell(t, p.into, nil)}
+	out := &form{typ: t, spelled: model.Spell(t, p.into, p.bound)}
 	p.forms[ref] = out
 
 	where.of = out

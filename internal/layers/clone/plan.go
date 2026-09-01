@@ -149,6 +149,11 @@ type planner struct {
 	// can carry a method.
 	into string
 
+	// bound is what the file will bind, which every spelling is written
+	// against so that a type from a package called slices is not written under
+	// the name a copy's own import has.
+	bound []model.Import
+
 	// sharing records that the declaration asked for references to be carried
 	// across rather than copied.
 	sharing bool
@@ -290,7 +295,7 @@ func (p *planner) remember(held *model.Struct) {
 	p.known[ref] = held
 	p.plans[ref] = &plan{
 		of:      held,
-		spelled: model.Spell(held.Type(), p.into, nil),
+		spelled: model.Spell(held.Type(), p.into, p.bound),
 		attach:  held.Attachable(p.into),
 		why:     model.Unattachable(held, p.into),
 	}
@@ -393,7 +398,7 @@ func (p *planner) decide(t types.Type, share bool) *form {
 
 // spellingOf writes a type as the generated file must spell it.
 func (p *planner) spellingOf(t types.Type) model.Spelling {
-	return model.Spell(t, p.into, nil)
+	return model.Spell(t, p.into, p.bound)
 }
 
 // fillForm decides one form, having already recorded it.

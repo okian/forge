@@ -365,6 +365,7 @@ func TestTheStorageForgeFillsInIsNotBlamed(t *testing.T) {
 // a registry will accept and hand over.
 type misclassified struct{}
 
+func (misclassified) Binds() []model.Import { return nil }
 func (misclassified) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Itself"}
 }

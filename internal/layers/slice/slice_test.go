@@ -53,7 +53,7 @@ func person(pkgPath, pkgName string) *model.Struct {
 // declaration builds what a layer is asked to generate against, the way the
 // pipeline builds it.
 func declaration(name string, form model.Form, subject *model.Struct) *layer.Context {
-	return &layer.Context{
+	ctx := &layer.Context{
 		Model: &model.Model{
 			Name:    name,
 			Form:    form,
@@ -63,6 +63,13 @@ func declaration(name string, form model.Form, subject *model.Struct) *layer.Con
 			Pos:     declaredAt,
 		},
 	}
+
+	// What the file will bind, which generation works out from the whole stack
+	// and hands to every layer in it. A stack of this layer alone binds what
+	// this layer binds — but it has to be said rather than assumed, since a
+	// layer given none spells against nothing and would write a subject from a
+	// package called slices under the name the template already has.
+	return ctx.Binding(slice.New().Binds())
 }
 
 // inline is the ordinary case: a declaration in an ordinary file, whose

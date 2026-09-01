@@ -172,6 +172,11 @@ type planner struct {
 	// can carry a method.
 	into string
 
+	// bound is what the file will bind, which every spelling is written
+	// against so that a type from a package called json is not written under
+	// the name this layer's own import has.
+	bound []model.Import
+
 	// known holds every struct the subject reaches, by the spelling that
 	// identifies it.
 	known map[string]*model.Struct
@@ -207,7 +212,7 @@ type planner struct {
 
 // spellingOf writes a type as the generated file must spell it.
 func (p *planner) spellingOf(t types.Type) model.Spelling {
-	return model.Spell(t, p.into, nil)
+	return model.Spell(t, p.into, p.bound)
 }
 
 // key identifies a type across the whole plan.

@@ -24,6 +24,7 @@ type demanding struct {
 	options []layer.OptionDef
 }
 
+func (demanding) Binds() []model.Import { return nil }
 func (d demanding) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: d.name}
 }

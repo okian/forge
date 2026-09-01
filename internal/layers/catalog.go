@@ -75,6 +75,16 @@ func (s *stub) Stage() layer.Stage { return s.stage }
 // Doc returns the one-line summary the list command prints.
 func (s *stub) Doc() string { return s.doc }
 
+// Binds names what this layer's output imports, which for a layer that writes
+// nothing is nothing.
+//
+// A stub answering with the imports its generator will one day want would move
+// every subject out of the way of names no file binds, so a stack containing
+// one would generate differently from the same stack without it — for a layer
+// that contributes not one line. What it will bind is written down when it is
+// written.
+func (s *stub) Binds() []model.Import { return nil }
+
 // Transparent reports whether the raw underlying type upholds this layer's
 // invariants on its own.
 func (s *stub) Transparent() bool { return s.transparent }

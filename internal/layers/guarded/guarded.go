@@ -64,6 +64,25 @@ func New() Layer { return Layer{} }
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
 
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// All four, and none of them conditional on what a given declaration turns out
+// to need. The lock's own two — sync for the mutex the declared type holds, and
+// slices for the snapshot a read hands back — are written for every
+// declaration; the codec's is written only where there is a codec beneath, and
+// the walk's only where a forwarded signature names one. What this decides is
+// which names a subject is moved out of the way of, so the conditional ones are
+// named anyway: an unused reservation costs an alias nobody needed, and a
+// missing one costs a file that binds a name to two packages.
+//
+// This is the list, and [imports] is it in the shape a unit carries. [naming]
+// answers a narrower question — what a forwarded signature reaches for — and is
+// a subset on purpose.
+func (Layer) Binds() []model.Import {
+	return []model.Import{stdJSONText, stdIter, stdSlices, stdSync}
+}
+
 // Kind says where in a stack the layer may appear.
 //
 // A decorator: it wraps a representation rather than being one, and what it

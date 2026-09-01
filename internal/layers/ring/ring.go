@@ -91,12 +91,6 @@ var templateImports = map[string]string{
 
 // taken returns what the template's imports bind, sorted so that a spelling
 // built from them does not depend on a map.
-//
-// Every import the template has, including the one a given declaration may not
-// keep. What this decides is which names the subject is moved out of the way
-// of, and moving it out of the way of a name the file turns out not to bind
-// costs nothing; not moving it out of the way of one the file does bind is a
-// package imported twice under one name.
 func taken() []model.Import {
 	out := make([]model.Import, 0, len(templateImports))
 	for path, name := range templateImports {
@@ -119,6 +113,16 @@ func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// Every import the template has, including the one a given declaration may not
+// keep. What this decides is which names the subject is moved out of the way
+// of, and moving it out of the way of a name the file turns out not to bind
+// costs nothing; not moving it out of the way of one the file does bind is a
+// package imported twice under one name.
+func (Layer) Binds() []model.Import { return taken() }
 
 // Kind says where in a stack the layer may appear.
 func (Layer) Kind() model.Kind { return model.KindStorage }
@@ -273,8 +277,9 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 
 	// Spelled against what the file will already bind, so that a subject from a
 	// package called errors is written as something else rather than as a
-	// second import under a name the template has.
-	subject := ctx.Model.SubjectSpelling(taken())
+	// second import under a name the template has. The whole stack's bindings
+	// rather than this layer's, because the file is the whole stack's.
+	subject := ctx.Model.SubjectSpelling(ctx.Bound())
 
 	held := planned(ctx, fixed)
 

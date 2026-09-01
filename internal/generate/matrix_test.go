@@ -406,6 +406,7 @@ func TestTheMatrixFailsOnALayerThatDoesNotCompile(t *testing.T) {
 // nothing about compiling.
 type broken struct{}
 
+func (broken) Binds() []model.Import { return nil }
 func (broken) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Broken"} }
 func (broken) Kind() model.Kind      { return model.KindStorage }
 func (broken) Stage() layer.Stage    { return layer.StageReady }
@@ -489,6 +490,7 @@ func TestTheMatrixFailsOnARefusalNobodyCanActOn(t *testing.T) {
 // what to do, which is the shape of refusal the matrix exists to forbid.
 type unhelpful struct{}
 
+func (unhelpful) Binds() []model.Import { return nil }
 func (unhelpful) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Unhelpful"}
 }

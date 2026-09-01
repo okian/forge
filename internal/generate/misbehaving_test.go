@@ -41,6 +41,12 @@ func TestWhatAMisbehavingLayerIsToldAboutItself(t *testing.T) {
 		"two layers writing one method": {
 			layer: doubling{}, code: "FRG4012", says: "write",
 		},
+		"one path under two names": {
+			layer: renaming{}, code: "FRG4021", says: "disagree about what slices binds",
+		},
+		"a layer that will not agree with itself": {
+			layer: doubtful{}, code: "FRG4021", says: "names example.com/x twice",
+		},
 	}
 
 	for name, want := range cases {
@@ -63,6 +69,31 @@ func TestWhatAMisbehavingLayerIsToldAboutItself(t *testing.T) {
 				t.Errorf("it points at %s rather than at the declaration", found.Pos)
 			}
 		})
+	}
+}
+
+// One disagreement is reported once, however many declarations reach it.
+//
+// What is wrong is a fact about two layers, not about any of the declarations
+// that happen to name them. A package with three declarations over a layer that
+// cannot agree with its neighbours would otherwise open with three copies of
+// one complaint, none of which the author can act on — and the caret would be
+// on a declaration chosen for being second in the file.
+// Two declarations over one fake, which write the same type between them and
+// are reported for that as well. It is not the subject and it is not in the
+// way: what is counted here is counted by code.
+func TestOneDisagreementIsReportedOnce(t *testing.T) {
+	one, two := misbehaving(renaming{}), misbehaving(renaming{})
+	two.Model.Name = "Places"
+
+	_, diags := generate.Package(local, "model",
+		[]generate.Request{one, two}, misbehavingConfig(t, renaming{}))
+
+	// reported fails where there is not exactly one, which is the whole of the
+	// assertion: a second copy is what this exists to catch.
+	found := reported(t, diags, "FRG4021")
+	if found.Pos.Line != declaredAt.Line {
+		t.Errorf("it points at %s rather than at the package's first declaration", found.Pos)
 	}
 }
 
@@ -98,6 +129,7 @@ func misbehavingConfig(t *testing.T, one layer.Layer) generate.Config {
 // composes over anything and differs only in what it hands over.
 type misbehaved struct{ named string }
 
+func (misbehaved) Binds() []model.Import { return nil }
 func (m misbehaved) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: m.named}
 }
@@ -166,6 +198,55 @@ func (doubling) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
 			"func (p Persons) Len() int { return len(p) }\n\n" +
 			"func (p Persons) Len() int { return 0 }\n")
 
+	return layer.Unit{Decls: decls, Comments: comments, Fset: fset}, nil
+}
+
+// renaming says a path binds a name some other layer of the stack binds it
+// under something else.
+//
+// The one rule the plugin surface states about what a layer reserves, and the
+// only one no shipped layer can break: all ten agree about the standard library
+// because all ten spell it the way it spells itself. A third party will not
+// necessarily, and forge cannot spell against both — so what it does is say so
+// rather than pick, which is what every stage does with a disagreement it did
+// not cause.
+//
+// It reserves the name and then generates nothing that uses it. What is under
+// test is what the reservations are checked for, which happens before a layer
+// is asked to write anything at all.
+type renaming struct{ misbehaved }
+
+func (renaming) Origin() model.TypeRef { return misbehaved{named: "Renaming"}.Origin() }
+
+func (renaming) Binds() []model.Import {
+	return []model.Import{{Path: "slices", Name: "sliceutil", Aliased: true}}
+}
+
+func (renaming) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
+	decls, comments, fset := built(`type Persons []Person`)
+	return layer.Unit{Decls: decls, Comments: comments, Fset: fset}, nil
+}
+
+// doubtful names one path twice and under two names, which is the same fault
+// as [renaming] with nobody else involved.
+//
+// Worth its own case because it is the version a layer's author can see. A
+// disagreement with another layer depends on what else is in the stack; this
+// one is wrong on its own, in a list they wrote, and it would be the more
+// annoying of the two to have swallowed.
+type doubtful struct{ misbehaved }
+
+func (doubtful) Origin() model.TypeRef { return misbehaved{named: "Doubtful"}.Origin() }
+
+func (doubtful) Binds() []model.Import {
+	return []model.Import{
+		{Path: "example.com/x", Name: "alpha", Aliased: true},
+		{Path: "example.com/x", Name: "beta", Aliased: true},
+	}
+}
+
+func (doubtful) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
+	decls, comments, fset := built(`type Persons []Person`)
 	return layer.Unit{Decls: decls, Comments: comments, Fset: fset}, nil
 }
 

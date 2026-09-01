@@ -345,6 +345,7 @@ func TestALayerThatPanicsWhileComposing(t *testing.T) {
 // panicking is a layer from outside that answers a question by failing.
 type panicking struct{ at string }
 
+func (panicking) Binds() []model.Import { return nil }
 func (p panicking) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Broken"}
 }

@@ -220,6 +220,7 @@ func TestALayerThatPanicsWhileGenerating(t *testing.T) {
 // exploding is a layer from outside that generates by failing.
 type exploding struct{}
 
+func (exploding) Binds() []model.Import           { return nil }
 func (exploding) Origin() model.TypeRef           { return model.TypeRef{Name: "Broken"} }
 func (exploding) Kind() model.Kind                { return model.KindRefining }
 func (exploding) OptionSchema() []layer.OptionDef { return nil }

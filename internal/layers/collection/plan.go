@@ -64,7 +64,12 @@ func planned(ctx *layer.Context, below shape.Shape) (plan, diag.Set) {
 	// binds, and each spelling adds what it bound to that. Spelling them
 	// independently is how one package ends up imported twice under two names,
 	// or two packages of one name both claiming it.
-	bound := taken()
+	//
+	// What the file binds rather than what this layer imports, because the file
+	// is shared with every other layer of the stack. Spelling against this
+	// layer's own half moves the subject out of the way of the names here and
+	// straight into the ones the layer below reserved.
+	bound := ctx.Bound()
 
 	spelled := ctx.Model.SubjectSpelling(bound)
 	bound = spelled.Bound(bound)

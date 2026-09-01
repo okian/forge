@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"slices"
 
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/emit"
@@ -53,6 +54,15 @@ func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// All of them, including the ones a given subject turns out not to need. What
+// this decides is which names the subject is moved out of the way of, and one
+// name too many costs an alias nothing needed; one too few costs a file that
+// binds json to two packages and does not build.
+func (Layer) Binds() []model.Import { return slices.Clone(imports) }
 
 // Kind says where in a stack the layer may appear.
 //
@@ -153,6 +163,7 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 
 	built := &planner{
 		into:     ctx.Model.Pkg.PkgPath,
+		bound:    ctx.Bound(),
 		style:    style(ctx.Options),
 		omitZero: flag(ctx.Options, optionOmitZero),
 	}

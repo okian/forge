@@ -23,6 +23,16 @@ func viewName(ctx *layer.Context) string {
 // The subject, spelled for the package the declaration lives in. A snapshot is
 // a slice of them and the view's signatures name them, so it is the one type
 // this layer has to write down that is not one it invented.
+//
+// Against nothing, where every other layer spells against [layer.Context.Bound].
+// This one only ever spells a subject its own package declares — [Layer.Generate]
+// refuses any other, because a surface writes its element bare and a scope
+// forwards that spelling as it stands — and a local type is written bare
+// whatever else the file binds. Reading what is bound would make no difference
+// to the answer and would make one to when it can be asked: this runs while the
+// stack is being composed as well as while it is being generated, and a context
+// has been told what the file binds only in the second. A layer that read it
+// would describe its surface one way and write it another.
 func elem(ctx *layer.Context) string {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		return ""

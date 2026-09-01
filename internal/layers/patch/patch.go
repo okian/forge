@@ -29,6 +29,14 @@ func New() Layer { return Layer{} }
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
 
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// Nothing. A patch is a struct of pointers to the subject's own field types and
+// an Apply that assigns them across, so the only packages it names are the ones
+// those types come from — and the spelling finds those for itself.
+func (Layer) Binds() []model.Import { return nil }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: a patch is about one value rather than about a container of
@@ -88,7 +96,7 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	// that is an instantiation of a generic, or one from another module, is
 	// written for like any other — what decides is whether its fields can be
 	// named, and that is asked of each of them.
-	built := planned(ctx.Model.Subject, ctx.Model.Pkg.PkgPath)
+	built := planned(ctx.Model.Subject, ctx.Model.Pkg.PkgPath, ctx.Bound())
 	if err := built.diags.Err(); err != nil {
 		return layer.Unit{}, err
 	}

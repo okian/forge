@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"slices"
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layer"
@@ -38,6 +39,15 @@ func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
 func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+
+// Binds names what this layer's output imports, so that every layer of the
+// stack spells its types against the same set.
+//
+// Both are named whether or not the subject in hand holds a map or a slice,
+// because what this decides is which names the subject is moved out of the way
+// of — and a subject from a package called slices has to be moved out of the
+// way of the one a copy would reach for.
+func (Layer) Binds() []model.Import { return slices.Clone(imports) }
 
 // Kind says where in a stack the layer may appear.
 //
@@ -100,7 +110,7 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 			ctx.Model.Name)
 	}
 
-	built := &planner{into: ctx.Model.Pkg.PkgPath, sharing: sharing(ctx.Options)}
+	built := &planner{into: ctx.Model.Pkg.PkgPath, bound: ctx.Bound(), sharing: sharing(ctx.Options)}
 	built.plan(held)
 
 	if err := built.diags.Err(); err != nil {

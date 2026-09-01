@@ -108,6 +108,15 @@ func declaration(t *testing.T, directives ...string) *layer.Context {
 	if len(set) > 0 {
 		ctx.Options = set[0]
 	}
+
+	// What the file will bind, which generation works out from the whole stack
+	// and hands to every layer in it. This layer's own is the right answer here
+	// because these tests ask what this layer does with a subject, not what a
+	// stack agrees on — but it has to be said rather than assumed, since a
+	// layer given none spells against nothing and would alias an import the
+	// template already has.
+	ctx = ctx.Binding(collection.New().Binds())
+
 	return ctx
 }
 

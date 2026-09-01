@@ -99,6 +99,11 @@ type plan struct {
 	of      *model.Struct
 	spelled model.Spelling
 
+	// bound is what that file will bind, carried so that a type spelled after
+	// the plan was made is spelled against the same set as the ones spelled
+	// while it was being made.
+	bound []model.Import
+
 	// fields are its checks, in declaration order.
 	fields []checked
 
@@ -129,6 +134,11 @@ type planner struct {
 	// into is the package being generated into, which decides whether a struct
 	// can carry the method.
 	into string
+
+	// bound is what the file will bind, which every spelling is written
+	// against so that a type from a package called regexp is not written under
+	// the name this layer's own import has.
+	bound []model.Import
 
 	// known holds every struct the subject reaches, by the identity that tells
 	// two apart, so that a field whose type is one of them is checked by
@@ -218,7 +228,8 @@ func (p *planner) remember(held *model.Struct) {
 	p.known[ref] = held
 	p.plans[ref] = &plan{
 		of:      held,
-		spelled: model.Spell(held.Type(), p.into, nil),
+		spelled: model.Spell(held.Type(), p.into, p.bound),
+		bound:   p.bound,
 		attach:  held.Attachable(p.into),
 		why:     model.Unattachable(held, p.into),
 	}
@@ -235,7 +246,7 @@ func (p *planner) fill(held *plan) {
 		one := checked{
 			field: field, path: field.Name,
 			form:    formOf(field.Type.Type),
-			spelled: model.Spell(field.Type.Type, p.into, nil),
+			spelled: model.Spell(field.Type.Type, p.into, p.bound),
 		}
 
 		// An unexported field of a struct declared in another package cannot be

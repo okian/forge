@@ -21,6 +21,7 @@ type fake struct {
 	adds    []shape.Cap
 }
 
+func (fake) Binds() []model.Import             { return nil }
 func (f fake) Origin() model.TypeRef           { return f.origin }
 func (f fake) Kind() model.Kind                { return f.kind }
 func (f fake) OptionSchema() []layer.OptionDef { return f.options }

@@ -269,8 +269,131 @@ func reportedAll(t *testing.T, diags diag.Set, code string) []diag.Diagnostic {
 	return found
 }
 
-// colliding builds one inline declaration over the fixture's subject, named
-// after a type the fixture already declares.
+// A subject from a package only half the stack has heard of is written one way
+// by all of it.
+//
+// Every layer spells the subject against what the file will bind, and before
+// this the answer each of them worked that out from was its own imports. The
+// collection binds the standard library's cmp and the storage beneath it does
+// not, so a subject from a package called cmp was cmp2 in the methods one of
+// them wrote and cmp in the other's — one path bound twice, one name bound to
+// two packages, and a file refused whole over a fault in neither layer.
+//
+// A package called slices would not have caught it. Both layers bind that one,
+// so both moved the subject out of the way of it and both moved it to the same
+// place; what this needs is a name exactly one layer has heard of.
+func TestASubjectFromAPackageOnlyOneLayerBinds(t *testing.T) {
+	asked := colliding(t, "People")
+	asked.Model.Subject = subjectFrom(t, "collidefixture/cmp")
+
+	files, diags := generate.Package(collidePkg, "model", []generate.Request{asked}, collideConfig(t))
+
+	if !diags.Empty() {
+		t.Fatalf("a subject from a package one layer imports was refused:\n%s", diags.Render())
+	}
+
+	// And the two layers agree about what to call it, which is the thing the
+	// refusal was a symptom of: the file is checked for the bare name as well,
+	// since a spelling that aliased in one method and not in the other is what
+	// the diagnostic was reporting.
+	for _, file := range files {
+		if file.Decl != "People" {
+			continue
+		}
+
+		src := string(file.Content)
+		if !strings.Contains(src, "cmp2.Person") {
+			t.Errorf("the subject is not written under the name it was bound to:\n%s", src)
+		}
+		if strings.Contains(src, "cmp.Person") {
+			t.Errorf("the subject is written under the standard library's name too:\n%s", src)
+		}
+		return
+	}
+
+	t.Fatal("nothing was generated for the declaration")
+}
+
+// Two declarations that reserve different names still write one foreign
+// package one way.
+//
+// A stack does not write into one file. Its own is one; the file a package's
+// subjects share is another, and the file that stands in for what the build tag
+// excludes is a third — and the last two are written from every declaration at
+// once. So a set of reserved names that is consistent within a stack is not
+// enough: a ring reserves errors and a collection over a slice reserves cmp and
+// slices, and two declarations spelling one foreign package against their own
+// halves meet in the shared files with two names for it.
+//
+// Which is why what a layer spells against is decided for the package rather
+// than for the stack. The cost is a declaration moved out of the way of a name
+// its own stack never binds; what it buys is the only property that makes the
+// shared files writable at all.
+//
+// Over the package called cmp, which only the collection binds. A subject from
+// one called slices would prove nothing here: every stack reserves that name,
+// because the storage a refining layer is given when none is written binds it
+// and every package gets one — so two declarations would agree about it however
+// the answer was arrived at, and this would pass with the scope decided per
+// declaration.
+func TestTwoDeclarationsThatReserveDifferentNames(t *testing.T) {
+	held := standing(t, "Recent", "Ring", subjectFrom(t, "collidefixture/cmp"))
+	beside := standing(t, "Places", "Collection", subjectNamed(t, "collidefixture/cmp", "Place"))
+
+	files, diags := generate.Package(collidePkg, "model",
+		[]generate.Request{held, beside}, collideConfig(t))
+
+	if !diags.Empty() {
+		t.Fatalf("two declarations over one package were refused:\n%s", diags.Render())
+	}
+
+	// And the stand-in file — the one written from both declarations — binds
+	// the foreign package once. Counted rather than matched: the refusal above
+	// is what a disagreement produces today, and this is what would report one
+	// that stopped being refused and started being written.
+	const path = `"collidefixture/cmp"`
+
+	for _, file := range files {
+		if file.Decl != "" || !strings.Contains(file.Name, "stubs") {
+			continue
+		}
+		if got := strings.Count(string(file.Content), path); got != 1 {
+			t.Errorf("%s binds %s %d times, want once:\n%s", file.Name, path, got, file.Content)
+		}
+		return
+	}
+
+	t.Fatal("no stand-in file was written for two spec declarations")
+}
+
+// standing builds one spec declaration over a subject, which is the form a
+// declaration needs to be stood in for at all.
+func standing(t *testing.T, declared, marker string, over *model.Struct) generate.Request {
+	t.Helper()
+
+	kind := model.KindStorage
+	if marker == "Collection" {
+		kind = model.KindRefining
+	}
+
+	return generate.Request{
+		Model: &model.Model{
+			Name: declared, Form: model.FormSpec, Subject: over,
+			Pkg: collidePackage(t),
+			Pos: declaredAt,
+			Stack: []model.LayerRef{
+				{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: marker}, Kind: kind},
+			},
+		},
+	}
+}
+
+// colliding builds one inline declaration over the fixture's subject, under
+// whatever name the caller wants it declared as.
+//
+// Most callers pass a name the fixture already declares, which is what makes it
+// collide and what the helper is named after. One passes a name nothing has, to
+// ask what a declaration does when there is nothing in its way.
 func colliding(t *testing.T, declared string) generate.Request {
 	t.Helper()
 
