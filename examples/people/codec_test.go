@@ -64,7 +64,7 @@ func TestTheContainerReadsBackWhatItWrote(t *testing.T) {
 		t.Fatalf("unmarshaling: %v", err)
 	}
 
-	if got, want := slices.Collect(read.All()), slices.Collect(held.All()); !slices.Equal(got, want) {
+	if got, want := slices.Collect(read.All()), slices.Collect(held.All()); !slices.EqualFunc(got, want, survives) {
 		t.Errorf("read back %v, want %v", got, want)
 	}
 }
@@ -240,7 +240,7 @@ func TestWhatWritingAndReadingReport(t *testing.T) {
 	if want := n - 1; back != want {
 		t.Errorf("ReadFrom reported %d bytes and the array was %d", back, want)
 	}
-	if got, want := slices.Collect(read.All()), slices.Collect(held.All()); !slices.Equal(got, want) {
+	if got, want := slices.Collect(read.All()), slices.Collect(held.All()); !slices.EqualFunc(got, want, survives) {
 		t.Errorf("read back %v, want %v", got, want)
 	}
 }

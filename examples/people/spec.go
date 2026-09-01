@@ -19,7 +19,7 @@ import "github.com/okian/forge"
 
 // Recent is the last few people seen, in the order they were seen.
 //
-// Four layers over one subject, which is the composition the whole design is
+// Five layers over one subject, which is the composition the whole design is
 // for. Json writes a codec for [Person] and, because there is a container above
 // it, one for this type as well — so the ring encodes in a single pass over its
 // elements, calling the codec written for each of them, and decodes straight
@@ -27,13 +27,14 @@ import "github.com/okian/forge"
 // Neither layer could do that alone: the ring knows nothing about what it
 // holds, and the codec knows nothing about how many there are.
 //
-// Validate sits beside Json, which is what two element layers over one subject
-// looks like: both write about [Person] and neither knows about the other, so
-// the person read off the wire is the person whose rules can be asked about.
+// Validate and Clone sit beside Json, which is what element layers over one
+// subject look like: each writes about [Person] and none of them knows about
+// the others, so the person read off the wire is the person whose rules can be
+// asked about and the person a caller can take a copy of.
 //
 // Ring is what makes it bounded. A producer that outruns whatever reads this
 // costs a thousand elements of memory rather than an increasing amount, and the
 // thousand is decided here rather than discovered in production.
 //
 //forge:ring cap=1024
-type Recent forge.Collection[forge.Ring[forge.Json[forge.Validate[Person]]]]
+type Recent forge.Collection[forge.Ring[forge.Json[forge.Validate[forge.Clone[Person]]]]]

@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs 7d03087da9f0286b
+// inputs fb23b4f81df42d06
 
 package people
 
@@ -49,6 +49,13 @@ func (c Persons) Emails() []string {
 func (c Persons) Ages() []int {
 	return c.project(func(v Person) int {
 		return v.Age
+	})
+}
+
+// Aliaseses returns the Aliases of every element, in order.
+func (c Persons) Aliaseses() [][]string {
+	return c.project(func(v Person) []string {
+		return v.Aliases
 	})
 }
 

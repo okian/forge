@@ -161,16 +161,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Clone"), kind: model.KindElement, stage: layer.StageStub,
-		options: []layer.OptionDef{
-			{
-				Key: "aliasing", Value: layer.ValueEnum, Values: []string{"copy", "share"}, Default: "copy",
-				Doc: "whether a pointer, slice or map is copied or shared with the original",
-			},
-		},
-		doc: "deep copy over everything reachable from the subject, with an explicit aliasing policy",
-	},
-	{
 		origin: marker("Hash"), kind: model.KindElement, stage: layer.StageStub,
 		adds: []shape.Cap{shape.Comparable},
 		doc:  "stable content hash, which is what lets a subject with no comparable form be a set member",

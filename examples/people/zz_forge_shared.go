@@ -18,6 +18,29 @@ import (
 	"strings"
 )
 
+// clonePerson returns a copy of a Person that shares nothing with it.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func clonePerson(v Person) Person {
+	return v.Clone()
+}
+
+// Clone returns a copy of the Person that shares nothing with it.
+//
+// Everything reachable is copied, so what is done to the copy is invisible
+// in the original and the other way round. The copy starts as an assignment,
+// which is already the whole of it for a field holding a number, a string or
+// anything else made only of those; what follows is the fields for which an
+// assignment would have copied a reference rather than what it refers to.
+func (v Person) Clone() Person {
+	out := v
+
+	out.Aliases = slices.Clone(v.Aliases)
+	return out
+}
+
 // encodePeoplePersonJSONTo writes a Person as JSON.
 //
 // The value's own method holds the body; this is what generated code
@@ -58,6 +81,20 @@ func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.Int(int64(v.Age))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Aliases")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.BeginArray); err != nil {
+		return err
+	}
+	for _, one := range v.Aliases {
+		if err := enc.WriteToken(jsontext.String(string(one))); err != nil {
+			return err
+		}
+	}
+	if err := enc.WriteToken(jsontext.EndArray); err != nil {
 		return err
 	}
 	return enc.WriteToken(jsontext.EndObject)
@@ -177,6 +214,44 @@ func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				default:
 					return fmt.Errorf("cannot read int from a JSON %s", raw.Kind())
 				}
+			}
+		case "Aliases":
+			if dec.PeekKind() == 'n' {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				v.Aliases = nil
+			} else {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				out := v.Aliases[:0]
+				for dec.PeekKind() != ']' {
+					var one string
+					{
+						raw, err := dec.ReadToken()
+						if err != nil {
+							return err
+						}
+						switch raw.Kind() {
+						case 'n':
+							var zero string
+							one = zero
+						case '"':
+							one = string(raw.String())
+						default:
+							return fmt.Errorf("cannot read string from a JSON %s", raw.Kind())
+						}
+					}
+					out = append(out, one)
+				}
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				if out == nil {
+					out = []string{}
+				}
+				v.Aliases = out
 			}
 		default:
 			if err := dec.SkipValue(); err != nil {

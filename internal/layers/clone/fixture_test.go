@@ -1,0 +1,153 @@
+package clone_test
+
+import (
+	"go/token"
+	"go/types"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"github.com/okian/forge/internal/emit"
+	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers/clone"
+	"github.com/okian/forge/internal/load"
+	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/internal/subject"
+)
+
+// modelPkg is the fixture package the subjects are declared in.
+const modelPkg = "clonefixture/model"
+
+// loadFixture loads the fixture module.
+func loadFixture(t *testing.T) *load.Session {
+	t.Helper()
+
+	dir, err := filepath.Abs(filepath.Join("testdata", "copies"))
+	if err != nil {
+		t.Fatalf("resolving the fixture: %v", err)
+	}
+
+	loaded, err := load.Load(load.Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("loading the fixture: %v", err)
+	}
+	if !loaded.Diagnostics.Empty() {
+		t.Fatalf("the fixture does not load clean:\n%s", loaded.Diagnostics.Render())
+	}
+	return loaded
+}
+
+// generating asks the layer for one fixture subject's copy, with the options
+// the declaration wrote.
+func generating(t *testing.T, name string, options model.Options) (layer.Unit, error) {
+	t.Helper()
+
+	loaded := loadFixture(t)
+	builder := subject.New(subject.Config{
+		Fset:      loaded.Fset,
+		Owned:     loaded.Owned(),
+		Docs:      loaded.FieldDocs(),
+		Generated: loaded.Generated(),
+	})
+
+	pkg, ok := loaded.Package(modelPkg)
+	if !ok {
+		t.Fatalf("the fixture has no package %s", modelPkg)
+	}
+
+	obj := pkg.Types.Scope().Lookup(name)
+	if obj == nil {
+		t.Fatalf("%s declares no %s", modelPkg, name)
+	}
+	held, is := types.Unalias(obj.Type()).(*types.Named)
+	if !is {
+		t.Fatalf("%s is a %T, want a named type", name, obj.Type())
+	}
+
+	built, problems := builder.Build(held, subject.At(token.Position{Filename: "model.go"}))
+	if !problems.Empty() {
+		t.Fatalf("modelling %s: %s", name, problems.Render())
+	}
+
+	return clone.New().Generate(&layer.Context{
+		Model: &model.Model{
+			Name: name, Form: model.FormInline, Subject: built,
+			Pkg: pkg, Pos: token.Position{Filename: "model.go"},
+		},
+		Options: options,
+	}, shape.Shape{})
+}
+
+// written asks for a subject's copy and fails the test if the layer refused.
+func written(t *testing.T, name string) layer.Unit {
+	t.Helper()
+
+	unit, err := generating(t, name, model.Options{})
+	if err != nil {
+		t.Fatalf("generating for %s: %v", name, err)
+	}
+	return unit
+}
+
+// sharing asks for a subject's copy under a declaration that asked for
+// references to be carried across.
+func sharing(t *testing.T, name string) layer.Unit {
+	t.Helper()
+
+	unit, err := generating(t, name, model.Options{
+		Layer:   "clone",
+		Entries: []model.Option{{Key: "aliasing", Value: "share"}},
+	})
+	if err != nil {
+		t.Fatalf("generating for %s: %v", name, err)
+	}
+	return unit
+}
+
+// source renders everything a subject's generation contributed, as one file.
+func source(t *testing.T, unit layer.Unit) string {
+	t.Helper()
+
+	file := emit.File{Package: "model"}
+	for _, key := range slices.Sorted(keys(unit.Provides)) {
+		held := unit.Provides[key]
+
+		file.Sections = append(file.Sections, emit.Section{
+			Decls: held.Decls, Comments: held.Comments, Fset: held.Fset,
+		})
+		file.Imports = append(file.Imports, held.Imports...)
+	}
+
+	out, err := file.Render()
+	if err != nil {
+		t.Fatalf("rendering the copy: %v", err)
+	}
+	return string(out)
+}
+
+// keys yields a map's keys, so that what a test renders does not depend on how
+// a map iterated.
+func keys[V any](held map[string]V) func(func(string) bool) {
+	return func(yield func(string) bool) {
+		for key := range held {
+			if !yield(key) {
+				return
+			}
+		}
+	}
+}
+
+// fixtureSource returns the fixture's own source, so that what is generated is
+// compiled against the types it was generated from rather than against a second
+// copy of them written out here.
+func fixtureSource(t *testing.T) []byte {
+	t.Helper()
+
+	held, err := os.ReadFile(filepath.Join("testdata", "copies", "model", "model.go"))
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+	return held
+}

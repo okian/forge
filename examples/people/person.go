@@ -30,6 +30,14 @@ type Person struct {
 	// Age is the second declared sort key, so that the example has a sorted
 	// view over something that is not a string.
 	Age int `validate:"min=0,max=150"`
+
+	// Aliases are the other names this person is listed under.
+	//
+	// It is the field that makes a copy worth having. Assigning a Person copies
+	// this slice's header and not the array behind it, so two "copies" would
+	// share their aliases and writing to one would change the other — which is
+	// exactly the bug nothing in the assignment says anything about.
+	Aliases []string
 }
 
 // Persons is a directory of people.

@@ -25,6 +25,11 @@
 # all a projection needs, and a storage that cannot report a length without
 # walking itself is a storage a collection should still work over.
 #
+# The figures moved when the subject gained a slice: a Person is a slice header
+# wider than it was, so every collection that holds one of each element is wider
+# by that much per element. Written down rather than raised to fit, because a
+# budget that moved on its own would be a budget about nothing.
+#
 # That is the contract and not the last word on it. A stack that *can* report
 # its length says so — the slice storage reports Sized — and the collection
 # layer is handed the shape beneath it before it generates anything, so a
@@ -34,10 +39,10 @@ github.com/okian/forge/examples/people  LazyChain              9     224
 github.com/okian/forge/examples/people  LazyChainByHand        0       0
 github.com/okian/forge/examples/people  Projection             9   35136
 github.com/okian/forge/examples/people  ProjectionByHand       1   16384
-github.com/okian/forge/examples/people  SortedView            11  122192
-github.com/okian/forge/examples/people  SortedViewByHand       1   49152
-github.com/okian/forge/examples/people  Index                 22  262016
-github.com/okian/forge/examples/people  IndexByHand            5  131152
+github.com/okian/forge/examples/people  SortedView            11  174208
+github.com/okian/forge/examples/people  SortedViewByHand       1   73728
+github.com/okian/forge/examples/people  Index                 22  362666
+github.com/okian/forge/examples/people  IndexByHand            5  180304
 
 # The generated JSON codec over a thousand elements, and the reflective encoder
 # over the same elements beside it. Every one of these is warmed before it is
@@ -62,7 +67,7 @@ github.com/okian/forge/examples/people  JSONEncode                0      0
 github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
 github.com/okian/forge/examples/people  JSONDecodeReflectively 2000  39920
-github.com/okian/forge/examples/people  JSONWriteTo              21   6656
+github.com/okian/forge/examples/people  JSONWriteTo              24   6784
 
 # The generated check over a value that satisfies its rules, which is the path
 # a check spends its life on: validation runs on every request and almost always
@@ -81,6 +86,16 @@ github.com/okian/forge/examples/people  JSONWriteTo              21   6656
 github.com/okian/forge/examples/people  Validate                       0  0
 github.com/okian/forge/examples/people  ValidateByHand                 0  0
 github.com/okian/forge/examples/people  ValidateByHandWithThePattern   0  0
+
+# The generated copy, and the same copy written by hand beside it.
+#
+# One allocation, which is the slice: everything else a Person holds is copied
+# by the assignment the method opens with. The pair is the claim — a generated
+# copy has to cost what somebody would have written, because if it costs more
+# there is no reason to generate it — and the two figures being identical is
+# what says the generator is not adding anything of its own.
+github.com/okian/forge/examples/people  Clone           1  32
+github.com/okian/forge/examples/people  CloneByHand     1  32
 
 # The shared lazy view, benchmarked against its own template rather than
 # through a generated copy of it, so that a change to the view is caught where

@@ -72,7 +72,7 @@ func FuzzTheContainerReadsWhatReflectionReads(f *testing.F) {
 			want = want[len(want)-held.Cap():]
 		}
 
-		if got := twins(held); !slices.Equal(got, want) {
+		if got := twins(held); !slices.EqualFunc(got, want, sameTwin) {
 			t.Fatalf("the container and reflection read %q differently\n\tcontainer:  %v\n\treflection: %v",
 				document, got, want)
 		}
@@ -123,7 +123,7 @@ func FuzzTheSubjectReadsWhatReflectionReads(f *testing.F) {
 			t.Fatalf("the subject %s and reflection %s for %q\n\tsubject:    %v\n\treflection: %v",
 				verdict(ours), verdict(reflected), document, ours, reflected)
 		}
-		if ours == nil && held != people.Person(reflectedInto) {
+		if ours == nil && !same(held, people.Person(reflectedInto)) {
 			t.Fatalf("the subject and reflection read %q differently\n\tsubject:    %+v\n\treflection: %+v",
 				document, held, reflectedInto)
 		}

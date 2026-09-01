@@ -48,7 +48,7 @@ var catalog = map[string]entry{
 		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured},
 	},
-	"Clone": {kind: model.KindElement, stage: layer.StageStub},
+	"Clone": {kind: model.KindElement, stage: layer.StageReady},
 	"Hash": {
 		kind: model.KindElement, stage: layer.StageStub,
 		adds: []shape.Cap{shape.Comparable},
