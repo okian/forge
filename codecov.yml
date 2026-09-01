@@ -1,0 +1,47 @@
+# What Codecov is for here, and what it is not.
+#
+# The gate that can fail a build already runs on the runner: `make cover` in
+# ci.yml enforces COVER_MIN over the whole module and refuses anything under it
+# without a round trip to a third party. What this file configures is the
+# reporting on top of that — a per-file view, and a comment on the pull request
+# that says which of the changed lines are not exercised. A Codecov outage
+# should never turn a module red that its own gate passed, which is why the
+# upload step leaves fail_ci_if_error at its default.
+
+# No ignore list, which is a decision rather than an omission.
+#
+# Generated output is in scope here, and SECURITY.md says so in as many words:
+# forge's whole job is producing code somebody else compiles, so a flaw in what
+# it emits is a flaw in the tool. That rules out the exclusion a generator would
+# otherwise reach for first. The files forge writes into examples/people are
+# named zz_forge_*.go and they carry real statements in the uploaded profile —
+# examples/people has no go.mod of its own, unlike every fixture module under
+# testdata — so excluding them would hide the coverage of the thing this
+# repository exists to produce, which is the last coverage anybody should be
+# hiding.
+#
+# cmd/forge/main.go is the one file here that cannot be tested by design: it
+# holds a single statement, os.Exit(run(...)), and its doc comment explains why
+# everything worth testing lives in run instead. It is not listed. Codecov's
+# ignore is whole-file, so listing it would buy one statement out of the module
+# and cost the guarantee that a future line added beside main() is counted. One
+# statement does not move a ratio; an unwatched file eventually does.
+
+coverage:
+  status:
+    # auto rather than a fixed number, so the ratio may drift with the code
+    # while a single pull request that drops it more than two points still
+    # fails. A fixed target is a number somebody edits downward the first time
+    # it is inconvenient, which is the moment it stops meaning anything.
+    project:
+      default:
+        target: auto
+        threshold: 2%
+
+    # The stricter of the two, deliberately. It asks only that new and changed
+    # lines be tested, which is the thing a reviewer can act on — and 90% is
+    # the floor the module already enforces for itself in `make cover`, so a
+    # patch that clears this cannot drag the whole below what CI demands.
+    patch:
+      default:
+        target: 90%
