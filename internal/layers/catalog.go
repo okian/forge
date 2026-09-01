@@ -171,11 +171,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Redact"), kind: model.KindElement, stage: layer.StageStub,
-		requires: []shape.Cap{shape.Structured},
-		doc:      "log value with redact-tagged fields masked, so logging cannot leak them",
-	},
-	{
 		origin: marker("Enum"), kind: model.KindElement, stage: layer.StageStub,
 		adds: []shape.Cap{shape.Comparable, shape.Encodable},
 		doc:  "the API of a closed set, discovered from the constants declared with the subject",

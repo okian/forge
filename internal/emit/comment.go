@@ -1,6 +1,9 @@
 package emit
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // CommentWidth is how wide a generated comment's text may be before the two
 // slashes and the space in front of it, so that a wrapped line comes to eighty
@@ -20,19 +23,29 @@ const CommentWidth = 77
 // Here rather than in each layer that assembles a comment, because the width is
 // a property of the file rather than of whoever wrote a line into it — and four
 // copies of one rule is four places for it to stop being one rule.
+//
+// Counted in characters rather than in bytes, because a column is a character.
+// An em-dash is one column and three bytes, so a line measured by its length
+// breaks early wherever the prose uses one — and the prose here uses one
+// wherever a sentence turns, so a comment with a dash in it wraps raggedly
+// beside the comments a template supplied.
 func Wrapped(text string, width int) []string {
 	var out []string
 
 	line := ""
+	held := 0
+
 	for word := range strings.FieldsSeq(text) {
+		wide := utf8.RuneCountInString(word)
+
 		switch {
 		case line == "":
-			line = word
-		case len(line)+1+len(word) <= width:
-			line += " " + word
+			line, held = word, wide
+		case held+1+wide <= width:
+			line, held = line+" "+word, held+1+wide
 		default:
 			out = append(out, line)
-			line = word
+			line, held = word, wide
 		}
 	}
 

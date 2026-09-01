@@ -112,39 +112,41 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		standing []emit.Section
 		written  []emit.Section
 		imported []emit.Import
+		judged   []judgement
 		about    = make(map[string]layer.Unit)
-		taken    = make(map[string]string, len(requests)+len(Reserved()))
+		taken    = spokenFor(requests)
+
+		// Which subjects will be given a String, decided before any of them is
+		// generated for. A field of one is rendered through it, and a
+		// declaration asked on its own could only answer that by reading what
+		// the last run left behind.
+		willRead = reading(requests)
+
+		// And what every file this package gets written will bind, decided
+		// across all of them for the reason [willBind] gives: two of the three
+		// files a declaration reaches are shared with its neighbours.
+		bound = willBind(requests, cfg, &diags)
+
+		// What each declaration's layers put on its subject, gathered as they
+		// go. A subject reached from two declarations earns from its tags once,
+		// and what a layer wrote about it anywhere in the package is what that
+		// one answer has to be decided against: one declaration redacting and
+		// its neighbour not is an ordinary arrangement, and a subject earning a
+		// log value from the second would hold the first layer's as well.
+		putting = make(map[string][]string, len(requests))
 	)
-
-	// Spoken for before anything is generated, so that a declaration named
-	// after one of them collides rather than overwrites.
-	for _, held := range Reserved() {
-		taken[held] = ""
-	}
-
-	// What each declaration turned out to claim, kept so that the skips written
-	// on it can be answered once everything has been claimed.
-	var judged []judgement
-
-	// Which subjects will be given a String, decided before any of them is
-	// generated for. A field of one is rendered through it, and a declaration
-	// asked on its own could only answer that by reading what the last run
-	// left behind.
-	willRead := reading(requests)
-
-	// And what every file this package gets written will bind, decided across
-	// all of them for the reason [willBind] gives: two of the three files a
-	// declaration reaches are shared with its neighbours.
-	bound := willBind(requests, cfg, &diags)
 
 	for _, req := range requests {
 		if req.Model == nil {
 			continue
 		}
 
-		file, unit, was, ok := one(req, name, cfg, taken, willRead, bound, &diags)
+		file, unit, was, wrote, ok := one(req, name, cfg, taken, bound, &diags)
 		if !ok {
 			continue
+		}
+		for on, names := range wrote {
+			putting[on] = append(putting[on], names...)
 		}
 		judged = append(judged, judgement{
 			declared: req.Model.Name,
@@ -169,6 +171,11 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		}
 	}
 
+	// After every declaration, because what a subject earns is a fact about the
+	// package: it is keyed by the subject rather than by whoever asked, and two
+	// declarations over one subject would otherwise each contribute a copy.
+	gather(about, earned(requests, putting, path, bound, willRead, cfg, &diags))
+
 	if file, wrote := standIn(standing, imported, requests, name, cfg, &diags); wrote {
 		out = append(out, file)
 	}
@@ -178,21 +185,38 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		out = append(out, file)
 	}
 
-	// Last, because a skip turns off a claim about a declaration or about its
-	// subject and those are decided in two places. Neither of them knows enough
-	// to say a directive turned nothing off — only the run does, and only once
-	// both have run.
-	//
-	// Against this declaration's own subject rather than against every subject
-	// the package has. What a skip written here can turn off is what [turned]
-	// hands to that subject's synthesis, so the set it is judged against has to
-	// be the set it acts on: judged against the wider one, a skip naming a
-	// claim some other subject earned would be accepted for doing nothing.
-	for _, one := range judged {
-		unclaimed(one.made.with(shared[one.subject]), one, &diags)
-	}
+	answered(judged, shared, &diags)
 
 	return out, diags
+}
+
+// answered reports the skips that turned nothing off.
+//
+// Last, because a skip turns off a claim about a declaration or about its
+// subject and those are decided in two places. Neither of them knows enough to
+// say a directive turned nothing off — only the run does, and only once both
+// have run.
+//
+// Against each declaration's own subject rather than against every subject the
+// package has. What a skip written on a declaration can turn off is what
+// [turned] hands to that subject's synthesis, so the set it is judged against
+// has to be the set it acts on: judged against the wider one, a skip naming a
+// claim some other subject earned would be accepted for doing nothing.
+func answered(judged []judgement, shared map[string]claimable, diags *diag.Set) {
+	for _, one := range judged {
+		unclaimed(one.made.with(shared[one.subject]), one, diags)
+	}
+}
+
+// spokenFor returns the file names a package has taken before any declaration
+// is generated, so that one named after a reserved file collides with it rather
+// than overwrites it.
+func spokenFor(requests []Request) map[string]string {
+	out := make(map[string]string, len(requests)+len(Reserved()))
+	for _, held := range Reserved() {
+		out[held] = ""
+	}
+	return out
 }
 
 // standIn writes the file that stands in for what the tag excludes, and reports
@@ -307,6 +331,12 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	// to here.
 	taken(held.Sections, policing{held: holds(into(requests), cfg.Generated), at: at(requests)}, diags)
 
+	// And two methods of one name on one type, which a declaration's own file
+	// is checked for and this one was not. What an element layer writes lands
+	// here, and so does what a subject earns from its own tags — so two of them
+	// writing one method about one subject meet here and nowhere else.
+	claimed(held.Sections, policing{at: at(requests)}, diags)
+
 	var sum emit.Digest
 	FingerprintShared(&sum, required, name, cfg)
 
@@ -420,12 +450,12 @@ func subjects(requests []Request) []*model.Struct {
 // refused here does not need a second path out.
 func one(
 	req Request, name string, cfg Config,
-	taken map[string]string, reads map[string]bool, bound []model.Import, diags *diag.Set,
-) (File, merge.Unit, claimable, bool) {
+	taken map[string]string, bound []model.Import, diags *diag.Set,
+) (File, merge.Unit, claimable, map[string][]string, bool) {
 	into := Named(req.Model.Name)
 	if first, twice := taken[into]; twice {
 		diags.Add(collision(req.Model, into, first))
-		return File{}, merge.Unit{}, claimable{}, false
+		return File{}, merge.Unit{}, claimable{}, nil, false
 	}
 	taken[into] = req.Model.Name
 
@@ -436,20 +466,20 @@ func one(
 	var sum emit.Digest
 	Fingerprint(&sum, req, name, cfg)
 
-	unit, was, problems := declaration(req, cfg, reads, bound)
+	unit, was, problems, wrote := declaration(req, cfg, bound)
 	diags.Merge(&problems)
 
 	if !problems.Empty() {
-		return File{}, merge.Unit{}, claimable{}, false
+		return File{}, merge.Unit{}, claimable{}, nil, false
 	}
 
 	content, err := render(req.Model, name, unit, cfg, &sum)
 	if err != nil {
 		diags.AddError(err)
-		return File{}, merge.Unit{}, claimable{}, false
+		return File{}, merge.Unit{}, claimable{}, nil, false
 	}
 
-	return File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos}, unit, was, true
+	return File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos}, unit, was, wrote, true
 }
 
 // collision reports a declaration whose file another declaration is already
@@ -535,7 +565,7 @@ func asUnit(held merge.Unit) layer.Unit {
 
 // declaration generates for one declaration: what its options mean, what its
 // stack composes to, and what each of its layers contributes.
-func declaration(req Request, cfg Config, reads map[string]bool, bound []model.Import) (merge.Unit, claimable, diag.Set) {
+func declaration(req Request, cfg Config, bound []model.Import) (merge.Unit, claimable, diag.Set, map[string][]string) {
 	var diags diag.Set
 
 	held := req.Model
@@ -565,7 +595,7 @@ func declaration(req Request, cfg Config, reads map[string]bool, bound []model.I
 	diags.Merge(&problems)
 
 	if !diags.Empty() {
-		return merge.Unit{}, claimable{}, diags
+		return merge.Unit{}, claimable{}, diags, nil
 	}
 
 	// The stack composition arrived at, which is what the layers were asked
@@ -573,11 +603,16 @@ func declaration(req Request, cfg Config, reads map[string]bool, bound []model.I
 	// written: a refining layer over no storage has one filled in.
 	held.Stack = composed.Stack()
 
-	units := earned(held, contributions(held, composed, cfg, bound, &diags), cfg, reads, &diags)
+	units := contributions(held, composed, cfg, bound, &diags)
 
 	if !diags.Empty() {
-		return merge.Unit{}, claimable{}, diags
+		return merge.Unit{}, claimable{}, diags, nil
 	}
+
+	// What this declaration's layers put on its subject, handed back rather
+	// than acted on: what a subject earns from its own tags is decided against
+	// every declaration of the package at once, and this is one of them.
+	wrote := putOn(units)
 
 	already := holds(held.Pkg, cfg.Generated)
 
@@ -589,15 +624,15 @@ func declaration(req Request, cfg Config, reads map[string]bool, bound []model.I
 	}, &diags)
 
 	if !diags.Empty() {
-		return merge.Unit{}, claimable{}, diags
+		return merge.Unit{}, claimable{}, diags, nil
 	}
 
 	out, was := claiming(out, req, already, &diags)
 
 	if !diags.Empty() {
-		return merge.Unit{}, claimable{}, diags
+		return merge.Unit{}, claimable{}, diags, nil
 	}
-	return out, was, diags
+	return out, was, diags, wrote
 }
 
 // claiming adds the assertions a declaration's output earns to it.
@@ -652,55 +687,89 @@ func binds(imports []emit.Import) []model.Import {
 	return out
 }
 
-// earned adds what the subject gets from its own shape and tags to what the
-// layers contributed.
+// earned returns what the package's subjects get from their own shape and tags.
 //
 // No layer is asked for these and none could be: what they answer is a tag an
 // author wrote and a shape the subject has, neither of which is any layer's
-// business. Added to the layers' contributions rather than kept beside them, so
-// that everything downstream — the collision policy, what a claim reads, what
-// the shared file holds — sees one set of declarations.
+// business. Gathered in with the layers' contributions rather than kept beside
+// them, so that everything downstream — the collision policy, what a claim
+// reads, what the shared file holds — sees one set of declarations.
+//
+// Once per subject, and for the package rather than for a declaration. What is
+// written here goes on the subject and is keyed by it, so two declarations over
+// one subject asking separately would ask the same question twice — and would
+// answer it differently, because what a layer already wrote about that subject
+// is something only the whole package knows. One declaration redacting and its
+// neighbour not is an ordinary arrangement, and asking per declaration would
+// have the neighbour earn a log value beside the one the first had written.
 func earned(
-	held *model.Model, units []layer.Unit, cfg Config,
-	reads map[string]bool, diags *diag.Set,
-) []layer.Unit {
-	written, err := scalars.For(scalars.Asked{
-		Subject:   held.Subject,
-		Local:     held.Pkg.PkgPath,
-		Bound:     asked(units),
-		At:        held.Pos,
-		Earning:   reads,
-		Generated: cfg.Generated,
-	}, diags)
-	if err != nil {
-		diags.AddError(err)
-		return units
-	}
-	if len(written) == 0 {
-		return units
+	requests []Request, putting map[string][]string,
+	path string, bound []model.Import, reads map[string]bool,
+	cfg Config, diags *diag.Set,
+) map[string]layer.Unit {
+	out := make(map[string]layer.Unit)
+
+	for _, one := range subjects(requests) {
+		written, err := scalars.For(scalars.Asked{
+			Subject:   one,
+			Local:     path,
+			Bound:     bound,
+			At:        one.Pos,
+			Earning:   reads,
+			Generated: cfg.Generated,
+			Written:   append(slices.Clone(putting[one.Ref().Name]), one.Methods...),
+		}, diags)
+		if err != nil {
+			diags.AddError(err)
+			continue
+		}
+
+		gather(out, written)
 	}
 
-	return append(units, layer.Unit{Provides: written})
+	return out
 }
 
-// asked returns every import the layers asked for, as a spelling reads them.
+// putOn returns the methods the layers wrote, by the type each was written on.
 //
-// What it is for is the subject's own name. A subject is named in whatever the
-// emitters below write about it, and a subject from a package sharing a name
-// with one a layer already bound has to be written under another — which is a
-// decision the spelling makes, and can only make when it is told what is taken.
-func asked(units []layer.Unit) []model.Import {
-	var out []model.Import
+// What it answers is whether a layer has already done what a tag would
+// otherwise earn — a log value, a text codec, a rendering — so that the two are
+// not written into one package twice. [scalars.Asked.Written] says why the
+// layer's is the one that stays.
+//
+// Read off the declarations rather than taken from what a layer says about
+// itself, because there is nothing a layer says about itself that would answer
+// it: a surface describes the declared type, and what an element layer writes
+// goes on the subject. The declarations are what will be in the file, which is
+// the thing the question is really about.
+//
+// Keyed by the type rather than gathered under the declaration's own subject,
+// because an element layer writes for everything the subject reaches: a stack
+// over a type that merely holds a secret writes the method on the secret, and a
+// key naming only the subject would not have it.
+//
+// By the receiver's bare name, which is what a method declaration carries. Two
+// types of one name from two packages would be conflated by that, and cannot
+// be: [methodOf] rejects a qualified receiver, so every key here is a type
+// declared in the package being generated into — and a package cannot hold two
+// of one name.
+func putOn(units []layer.Unit) map[string][]string {
+	out := make(map[string][]string)
 
 	for _, unit := range units {
-		for _, one := range unit.Imports {
-			held := model.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased}
-			if one.Path != "" && !slices.Contains(out, held) {
-				out = append(out, held)
+		for _, held := range unit.Provides {
+			for _, decl := range held.Decls {
+				on, name, is := methodOf(decl)
+				if is && !slices.Contains(out[on], name) {
+					out[on] = append(out[on], name)
+				}
 			}
 		}
 	}
 
+	for _, held := range out {
+		slices.Sort(held)
+	}
 	return out
 }
 

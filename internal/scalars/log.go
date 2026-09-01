@@ -61,19 +61,56 @@ func logging(of Asked, held model.Spelling, diags *diag.Set) (layer.Unit, bool, 
 
 // logged returns the attribute one field contributes.
 func logged(field model.Field) string {
-	name := quoted(field.Name)
-
 	if hidden(field) {
-		return "slog.String(" + name + ", " + quoted(masked) + ")"
+		return Masked(field.Name)
 	}
+	return Attr(field.Name, "v."+field.Name, field.Type)
+}
 
-	if of, known := scalar(field.Type); known {
-		return of.logs(name, "v."+field.Name)
+// Masked returns the attribute a field kept out of logs contributes.
+//
+// Exported alongside [Attr] because the redaction layer writes the fuller
+// version of this method — the same masking, over everything the subject
+// reaches rather than over the subject alone — and two answers to what a
+// redacted field looks like would be two answers a reader has to notice are
+// meant to be one.
+func Masked(name string) string {
+	return "slog.String(" + quoted(name) + ", " + quoted(masked) + ")"
+}
+
+// Held returns the expression building the slog attribute for a value that is
+// already a slog.Value.
+//
+// Beside [Attr] rather than folded into it, because the two take different
+// things: Attr is given an expression of the field's own type and picks the
+// constructor for it, and this is given one that is already the answer. Putting
+// a slog.Value through Attr would reach slog.Any, which takes an interface — so
+// the value is boxed for AnyValue to unwrap again, at an allocation and about
+// half as long again per field per record.
+//
+// Exported for the redaction layer, which works a pointer field's value out
+// before the attribute list so that a nil one is logged as nothing rather than
+// as the stack trace a method call through nothing leaves.
+func Held(name, from string) string {
+	return "slog.Attr{Key: " + quoted(name) + ", Value: " + from + "}"
+}
+
+// Attr returns the expression building the slog attribute for one value.
+//
+// A typed constructor where the type is one this package knows, and slog.Any
+// where it is not. Typed matters: slog.Any takes an interface, so a string
+// through it is a string boxed, and this is written into a path that runs per
+// field per record.
+//
+// slog.Any is the right answer for everything else rather than a fallback. A
+// field whose type has its own LogValue gets to use it, and one that does not
+// is resolved exactly the way it would have been if the method had never been
+// written.
+func Attr(name, from string, held model.Classified) string {
+	quotedName := quoted(name)
+
+	if of, known := scalar(held); known {
+		return of.logs(quotedName, from)
 	}
-
-	// Not a scalar, so it goes in as itself and slog decides. Which is the
-	// right answer rather than a fallback: a field whose type has its own
-	// LogValue gets to use it, and one that does not is resolved the way it
-	// would have been if this method had never been written.
-	return "slog.Any(" + name + ", v." + field.Name + ")"
+	return "slog.Any(" + quotedName + ", " + from + ")"
 }

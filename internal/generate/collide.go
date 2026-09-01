@@ -240,6 +240,12 @@ func plain(written string) bool {
 // WriteCSVTo and not WriteToAsCsv. So this reports the ambiguity and leaves the
 // naming to whoever writes the second layer that wants a name, because a naming
 // scheme designed against no real case is designed against nothing.
+//
+// Asked of the file a package shares as well as of a declaration's own. What an
+// element layer writes lands there, and so does what a subject earns from its
+// own tags, so two methods of one name on one type meet there as readily as in
+// a declaration's file — and a check that only ever looked at the declarations
+// would let the pair through into a file nobody can edit.
 func claimed(sections []emit.Section, of policing, diags *diag.Set) {
 	seen := make(map[string]bool)
 	var twice []string
@@ -262,7 +268,7 @@ func claimed(sections []emit.Section, of policing, diags *diag.Set) {
 	slices.Sort(twice)
 	for _, held := range twice {
 		diags.Add(diag.New(codeTwoClaimants, of.at,
-			"two layers of %s write %s", of.declared, held).
+			"%s writes %s twice", generating(of), held).
 			WithHint("%s", "drop one of them, or write the method yourself — a method the author "+
 				"declares is the one that is kept"))
 	}

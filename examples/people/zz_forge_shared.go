@@ -86,9 +86,8 @@ func (b *PersonBuilder) Aliases(v []string) *PersonBuilder {
 // list.
 //
 // What was given is not checked here. A caller who set a field has set it, and
-// whether what they set is any good is what the rules on the field say —
-// which is a different question, asked somewhere a rule added to the tag
-// reaches.
+// whether what they set is any good is what the rules on the field say — which
+// is a different question, asked somewhere a rule added to the tag reaches.
 func (b *PersonBuilder) Build() (Person, error) {
 	var failed ValidationErrors
 

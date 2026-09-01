@@ -47,8 +47,7 @@ var (
 // same key.
 type Written map[string]layer.Unit
 
-// Asked is what these emitters need to know about the declaration they write
-// for.
+// Asked is what these emitters need to know about the subject they write for.
 type Asked struct {
 	// Subject is the type the methods are declared on, and Local the import
 	// path of the package they land in.
@@ -63,15 +62,19 @@ type Asked struct {
 	// other name — or the file binds one name to two paths and is refused
 	// whole.
 	//
-	// What is passed is the declaration's own imports. Where these land is the
-	// file a package's subjects share, whose bindings are the union across
-	// every declaration in it — so this is the right answer for a subject the
-	// generated file names without qualifying, which is every subject that
-	// lives in the package being generated into.
+	// What is passed is what every file of the package will bind, which is the
+	// answer this needs rather than a wider one taken for convenience: where
+	// these land is the file a package's subjects share, and its bindings are
+	// the union across every declaration in it.
 	Bound []model.Import
 
-	// At is where the declaration was written, which is where a tag that cannot
-	// be answered is reported.
+	// At is where the subject was declared, which is where a tag that cannot be
+	// answered is reported.
+	//
+	// The subject rather than whichever declaration reached it, because what is
+	// wrong is the tag: a package with three declarations over one subject
+	// would otherwise point at whichever of them was walked first, and an
+	// author would go looking at a declaration with nothing wrong with it.
 	At token.Position
 
 	// Earning names the subjects of this run that will be given a String,
@@ -93,6 +96,35 @@ type Asked struct {
 	// evidence that the type has one — counting it would make a package that
 	// builds from a committed tree fail from a clean checkout.
 	Generated func(token.Pos) bool
+
+	// Written names the methods a layer of this run has already put on the
+	// subject.
+	//
+	// What is emitted here is earned rather than asked for: a tag says a field
+	// is secret and a log value follows, without any declaration naming a
+	// layer. A layer that writes the same method was asked for by name, and
+	// writing both would put one method into a package twice.
+	//
+	// So the layer's is the one that stays, and this is how these emitters are
+	// told to stand down. It is the narrower half that gives way, too: what is
+	// written here is about the subject, where a layer walks everything the
+	// subject reaches — so yielding loses nothing and keeps the better answer.
+	Written []string
+}
+
+// wrote reports whether a layer has already written any of these methods on the
+// subject.
+//
+// Any rather than all, because a pair that half exists is the worse outcome of
+// the two: a text codec whose MarshalText a layer wrote and whose UnmarshalText
+// these emitters wrote is a type that round-trips through two designs.
+func (a Asked) wrote(methods ...string) bool {
+	for _, one := range methods {
+		if slices.Contains(a.Written, one) {
+			return true
+		}
+	}
+	return false
 }
 
 // For returns what a subject earns from its own shape and tags.
@@ -110,13 +142,24 @@ func For(of Asked, diags *diag.Set) (Written, error) {
 	out := make(Written)
 
 	for _, one := range []struct {
-		verb  string
-		write func(Asked, model.Spelling, *diag.Set) (layer.Unit, bool, error)
+		verb    string
+		methods []string
+		write   func(Asked, model.Spelling, *diag.Set) (layer.Unit, bool, error)
 	}{
-		{"display", displaying},
-		{"text", texting},
-		{"log", logging},
+		{"display", []string{displayMethod}, displaying},
+		{"text", []string{marshalMethod, unmarshalMethod, appendMethod}, texting},
+		{"log", []string{logMethod}, logging},
 	} {
+		// A layer that writes this method has already answered the question,
+		// and asked for it — where what is written here was earned from a tag.
+		// Both would be the same method twice in one package, and the layer's
+		// is the one that stays: it was asked for by name, and it is the fuller
+		// answer, since a layer walks what the subject reaches where these
+		// emitters write about the subject alone.
+		if of.wrote(one.methods...) {
+			continue
+		}
+
 		unit, wrote, err := one.write(of, held, diags)
 		if err != nil {
 			return nil, err

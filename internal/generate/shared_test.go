@@ -103,10 +103,18 @@ func TestWhatIsSharedIsNotAlsoWrittenPerDeclaration(t *testing.T) {
 // And the package the two declarations make compiles, which is the claim every
 // count above is standing in for.
 func TestAPackageOfSeveralDeclarationsCompiles(t *testing.T) {
+	// The redacting declarations are among them because the tests that assert
+	// what they write assert it about a unit rather than about a package — and
+	// a method written twice about one subject passes at that boundary and
+	// fails as a package, which is the whole of what went wrong when the layer
+	// and the tag both wrote a log value.
 	files, diags := generate.Package(sharedPkg, "model", []generate.Request{
 		declaring(t, "People", "Person"),
 		declaring(t, "Everybody", "Person"),
 		declaring(t, "Employers", "Employer"),
+		redacting(t, "Holders", "Holder"),
+		declaring(t, "Accounts", "Account"),
+		redacting(t, "Writtens", "Written"),
 	}, config())
 
 	if !diags.Empty() {
@@ -115,7 +123,8 @@ func TestAPackageOfSeveralDeclarationsCompiles(t *testing.T) {
 
 	spec := goldentest.Source{Name: "spec.go", Content: []byte(
 		"//go:build forgespec\n\npackage model\n\n" +
-			"type People struct{}\ntype Everybody struct{}\ntype Employers struct{}\n")}
+			"type People struct{}\ntype Everybody struct{}\ntype Employers struct{}\n" +
+			"type Holders struct{}\ntype Accounts struct{}\ntype Writtens struct{}\n")}
 
 	sources := []goldentest.Source{{Name: "model.go", Content: sharedSource(t)}, spec}
 	for _, file := range files {
@@ -127,6 +136,122 @@ func TestAPackageOfSeveralDeclarationsCompiles(t *testing.T) {
 			t.Errorf("the package does not compile with tags %v: %v", tags, err)
 		}
 	}
+}
+
+// A layer that writes a method a tag would also earn is the one that writes it.
+//
+// Both answer the same question about the same type. A redact tag earns a log
+// value on its own, without any declaration naming a layer, and the redaction
+// layer writes one because it was asked to — so a package that ran both would
+// hold one method twice and not compile.
+//
+// The layer's is the one that stays, and not by accident of ordering: it was
+// asked for by name, and it is the fuller answer, since it walks everything the
+// subject reaches where what a tag earns is written about the subject alone.
+func TestALayerSupersedesWhatATagWouldEarn(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model",
+		[]generate.Request{redacting(t, "Accounts", "Account")}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("generating both was refused:\n%s", diags.Render())
+	}
+
+	held := shared(t, files)
+	if got := strings.Count(held, "func (v Account) LogValue()"); got != 1 {
+		t.Fatalf("the log value is written %d times, want once:\n%s", got, held)
+	}
+
+	// The layer's rather than the tag's, told apart by the one thing only the
+	// layer does: it writes for what the subject reaches as well.
+	if !strings.Contains(held, `slog.String("Token", "[redacted]")`) {
+		t.Errorf("the log value does not mask the secret:\n%s", held)
+	}
+}
+
+// And the tag alone still earns one, which is what says the layer superseded
+// something rather than replacing nothing.
+func TestATagStillEarnsOneWithoutTheLayer(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model",
+		[]generate.Request{declaring(t, "Accounts", "Account")}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("generating was refused:\n%s", diags.Render())
+	}
+
+	if held := shared(t, files); !strings.Contains(held, "func (v Account) LogValue()") {
+		t.Errorf("a redact tag earned no log value of its own:\n%s", held)
+	}
+}
+
+// It supersedes for the package rather than for the declaration that asked.
+//
+// One declaration redacting and its neighbour not is an ordinary arrangement,
+// and what a layer wrote is a method on a subject rather than on whoever asked
+// — so a neighbour earning one from the same subject's tag would put the method
+// into the package twice. Asked per declaration, each would answer correctly
+// about itself and the package would not compile.
+//
+// Through a reached type as well as through the subject. What the layer wrote
+// for Account here was written because Holder reaches it, so a check that only
+// counted methods on a declaration's own subject would not see it at all.
+func TestALayerSupersedesAcrossDeclarations(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model", []generate.Request{
+		redacting(t, "Holders", "Holder"),
+		declaring(t, "Accounts", "Account"),
+	}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("a package with one declaration redacting was refused:\n%s", diags.Render())
+	}
+
+	src := shared(t, files)
+	if got := strings.Count(src, "func (v Account) LogValue()"); got != 1 {
+		t.Errorf("the log value is written %d times, want once:\n%s", got, src)
+	}
+}
+
+// And a method the author wrote is not written a second time by either of them.
+//
+// The layer stands down for it, which is the override every closure layer
+// offers. What a tag earns has to stand down for it too, and did not: the check
+// that keeps a method off a subject looked for a field of that name and never
+// for a method, so the duplicate moved rather than went away.
+func TestNeitherWritesOverAMethodTheAuthorWrote(t *testing.T) {
+	files, diags := generate.Package(sharedPkg, "model",
+		[]generate.Request{redacting(t, "Writtens", "Written")}, config())
+
+	if !diags.Empty() {
+		t.Fatalf("a subject whose author wrote the method was refused:\n%s", diags.Render())
+	}
+
+	if src := shared(t, files); strings.Contains(src, "func (v Written) LogValue()") {
+		t.Errorf("a log value was written beside the author's:\n%s", src)
+	}
+}
+
+// redacting builds one spec declaration with the redaction layer over it.
+func redacting(t *testing.T, declared, of string) generate.Request {
+	t.Helper()
+
+	held := declaring(t, declared, of)
+	held.Model.Stack = append(held.Model.Stack,
+		model.LayerRef{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Redact"}, Kind: model.KindElement})
+
+	return held
+}
+
+// shared returns the content of the file a package's subjects share.
+func shared(t *testing.T, files []generate.File) string {
+	t.Helper()
+
+	for _, file := range files {
+		if file.Name == generate.Shared() {
+			return string(file.Content)
+		}
+	}
+
+	t.Fatal("no shared file was written")
+	return ""
 }
 
 // declaring builds one spec declaration over a fixture subject, with every

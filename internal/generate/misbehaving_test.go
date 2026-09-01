@@ -47,6 +47,9 @@ func TestWhatAMisbehavingLayerIsToldAboutItself(t *testing.T) {
 		"a layer that will not agree with itself": {
 			layer: doubtful{}, code: "FRG4021", says: "names example.com/x twice",
 		},
+		"one method twice in the file a package shares": {
+			layer: sharing{}, code: "FRG4012", says: "the file this package shares writes",
+		},
 	}
 
 	for name, want := range cases {
@@ -79,6 +82,7 @@ func TestWhatAMisbehavingLayerIsToldAboutItself(t *testing.T) {
 // cannot agree with its neighbours would otherwise open with three copies of
 // one complaint, none of which the author can act on — and the caret would be
 // on a declaration chosen for being second in the file.
+//
 // Two declarations over one fake, which write the same type between them and
 // are reported for that as well. It is not the subject and it is not in the
 // way: what is counted here is counted by code.
@@ -248,6 +252,35 @@ func (doubtful) Binds() []model.Import {
 func (doubtful) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
 	decls, comments, fset := built(`type Persons []Person`)
 	return layer.Unit{Decls: decls, Comments: comments, Fset: fset}, nil
+}
+
+// sharing writes one method on one type twice, into the file a package's
+// subjects share.
+//
+// The same fault as [doubling] in the one file where nothing was looking for
+// it. What an element layer writes goes there rather than into the declaration
+// it was asked for, and what a subject earns from its own tags goes there too —
+// so two of them writing one method about one subject is an ordinary way for
+// this to happen, and the check that covers a declaration's own file never saw
+// that one.
+//
+// Two contributions under two keys, because that is the shape it takes: keyed
+// alike they would be one contribution made twice, which the merge folds into
+// one and is the mechanism that makes the shared file work at all.
+type sharing struct{ misbehaved }
+
+func (sharing) Origin() model.TypeRef { return misbehaved{named: "Sharing"}.Origin() }
+
+func (sharing) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
+	once := func() layer.Unit {
+		decls, comments, fset := built("func (p Person) Describe() string { return p.Name }")
+		return layer.Unit{Decls: decls, Comments: comments, Fset: fset}
+	}
+
+	return layer.Unit{Provides: map[string]layer.Unit{
+		"one: Person": once(),
+		"two: Person": once(),
+	}}, nil
 }
 
 // built parses a layer's source the way a real one does.

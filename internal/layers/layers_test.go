@@ -92,7 +92,7 @@ func TestStagedMarkersAreClaimedToo(t *testing.T) {
 // Generating from a stub is a diagnostic rather than a panic or an empty unit,
 // because both of those lie about what happened.
 func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
-	found, _ := layers.Builtins().Lookup(marker("Redact"))
+	found, _ := layers.Builtins().Lookup(marker("Enum"))
 
 	unit, err := found.Generate(&layer.Context{
 		Model: &model.Model{Name: "Persons"},
@@ -112,7 +112,7 @@ func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
 	if got, want := reported.Code.String(), "FRG4900"; got != want {
 		t.Errorf("code is %s, want %s", got, want)
 	}
-	if !strings.Contains(reported.Message, "Redact") {
+	if !strings.Contains(reported.Message, "Enum") {
 		t.Errorf("message %q does not name the layer", reported.Message)
 	}
 	if reported.Hint == "" {
@@ -295,7 +295,7 @@ func TestLayersDescribeThemselves(t *testing.T) {
 		"Slice":  layer.StageReady,
 		"Json":   layer.StageReady,
 		"Hash":   layer.StageReady,
-		"Redact": layer.StageStub,
+		"Redact": layer.StageReady,
 		"Csv":    layer.StageStaged,
 	}
 
