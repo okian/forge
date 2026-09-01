@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -462,6 +463,75 @@ func TestSessionPositionsAreResolvedAgainstTheLoadDirectory(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			if got := session.position(input).Filename; got != want {
 				t.Errorf("position(%q).Filename = %q, want %q", input, got, want)
+			}
+		})
+	}
+}
+
+// A package that is not there asks for nothing.
+//
+// Reachable rather than defensive: a qualifier can name a type whose package
+// the erroring file does not import, and a file too broken to parse is not in
+// the package's syntax at all — so the lookup comes back with nothing and the
+// answer has to be a false rather than a panic in the middle of reporting why
+// somebody's build failed.
+func TestNothingAsksForCode(t *testing.T) {
+	if asksForCode(nil) {
+		t.Error("a package that is not there was read as asking forge to write for it")
+	}
+}
+
+// What the two patterns match, and what they take the qualifier to be.
+//
+// Against the checker's messages rather than against a package, because these
+// are properties of the patterns: two of the details in them are load-bearing
+// and neither is visible in what a fixture produces. Dropping the star before
+// the qualifier still resolves an unqualified receiver correctly and quietly
+// stops resolving a pointer to one from another package — and generated methods
+// on a guarded type take pointer receivers, so that shape is ordinary. Stopping
+// the member pattern at the first comma is what keeps the checker's own
+// near-misses out, and a fixture cannot hold one, since producing "but does
+// have" means writing the name that exists.
+func TestWhatAMissingNameIsTakenToBe(t *testing.T) {
+	cases := map[string]struct {
+		msg       string
+		matches   bool
+		qualifier string
+	}{
+		"a bare name":                {msg: "undefined: PersonsSeq", matches: true},
+		"a name in another package":  {msg: "undefined: data.PersonsSeq", matches: true, qualifier: "data"},
+		"a method on a local type":   {msg: "Persons(nil).Len undefined (type Persons has no field or method Len)", matches: true},
+		"a method on a foreign type": {msg: "p.Len undefined (type data.Persons has no field or method Len)", matches: true, qualifier: "data"},
+		"a pointer receiver":         {msg: "g.Len undefined (type *data.Guarded has no field or method Len)", matches: true, qualifier: "data"},
+		"a generic receiver":         {msg: "b.Get undefined (type Box[string, int] has no field or method Get)", matches: true},
+
+		// The checker found something close, so the name is a misspelling of
+		// one that exists rather than one nothing has written.
+		"a near miss on a name":   {msg: "undefined: math.SQrt (but have Sqrt)"},
+		"a near miss on a member": {msg: "v.FoO undefined (type Person has no field or method FoO, but does have field Foo)"},
+
+		// Neither is a name generating supplies.
+		"a field nobody declared": {msg: "unknown field Namex in struct literal of type Person"},
+		"an unmet interface":      {msg: "Persons does not implement sort.Interface (missing method Less)"},
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			var held []string
+			for _, one := range []*regexp.Regexp{undefinedName, missingMember} {
+				if held = one.FindStringSubmatch(want.msg); held != nil {
+					break
+				}
+			}
+
+			if (held != nil) != want.matches {
+				t.Fatalf("matched = %v, want %v", held != nil, want.matches)
+			}
+			if !want.matches {
+				return
+			}
+			if held[1] != want.qualifier {
+				t.Errorf("qualifier is %q, want %q", held[1], want.qualifier)
 			}
 		})
 	}

@@ -422,3 +422,119 @@ func TestSpecFileThroughARealLoad(t *testing.T) {
 		}
 	}
 }
+
+// A missing name in a package forge writes for is said to be one forge has not
+// written yet.
+//
+// The one build failure forge itself causes, and the one an author cannot
+// diagnose from the message. They write the declaration and the call sites
+// together; the call sites name a type and a method only the generated file
+// declares; the load type-checks before generation runs, so the first run
+// refuses. What the compiler says is that a name is undefined, which the author
+// can already see. What it cannot say is that running the tool is what defines
+// it — and the recovery, commenting the reference out for one run, is trivial
+// and unguessable.
+//
+// Both shapes, because the two ways of reaching a name forge writes produce
+// different errors: naming the view type in a signature is an undefined
+// identifier, and calling a generated method is a selector on a type that has
+// no such member.
+func TestAMissingNameInAPackageForgeWritesFor(t *testing.T) {
+	session := loadFixture(t, "ungenerated", "./asked")
+
+	// Counted, so that a run reporting nothing at all fails here rather than
+	// passing an assertion made about every diagnostic there was.
+	all := session.Diagnostics.All()
+	if len(all) != 3 {
+		t.Fatalf("reported %d diagnostics, want the two missing names and the misspelling:\n%s",
+			len(all), session.Diagnostics.Render())
+	}
+
+	for _, held := range all {
+		// The misspelling in the same file is the exception and has a test of
+		// its own; everything else here is a name generating would supply.
+		if strings.Contains(held.Message, "ToUppr") {
+			continue
+		}
+		if !strings.Contains(held.Hint, "nothing has written it yet") {
+			t.Errorf("%q was not explained as a name forge has not written:\n  hint: %s",
+				held.Message, held.Hint)
+		}
+	}
+}
+
+// A name misspelt in another package is not explained as one forge would have
+// written.
+//
+// It arrives in the same shape as the names above it — an undefined identifier,
+// in a package holding a directive — and the only thing that tells them apart
+// is that this one names a package forge writes nothing for. Without that,
+// every typo in a package with a declaration in it is answered with advice to
+// comment the line out and run a generator, which cannot work and costs the
+// reader the time to find out.
+func TestAMisspellingInAnotherPackage(t *testing.T) {
+	session := loadFixture(t, "ungenerated", "./asked")
+
+	for _, held := range session.Diagnostics.All() {
+		if !strings.Contains(held.Message, "ToUppr") {
+			continue
+		}
+		if strings.Contains(held.Hint, "nothing has written it yet") {
+			t.Errorf("a misspelling was blamed on a generator:\n  %s\n  hint: %s",
+				held.Message, held.Hint)
+		}
+		return
+	}
+
+	t.Fatal("the fixture no longer produces a misspelling, so nothing here is tested")
+}
+
+// And a name the neighbouring package will be given is explained, which is the
+// arrangement most likely to produce one.
+//
+// A repository over a model, with a method handing back the view forge writes.
+// The name that cannot be found is in the model rather than in the repository,
+// so an answer that only ever asked about the package holding the error would
+// be silent in exactly the layout the hint exists for.
+func TestAMissingNameTheNeighbourWillBeGiven(t *testing.T) {
+	session := loadFixture(t, "ungenerated", "./repo")
+
+	all := session.Diagnostics.All()
+	if len(all) == 0 {
+		t.Fatal("a package naming an ungenerated type reported nothing")
+	}
+
+	for _, held := range all {
+		if !strings.Contains(held.Hint, "nothing has written it yet") {
+			t.Errorf("%q was not explained as a name the model has not been given:\n  hint: %s",
+				held.Message, held.Hint)
+		}
+	}
+}
+
+// And the same missing name in a package that asks forge for nothing is not.
+//
+// The control, and the whole of what keeps the suggestion honest. The two
+// declarations here are the ones next door with the directive taken off them:
+// the same names, reached the same two ways, producing the same two errors —
+// and only one of the packages is somewhere forge would have written anything. A
+// hint that arrived here would be advice to run a generator offered to somebody
+// who misspelt a type.
+func TestAMissingNameWhereForgeWritesNothing(t *testing.T) {
+	session := loadFixture(t, "ungenerated", "./plain")
+
+	all := session.Diagnostics.All()
+	if len(all) == 0 {
+		t.Fatal("a package that does not build reported nothing")
+	}
+
+	for _, held := range all {
+		if strings.Contains(held.Hint, "nothing has written it yet") {
+			t.Errorf("%q was blamed on a generator that writes nothing here:\n  hint: %s",
+				held.Message, held.Hint)
+		}
+		if held.Hint == "" {
+			t.Errorf("%q arrived with no hint at all", held.Message)
+		}
+	}
+}
