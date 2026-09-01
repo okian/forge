@@ -161,16 +161,6 @@ func marker(name string) model.TypeRef {
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
 	{
-		origin: marker("Builder"), kind: model.KindElement, stage: layer.StageStub,
-		requires: []shape.Cap{shape.Structured},
-		doc:      "fluent builder whose required fields are enforced at Build rather than at each setter",
-	},
-	{
-		origin: marker("Patch"), kind: model.KindElement, stage: layer.StageStub,
-		requires: []shape.Cap{shape.Structured},
-		doc:      "field-mask companion type, so that absent and zero stay distinguishable",
-	},
-	{
 		origin: marker("Redact"), kind: model.KindElement, stage: layer.StageStub,
 		requires: []shape.Cap{shape.Structured},
 		doc:      "log value with redact-tagged fields masked, so logging cannot leak them",

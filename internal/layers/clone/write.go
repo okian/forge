@@ -39,8 +39,8 @@ func (w *writer) line(format string, args ...any) {
 // blank separates two declarations.
 func (w *writer) blank() { w.out.WriteByte('\n') }
 
-// wrapped writes a sentence as as many comment lines as it takes, so that a
-// long one does not run off the side of a file the rest of which is wrapped.
+// wrapped writes a sentence over however many comment lines it takes, so that
+// a long one does not run off the side of a file the rest of which is wrapped.
 func (w *writer) wrapped(text string) {
 	for _, line := range emit.Wrapped(text, emit.CommentWidth) {
 		w.line("// %s", line)

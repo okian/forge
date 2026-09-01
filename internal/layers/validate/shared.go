@@ -1,52 +1,31 @@
 package validate
 
 import (
-	_ "embed"
-	"fmt"
-
 	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/layers/embedded"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/internal/layers/failures"
 )
 
-// sharedKey is what the error types are contributed under.
+// reporting returns the types a check reports through, and the folding it needs
+// to put a nested failure under the path that reaches it.
 //
-// One key for the package rather than one per subject, because there is one
-// copy of them however many declarations asked: a package holding two
-// ValidationError types does not compile, and the key is what says the two
-// contributions are the same thing.
-const sharedKey = "validate: what a check reports"
+// Two contributions rather than one, under the keys the package that owns them
+// gives: the types are shared with whatever else reports a failure, and the
+// folding is this layer's alone. A package that has a builder and no check
+// holds the first and not the second.
+func reporting() (map[string]layer.Unit, error) {
+	out := make(map[string]layer.Unit, 2)
 
-// failures is the source of the types every check reports through, embedded
-// from the package beside this one.
-//
-// Embedded rather than quoted, so that what is emitted is Go this repository's
-// own build compiles, its own vet reads and its own tests exercise. Code that
-// is only ever a string is code nothing checks until somebody's generated file
-// fails to build.
-//
-// It is not a template: nothing in it depends on the subject, so there is
-// nothing to rewrite and no reason for it to be anything but a file.
-//
-//go:embed shared/shared.go
-var failures []byte
-
-// sharedImports names what the shared file imports, and what each binds.
-//
-// Written down rather than read off the file, so that an import added to it
-// is a change somebody makes here as well — and so that what a run narrows
-// against is a list rather than a parse of the same bytes twice.
-var sharedImports = []model.Import{
-	{Path: "errors", Name: "errors"},
-	{Path: "strconv", Name: "strconv"},
-	{Path: "strings", Name: "strings"},
-}
-
-// shared returns the error types as a contribution the package holds once.
-func shared() (layer.Unit, error) {
-	unit, err := embedded.Unit("shared.go", failures, sharedImports)
+	held, err := failures.Unit()
 	if err != nil {
-		return layer.Unit{}, fmt.Errorf("validate: %w", err)
+		return nil, err
 	}
-	return unit, nil
+	out[failures.Key] = held
+
+	folding, err := failures.Nested()
+	if err != nil {
+		return nil, err
+	}
+	out[failures.NestedKey] = folding
+
+	return out, nil
 }

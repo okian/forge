@@ -100,6 +100,37 @@ func TestAnOverrideThatBreaksTheContract(t *testing.T) {
 	}
 }
 
+// What the file a package shares declares is checked against what the author
+// declared, the same as every other file.
+//
+// A subject's companion type — a builder, a patch — belongs to the subject
+// rather than to the declaration that asked for it, so it lands there and
+// nowhere else. Without this, a name of the author's it collided with would be
+// found by the compiler, in the one file nobody can fix it in.
+func TestTheSharedFileIsCheckedAgainstThePackageToo(t *testing.T) {
+	asked := copying(t, "Maskeds", subjectNamed(t, collidePkg, "Masked"))
+	asked.Model.Stack = append(asked.Model.Stack,
+		model.LayerRef{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Patch"}, Kind: model.KindElement})
+
+	_, diags := generate.Package(collidePkg, "model", []generate.Request{asked}, collideConfig(t))
+
+	if diags.Empty() {
+		t.Fatal("a companion type was written over a name the package already had")
+	}
+
+	found := reported(t, diags, "FRG4013")
+	if !strings.Contains(found.Message, "MaskedPatch") {
+		t.Errorf("the complaint does not name the collision:\n%s", found.Message)
+	}
+
+	// And says which file it was writing, since no one declaration owns that
+	// one: a report naming a declaration would be naming one of several
+	// arbitrarily, and one naming none reads as a sentence with a word missing.
+	if !strings.Contains(found.Message, "the file this package shares writes") {
+		t.Errorf("the complaint does not say what was being written:\n%s", found.Message)
+	}
+}
+
 // Two generated declarations that fold onto one name are reported rather than
 // written.
 //

@@ -212,11 +212,11 @@ func TestExplainingSaysWhatGeneratingWouldRefuse(t *testing.T) {
 // report has a column that says it instead, and says it as pending work rather
 // than as a mistake.
 func TestExplainingALayerWhoseGeneratorIsNotWritten(t *testing.T) {
-	// A builder is not something the raw underlying type upholds, so the layer
-	// says it is not transparent and the declaration belongs in a spec file.
-	// That is a rule about where the declaration is written rather than about
-	// the layer's generator, which is the part that is not written yet.
-	got := asking(t, []request{spec(specialising("Persons", nil, "Slice", "Builder"))}, "-t", "Persons")
+	// A log value is not something the raw underlying type upholds, so the
+	// layer says it is not transparent and the declaration belongs in a spec
+	// file. That is a rule about where the declaration is written rather than
+	// about the layer's generator, which is the part that is not written yet.
+	got := asking(t, []request{spec(specialising("Persons", nil, "Slice", "Redact"))}, "-t", "Persons")
 
 	if got.status != 0 {
 		t.Errorf("explaining a layer forge has not written ended with %d:\n%s", got.status, got.err)

@@ -54,11 +54,11 @@ var catalog = map[string]entry{
 		adds: []shape.Cap{shape.Comparable},
 	},
 	"Builder": {
-		kind: model.KindElement, stage: layer.StageStub,
+		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured},
 	},
 	"Patch": {
-		kind: model.KindElement, stage: layer.StageStub,
+		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured},
 	},
 	"Redact": {

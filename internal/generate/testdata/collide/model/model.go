@@ -133,3 +133,16 @@ type DomainPerson struct {
 // Two generated files of one build, one name: nothing about either file can see
 // the other, so the collision has to be found where the package is.
 type ValidationErrors []Person
+
+// MaskedPatch is the type a patch over Masked would be called, declared here so
+// that the file a package shares is checked against what the author wrote as
+// well as against itself.
+//
+// A companion type lands in that file rather than in any declaration's own, so
+// nothing else could find the collision.
+type MaskedPatch struct{ Held string }
+
+// Masked is the subject a patch over it would be written for.
+type Masked struct {
+	Name string
+}

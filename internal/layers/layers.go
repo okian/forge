@@ -2,11 +2,13 @@ package layers
 
 import (
 	"github.com/okian/forge/internal/layer"
+	"github.com/okian/forge/internal/layers/builder"
 	"github.com/okian/forge/internal/layers/clone"
 	"github.com/okian/forge/internal/layers/collection"
 	"github.com/okian/forge/internal/layers/contenthash"
 	"github.com/okian/forge/internal/layers/guarded"
 	"github.com/okian/forge/internal/layers/jsoncodec"
+	"github.com/okian/forge/internal/layers/patch"
 	"github.com/okian/forge/internal/layers/ring"
 	"github.com/okian/forge/internal/layers/slice"
 	"github.com/okian/forge/internal/layers/validate"
@@ -24,11 +26,13 @@ import (
 // package here is one somebody has.
 func written() []layer.Layer {
 	return []layer.Layer{
+		builder.New(),
 		clone.New(),
 		collection.New(),
 		contenthash.New(),
 		guarded.New(),
 		jsoncodec.New(),
+		patch.New(),
 		ring.New(),
 		slice.New(),
 		validate.New(),

@@ -341,11 +341,25 @@ func taken(sections []emit.Section, of policing, diags *diag.Set) {
 	slices.Sort(found)
 	for _, name := range found {
 		diags.Add(diag.New(codeNameTaken, of.at,
-			"generating %s writes %s, which the package already declares at %s",
-			of.declared, name, of.held.names[name]).
+			"%s writes %s, which the package already declares at %s",
+			generating(of), name, of.held.names[name]).
 			WithHint("%s", "rename what the package declares, or the declaration forge names it "+
 				"after; forge will not write over something somebody else wrote"))
 	}
+}
+
+// generating names what was being written, for a report about a name it wanted.
+//
+// A declaration where one owns the file, and the file itself where none does.
+// What an element layer writes belongs to the subject rather than to whichever
+// declaration asked, so it lands in the file a package shares — and a report
+// there that named a declaration would be naming one of several arbitrarily,
+// while one that named none would read as a sentence with a word missing.
+func generating(of policing) string {
+	if of.declared == "" {
+		return "the file this package shares"
+	}
+	return "generating " + of.declared
 }
 
 // bound reports two import paths that each want the same name.

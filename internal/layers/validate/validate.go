@@ -114,13 +114,10 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 // twice — and a package holding one method twice does not compile. The key is
 // what says the two are the same thing.
 func provided(built *planner) (layer.Unit, error) {
-	out := make(map[string]layer.Unit, len(built.plans)+1)
-
-	failures, err := shared()
+	out, err := reporting()
 	if err != nil {
 		return layer.Unit{}, err
 	}
-	out[sharedKey] = failures
 
 	for _, held := range built.written() {
 		unit, err := checkFor(held, model.Through(held.of, verb, "", built.into))

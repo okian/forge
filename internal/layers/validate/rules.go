@@ -3,8 +3,11 @@ package validate
 import (
 	"go/types"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/okian/forge/internal/model"
 )
 
 // tagKey is the struct tag key the rules are read from.
@@ -178,6 +181,36 @@ var applies = map[string]wants{
 		accepts: func(s form) bool { return s.text },
 		needs:   "a string",
 	},
+}
+
+// Demands reports whether the rules on a field say a value has to carry it.
+//
+// Exported because it is not only this layer's question. A builder refuses to
+// hand back a value whose required fields were never given, and which fields
+// those are is decided by this grammar — so it is answered here, once. A second
+// reader would agree until the day the two disagreed, and they would disagree
+// over the thing nobody looks at: a tag is split here rather than by the shared
+// parser, and a space after a comma is a rule this reader trims and a simpler
+// one does not.
+//
+// Both rules, because between them they cover every type and neither covers all
+// of them: required is what a value that can be absent takes, and nonzero is
+// what the language will compare. An author marking a field mandatory writes
+// whichever their field's type accepts and means the same by both.
+//
+// What is wrong with the tag is not reported here. Whoever asks this is asking
+// which fields are mandatory, and a tag that does not parse is this layer's to
+// complain about — twice over would be twice reported.
+func Demands(field model.Field) bool {
+	tag, tagged := field.Tag(tagKey)
+	if !tagged || tag.Raw == "" {
+		return false
+	}
+
+	found, _ := written(tag.Raw)
+	return slices.ContainsFunc(found, func(one rule) bool {
+		return one.name == ruleRequired || one.name == ruleNonzero
+	})
 }
 
 // written returns the rules a tag holds, and what is wrong with it.

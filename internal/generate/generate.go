@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/tools/go/packages"
+
 	"github.com/okian/forge/internal/compose"
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/discover"
@@ -290,6 +292,15 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	// itself.
 	redeclared(append(slices.Clone(beside), held.Sections...), at(requests), diags)
 
+	// And against what the author declared, which the declarations' own files
+	// are checked against and this one was not. A subject's companion type — a
+	// builder, a patch — lands here rather than in any declaration's file, so
+	// this is the only place a name of the author's it collides with can be
+	// found. Named against nothing, because no one declaration owns this file:
+	// the exemption a declaration gets for its own type has nothing to apply
+	// to here.
+	taken(held.Sections, policing{held: holds(into(requests), cfg.Generated), at: at(requests)}, diags)
+
 	var sum emit.Digest
 	FingerprintShared(&sum, required, name, cfg)
 
@@ -300,6 +311,21 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	}
 
 	return File{Name: Shared(), Content: content}, made, true
+}
+
+// into returns the package the declarations are generated into, which is the one
+// they all share.
+//
+// From a declaration rather than from a parameter, because a package's own
+// declarations are what a name is checked against and only a declaration
+// carries them. A run with nothing in it has nothing to check either.
+func into(requests []Request) *packages.Package {
+	for _, req := range requests {
+		if req.Model != nil {
+			return req.Model.Pkg
+		}
+	}
+	return nil
 }
 
 // reading returns the subjects of this package that will be given a String, by

@@ -19,7 +19,7 @@ import "github.com/okian/forge"
 
 // Recent is the last few people seen, in the order they were seen.
 //
-// Six layers over one subject, which is the composition the whole design is
+// Eight layers over one subject, which is the composition the whole design is
 // for. Json writes a codec for [Person] and, because there is a container above
 // it, one for this type as well — so the ring encodes in a single pass over its
 // elements, calling the codec written for each of them, and decodes straight
@@ -27,18 +27,25 @@ import "github.com/okian/forge"
 // Neither layer could do that alone: the ring knows nothing about what it
 // holds, and the codec knows nothing about how many there are.
 //
-// Validate, Clone and Hash sit beside Json, which is what element layers over
-// one subject look like: each writes about [Person] and none of them knows
-// about the others, so the person read off the wire is the person whose rules
-// can be asked about, the person a caller can take a copy of, and the person
-// two of whom can be told apart by a number.
+// Validate, Clone, Hash, Builder and Patch sit beside Json, which is what
+// element layers over one subject look like: each writes about [Person] and
+// none of them knows about the others, so the person read off the wire is the
+// person whose rules can be asked about, the person a caller can take a copy
+// of, the person two of whom can be told apart by a number, the person a caller
+// can assemble a field at a time, and the person a caller can change part of.
+//
+// Builder and Validate are the pair worth looking at. The builder reads the
+// same tags the check does and asks a different question of them — was anything
+// given — so a value that leaves the builder has every field the author called
+// for, and a value that passes the check has fields that are any good. Neither
+// layer knows the other is there.
 //
 // Ring is what makes it bounded. A producer that outruns whatever reads this
 // costs a thousand elements of memory rather than an increasing amount, and the
 // thousand is decided here rather than discovered in production.
 //
 //forge:ring cap=1024
-type Recent forge.Collection[forge.Ring[forge.Json[forge.Validate[forge.Clone[forge.Hash[Person]]]]]]
+type Recent forge.Collection[forge.Ring[forge.Json[forge.Validate[forge.Clone[forge.Hash[forge.Builder[forge.Patch[Person]]]]]]]]
 
 // Roster is the same bounded ring, behind a read-write lock.
 //

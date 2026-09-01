@@ -21,6 +21,91 @@ import (
 	"strings"
 )
 
+// PersonBuilder builds one Person, a field at a time.
+//
+// Each setter answers with the builder, so the fields may be written in
+// whatever order suits the caller and the compiler still checks every one. The
+// zero value is a builder holding nothing, so a variable of this type is ready
+// without being made.
+//
+// Build refuses a value whose required fields were never given, and reports
+// every one of them rather than the first.
+type PersonBuilder struct {
+	// held is the value being built, which every setter writes one field of.
+	held Person
+
+	// given records which of the required fields have been given, in the order
+	// Build reports them: Name, Email.
+	//
+	// Recorded rather than read off the value, because a field given the zero
+	// value was still given: a caller who set it meant to, and whether the zero
+	// value will do is a rule rather than an omission.
+	given [2]bool
+}
+
+// NewPersonBuilder returns a builder for one Person.
+func NewPersonBuilder() *PersonBuilder { return &PersonBuilder{} }
+
+// ID sets the ID of the Person being built.
+func (b *PersonBuilder) ID(v int) *PersonBuilder {
+	b.held.ID = v
+	return b
+}
+
+// Name sets the Name of the Person being built.
+func (b *PersonBuilder) Name(v string) *PersonBuilder {
+	b.held.Name = v
+	b.given[0] = true
+	return b
+}
+
+// Email sets the Email of the Person being built.
+func (b *PersonBuilder) Email(v string) *PersonBuilder {
+	b.held.Email = v
+	b.given[1] = true
+	return b
+}
+
+// Age sets the Age of the Person being built.
+func (b *PersonBuilder) Age(v int) *PersonBuilder {
+	b.held.Age = v
+	return b
+}
+
+// Aliases sets the Aliases of the Person being built.
+func (b *PersonBuilder) Aliases(v []string) *PersonBuilder {
+	b.held.Aliases = v
+	return b
+}
+
+// Build returns the Person that was built.
+//
+// A field the author tagged as one a value has to carry, and whose setter was
+// never called, is reported rather than left at its zero. Every one of them
+// rather than the first, because a caller filling in a form wants the whole
+// list.
+//
+// What was given is not checked here. A caller who set a field has set it, and
+// whether what they set is any good is what the rules on the field say —
+// which is a different question, asked somewhere a rule added to the tag
+// reaches.
+func (b *PersonBuilder) Build() (Person, error) {
+	var failed ValidationErrors
+
+	if !b.given[0] {
+		failed = append(failed, ValidationError{Path: "Name", Rule: "required", Want: "a value"})
+	}
+	if !b.given[1] {
+		failed = append(failed, ValidationError{Path: "Email", Rule: "required", Want: "a value"})
+	}
+
+	if len(failed) > 0 {
+		var zero Person
+		return zero, failed
+	}
+	return b.held, nil
+}
+
 // clonePerson returns a copy of v that shares nothing with it.
 //
 // The value's own method holds the body; this is what generated code
@@ -61,6 +146,119 @@ func (v Person) String() string {
 	b.WriteString(strconv.FormatInt(int64(v.Age), 10))
 
 	return b.String()
+}
+
+// nestedValidation folds what a field's own check reported into the failures of
+// the value that holds it, under the path that reaches the field.
+//
+// The path is what makes a nested check worth having. A City that is too short
+// is reported by Address as "City", and the value holding the address has to
+// say "Address.City" or a caller has no way to know which of two addresses it
+// was.
+//
+// An error that is not a list of failures is carried whole, under the field's
+// own path. That is what a check the author wrote returns, and what a type from
+// somewhere else returns, and neither is this package's to take apart.
+//
+// Found through the chain rather than in the hand, so that failures wrapped by
+// a check of somebody's own still reach the caller as failures with paths. A
+// wrapper that meant to hide them can say so by not wrapping them.
+func nestedValidation(into ValidationErrors, at string, err error) ValidationErrors {
+	var held ValidationErrors
+	if !errors.As(err, &held) {
+		return append(into, ValidationError{Path: at, Cause: err})
+	}
+
+	for _, one := range held {
+		one.Path = at + "." + one.Path
+		into = append(into, one)
+	}
+	return into
+}
+
+// ValidationError is one rule a value did not satisfy.
+//
+// It carries where rather than only what. A form with a bad postcode is not a
+// form that is invalid; it is a form whose Address.Postcode is too short, and
+// the difference is whether the caller can put the message beside the field it
+// is about.
+type ValidationError struct {
+	// Path reaches the field from the value that was checked: "Email", or
+	// "Address.City" for a field inside another struct.
+	Path string
+
+	// Rule is the rule that was not met, written as it was written in the tag,
+	// so that the failure and the source read alike. It is empty for a failure
+	// that came from a check the author wrote themselves.
+	Rule string
+
+	// Want says what the rule wanted, in words, so that a message can be shown
+	// to somebody who has never seen the tag.
+	Want string
+
+	// Cause is what a check the author wrote returned. It is nil for a failure
+	// of a rule, which has nothing underneath it.
+	Cause error
+}
+
+// Error describes the failure, naming the field first.
+func (e ValidationError) Error() string {
+	switch {
+	case e.Cause != nil:
+		return e.Path + ": " + e.Cause.Error()
+	case e.Want != "":
+		return e.Path + ": " + e.Rule + " wants " + e.Want
+	default:
+		return e.Path + ": " + e.Rule
+	}
+}
+
+// Unwrap returns what a check the author wrote returned, so that errors.Is and
+// errors.As reach it.
+func (e ValidationError) Unwrap() error { return e.Cause }
+
+// ValidationErrors is every rule a value did not satisfy, in the order the
+// fields are declared and the rules are written.
+//
+// Every failure rather than the first, because a caller showing a form to
+// somebody wants to show them everything that is wrong with it at once.
+type ValidationErrors []ValidationError
+
+// Error describes every failure, one per line where there is more than one.
+//
+// A line each rather than a sentence joined by commas: the failures are about
+// different fields, and a reader scanning for their own field finds it faster
+// down the left edge than in the middle of a paragraph.
+func (e ValidationErrors) Error() string {
+	switch len(e) {
+	case 0:
+		// Nothing failed, which is not a state a caller reaches through this:
+		// a check that found nothing wrong returns no error at all rather than
+		// an empty list of them.
+		return "nothing failed"
+	case 1:
+		return e[0].Error()
+	}
+
+	var out strings.Builder
+	out.WriteString(strconv.Itoa(len(e)))
+	out.WriteString(" failures:")
+
+	for _, one := range e {
+		out.WriteString("\n\t")
+		out.WriteString(one.Error())
+	}
+	return out.String()
+}
+
+// Unwrap returns the failures as errors, so that errors.Is and errors.As reach
+// each of them.
+func (e ValidationErrors) Unwrap() []error {
+	out := make([]error, len(e))
+	for i, one := range e {
+		out[i] = one
+	}
+	return out
 }
 
 // hashPerson returns a content hash of v.
@@ -409,6 +607,85 @@ func (v Person) LogValue() slog.Value {
 	)
 }
 
+// PersonPatch is a partial Person: the fields it is asked to change, and
+// nothing about the rest.
+//
+// Each field is a pointer because a pointer is how Go says there is something
+// here about a value that has a zero. A nil one is a field the patch was not
+// asked about; one pointing at the zero value is a field it was asked to clear,
+// and those are different instructions.
+type PersonPatch struct {
+	// ID is what to set the ID to, and is nil where the patch says nothing about
+	// it.
+	ID *int `validate:"min=1"`
+
+	// Name is what to set the Name to, and is nil where the patch says nothing
+	// about it.
+	Name *string `validate:"required,max=64" display:""`
+
+	// Email is what to set the Email to, and is nil where the patch says nothing
+	// about it.
+	Email *string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:""`
+
+	// Age is what to set the Age to, and is nil where the patch says nothing about
+	// it.
+	Age *int `validate:"min=0,max=150" display:"age"`
+
+	// Aliases is what to set the Aliases to, and is nil where the patch says
+	// nothing about it.
+	Aliases *[]string
+}
+
+// Apply writes the fields the patch sets over the Person given, and leaves the
+// rest as they were.
+//
+// It replaces rather than merges: a field holding a slice becomes that slice
+// rather than gaining its elements, and one holding a struct becomes that
+// struct rather than being patched inside. A partial update of a value inside
+// another is a patch for that value.
+//
+// Nothing is checked here. Whether what the patch holds is something the rules
+// would accept is a question about the whole value, and the whole value exists
+// only once this has run.
+//
+// Nothing is copied either. A field holding a slice, a map or a pointer leaves
+// the value sharing it with whatever filled the patch in, so a patch applied
+// twice gives two values that share, and writing through what was put into the
+// patch writes into both. Where that matters, copy before applying.
+func (p PersonPatch) Apply(into *Person) {
+	if p.ID != nil {
+		into.ID = *p.ID
+	}
+	if p.Name != nil {
+		into.Name = *p.Name
+	}
+	if p.Email != nil {
+		into.Email = *p.Email
+	}
+	if p.Age != nil {
+		into.Age = *p.Age
+	}
+	if p.Aliases != nil {
+		into.Aliases = *p.Aliases
+	}
+}
+
+// IsZero reports that the patch sets no field, which is a patch nobody asked
+// for anything by.
+//
+// It is also the name a codec looks for: a member of a struct tagged omitzero
+// is left out when its value says it is zero, so a patch held as a field of
+// something larger goes over the wire as nothing rather than as an object of
+// absent members. A patch that is the whole document is written out in full
+// either way, since there is no member for the tag to be on.
+func (p PersonPatch) IsZero() bool {
+	return p.ID == nil &&
+		p.Name == nil &&
+		p.Email == nil &&
+		p.Age == nil &&
+		p.Aliases == nil
+}
+
 // patternPersonEmail is the pattern Email is checked against.
 //
 // Compiled when the package loads rather than at each check: compiling a
@@ -459,119 +736,6 @@ func (v Person) Validate() error {
 		return nil
 	}
 	return failed
-}
-
-// ValidationError is one rule a value did not satisfy.
-//
-// It carries where rather than only what. A form with a bad postcode is not a
-// form that is invalid; it is a form whose Address.Postcode is too short, and
-// the difference is whether the caller can put the message beside the field it
-// is about.
-type ValidationError struct {
-	// Path reaches the field from the value that was checked: "Email", or
-	// "Address.City" for a field inside another struct.
-	Path string
-
-	// Rule is the rule that was not met, written as it was written in the tag,
-	// so that the failure and the source read alike. It is empty for a failure
-	// that came from a check the author wrote themselves.
-	Rule string
-
-	// Want says what the rule wanted, in words, so that a message can be shown
-	// to somebody who has never seen the tag.
-	Want string
-
-	// Cause is what a check the author wrote returned. It is nil for a failure
-	// of a rule, which has nothing underneath it.
-	Cause error
-}
-
-// Error describes the failure, naming the field first.
-func (e ValidationError) Error() string {
-	switch {
-	case e.Cause != nil:
-		return e.Path + ": " + e.Cause.Error()
-	case e.Want != "":
-		return e.Path + ": " + e.Rule + " wants " + e.Want
-	default:
-		return e.Path + ": " + e.Rule
-	}
-}
-
-// Unwrap returns what a check the author wrote returned, so that errors.Is and
-// errors.As reach it.
-func (e ValidationError) Unwrap() error { return e.Cause }
-
-// ValidationErrors is every rule a value did not satisfy, in the order the
-// fields are declared and the rules are written.
-//
-// Every failure rather than the first, because a caller showing a form to
-// somebody wants to show them everything that is wrong with it at once.
-type ValidationErrors []ValidationError
-
-// Error describes every failure, one per line where there is more than one.
-//
-// A line each rather than a sentence joined by commas: the failures are about
-// different fields, and a reader scanning for their own field finds it faster
-// down the left edge than in the middle of a paragraph.
-func (e ValidationErrors) Error() string {
-	switch len(e) {
-	case 0:
-		// Nothing failed, which is not a state a caller reaches through this:
-		// a check that found nothing wrong returns no error at all rather than
-		// an empty list of them.
-		return "nothing failed"
-	case 1:
-		return e[0].Error()
-	}
-
-	var out strings.Builder
-	out.WriteString(strconv.Itoa(len(e)))
-	out.WriteString(" failures:")
-
-	for _, one := range e {
-		out.WriteString("\n\t")
-		out.WriteString(one.Error())
-	}
-	return out.String()
-}
-
-// Unwrap returns the failures as errors, so that errors.Is and errors.As reach
-// each of them.
-func (e ValidationErrors) Unwrap() []error {
-	out := make([]error, len(e))
-	for i, one := range e {
-		out[i] = one
-	}
-	return out
-}
-
-// nestedValidation folds what a field's own check reported into the failures of
-// the value that holds it, under the path that reaches the field.
-//
-// The path is what makes a nested check worth having. A City that is too short
-// is reported by Address as "City", and the value holding the address has to
-// say "Address.City" or a caller has no way to know which of two addresses it
-// was.
-//
-// An error that is not a list of failures is carried whole, under the field's
-// own path. That is what a check the author wrote returns, and what a type from
-// somewhere else returns, and neither is this package's to take apart.
-//
-// Found through the chain rather than in the hand, so that failures wrapped by
-// a check of somebody's own still reach the caller as failures with paths. A
-// wrapper that meant to hide them can say so by not wrapping them.
-func nestedValidation(into ValidationErrors, at string, err error) ValidationErrors {
-	var held ValidationErrors
-	if !errors.As(err, &held) {
-		return append(into, ValidationError{Path: at, Cause: err})
-	}
-
-	for _, one := range held {
-		one.Path = at + "." + one.Path
-		into = append(into, one)
-	}
-	return into
 }
 
 // Seq is a lazy view over a sequence of elements.
