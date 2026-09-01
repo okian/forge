@@ -64,9 +64,10 @@ builds and editors work with no tool installed.
 
 ## Example
 
-[`examples/people`](examples/people) is the whole arrangement in one package: a
-plain struct, one declaration over it, and the files `forge` wrote from them,
-committed beside the source the way they are meant to be. The declaration is
+[`examples/people`](examples/people) is the whole arrangement in one package:
+three subjects, five declarations over them, and the files `forge` wrote
+from them, committed beside the source the way they are meant to be. The one to
+read first is
 
 ```go
 //forge:collection sort=Name,Age index=ID
@@ -77,6 +78,13 @@ and what it buys is a container that walks, projects, sorts and indexes its
 elements with the subject's own field names in the method names — `Names()`,
 `SortedByAge()`, `ByID()` — rather than a package of helpers taking a
 `func(Person) string` at every call site. The tests beside it read as usage.
+
+The other four go further: a bounded ring under eight layers, a smaller ring
+behind a mutex, a closed set over a named integer, and a directory whose
+elements encode in full and log with their secret masked. The package
+documentation walks them in that order. It also collects the three places this
+package comes out other than a reader would guess, and says where each is
+written up — an example is worth reading for what a tool really does.
 
 ## Development
 

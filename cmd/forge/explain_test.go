@@ -501,7 +501,7 @@ func TestExplainingADeclarationWithARealSubject(t *testing.T) {
 	if got.status != diag.ExitOK {
 		t.Fatalf("exited %d:\n%s", got.status, got.err)
 	}
-	if !strings.Contains(got.out, "struct model: 2 fields, 1 tag") {
+	if !strings.Contains(got.out, "struct: 2 fields, 1 tag") {
 		t.Errorf("the answer does not describe the subject:\n%s", got.out)
 	}
 }

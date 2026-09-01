@@ -67,6 +67,15 @@ type Redact[T any] struct{ _ [0]T }
 // name it is known by rather than as the number behind it. A second codec would
 // be a second answer to one question.
 //
+// That holds where the standard library does the encoding. It does not hold
+// inside a codec [Json] generates for a struct holding a member: that codec
+// hands a field to something else only where the field's type declares both
+// halves of a JSON codec itself, and a text codec is not among the things it
+// looks for. So a named integer is seen through and written as the integer,
+// wherever its text codec came from, and an integer no member stands for is
+// read back without complaint. Pairing the two over one field is the
+// composition to know about before relying on either.
+//
 // Kind: element. Stage: v1. Directive: //forge:enum.
 type Enum[T any] struct{ _ [0]T }
 

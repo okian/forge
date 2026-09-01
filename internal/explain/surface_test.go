@@ -68,7 +68,7 @@ func asked(entries ...model.Option) explain.Declaration {
 //
 // This is the whole reason a layer is handed the declaration when it is asked
 // what it exposes. Without it a collection reports one method — the lazy view —
-// and an author reading the explanation would find seven in the file.
+// and an author reading the explanation would find nine in the file.
 func TestTheMethodsNamedAfterTheDeclaration(t *testing.T) {
 	got := explain.Of(asked(model.Option{Key: "sort", Value: "Name"},
 		model.Option{Key: "index", Value: "ID"}), layers.Builtins())
@@ -78,7 +78,7 @@ func TestTheMethodsNamedAfterTheDeclaration(t *testing.T) {
 	}
 
 	query := got.Steps[2]
-	want := "Seq, IDs, Names, Ages, Emails, SortedByName, ByID"
+	want := "Seq, IDs, Names, Ages, Emails, SortedByName, ByID, Less, Swap"
 	if joined := strings.Join(query.Methods, ", "); joined != want {
 		t.Errorf("the collection emits %s, want %s", joined, want)
 	}

@@ -14,6 +14,21 @@ const (
 	secondIndex = "j"
 )
 
+// sorts reports whether the collection gets the three methods sort.Sort takes.
+//
+// One key and not several, because these put the collection itself in order and
+// a declaration naming two orders has no reason to prefer either. Indexed
+// because they address elements by position, which today means the declared
+// type's underlying form is a slice.
+//
+// Read by what writes them and by what declares them on the surface, which is
+// the whole reason it is a function rather than a condition written twice: a
+// surface that disagreed with the output would leave a method a decorator does
+// not wrap and a name collision detection does not see.
+func sorts(p plan) bool {
+	return len(p.sorts) == 1 && p.beneath.Caps.Has(shape.Indexed)
+}
+
 // sortable returns the two methods that, with the length the storage already
 // answers, make the declared type sortable in place.
 //
@@ -36,7 +51,7 @@ const (
 // some other way would need to put the two positional operations on the surface
 // first, and this would have to be written against those instead.
 func sortable(p plan) []ast.Decl {
-	if len(p.sorts) != 1 || !p.beneath.Caps.Has(shape.Indexed) {
+	if !sorts(p) {
 		return nil
 	}
 

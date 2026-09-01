@@ -27,18 +27,27 @@ import (
 // The unexported helpers the built methods call are excluded here rather than
 // listed, since they are the half of the output that is not a contract.
 func TestTheSurfaceIsWhatIsEmitted(t *testing.T) {
-	ctx := declaration(t, "//forge:collection sort=Name,ID index=Name")
+	// Both counts of sort key, because one of them decides whether two more
+	// methods exist. A declaration naming exactly one order gets the three
+	// sort.Sort takes and one naming two gets none of them, so a surface
+	// checked only against the second would never see them missing.
+	for _, directive := range []string{
+		"//forge:collection sort=Name,ID index=Name",
+		"//forge:collection sort=Name index=ID",
+	} {
+		ctx := declaration(t, directive)
 
-	// The whole stack rather than this layer alone, because that is what the
-	// output holds: the file these tests render is the storage layer's methods
-	// and this layer's together, and comparing half a file against half a
-	// report would pass whichever half went wrong.
-	promised := names(overStorage(ctx))
-	slices.Sort(promised)
+		// The whole stack rather than this layer alone, because that is what
+		// the output holds: the file these tests render is the storage layer's
+		// methods and this layer's together, and comparing half a file against
+		// half a report would pass whichever half went wrong.
+		promised := names(overStorage(ctx))
+		slices.Sort(promised)
 
-	emitted := published(t, generated(t, ctx), ctx.Model.Name)
-	if !slices.Equal(emitted, promised) {
-		t.Errorf("the stack says %v and the output holds %v", promised, emitted)
+		emitted := published(t, generated(t, ctx), ctx.Model.Name)
+		if !slices.Equal(emitted, promised) {
+			t.Errorf("under %s the stack says %v and the output holds %v", directive, promised, emitted)
+		}
 	}
 }
 

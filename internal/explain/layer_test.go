@@ -3,6 +3,8 @@ package explain_test
 import (
 	"bytes"
 	"errors"
+	"go/token"
+	"go/types"
 	"slices"
 	"strings"
 	"testing"
@@ -299,6 +301,10 @@ func TestALayerThatSaysNothingAboutItself(t *testing.T) {
 }
 
 // A subject with one field reads as one field rather than as one fields.
+//
+// A struct subject is measured by what a layer generating over it reads. What a
+// subject that is not a struct says instead is in
+// [TestASubjectThatIsNotAStruct].
 func TestASubjectWithOneOfEverything(t *testing.T) {
 	decl := documented()
 	decl.Subject = &model.Struct{Fields: person.Fields[:1]}
@@ -307,7 +313,7 @@ func TestASubjectWithOneOfEverything(t *testing.T) {
 
 	got := explain.Of(decl, layers.Builtins())
 
-	if want := "struct model: 1 field, 1 tag"; got.Steps[0].Effect != want {
+	if want := "struct: 1 field, 1 tag"; got.Steps[0].Effect != want {
 		t.Errorf("the subject reads %q, want %q", got.Steps[0].Effect, want)
 	}
 }
@@ -322,9 +328,97 @@ func TestASubjectWithNoTags(t *testing.T) {
 
 	got := explain.Of(decl, layers.Builtins())
 
-	if want := "struct model: 2 fields, 0 tags"; got.Steps[0].Effect != want {
+	if want := "struct: 2 fields, 0 tags"; got.Steps[0].Effect != want {
 		t.Errorf("the subject reads %q, want %q", got.Steps[0].Effect, want)
 	}
+}
+
+// A subject that is not a struct says what it is rather than how many fields it
+// did not have.
+//
+// A named scalar is a subject in its own right — a closed set is declared over
+// one, and its members are constants rather than fields. Counting its fields
+// reports zero of something it never had, which reads as a model that failed to
+// read the type rather than as a type with nothing of that kind in it.
+//
+// Every kind a subject can be made of, because what each one is spelled as is
+// the whole of what this line says. Two of them are named by their kind rather
+// than spelled out, and none of them carries an import path.
+func TestASubjectThatIsNotAStruct(t *testing.T) {
+	other := types.NewPackage("example.com/elsewhere/shapes", "shapes")
+	str := types.Typ[types.String]
+
+	cases := map[string]types.Type{
+		"named int":            types.Typ[types.Int],
+		"named string":         str,
+		"named []string":       types.NewSlice(str),
+		"named map[string]int": types.NewMap(str, types.Typ[types.Int]),
+		"named *string":        types.NewPointer(str),
+
+		// A type from another package keeps its own name and nothing else. The
+		// stack in the column beside this one is spelled the same way, and a
+		// path in the middle of either is unreadable.
+		"named []Point": types.NewSlice(types.NewNamed(
+			types.NewTypeName(token.NoPos, other, "Point", nil), types.NewStruct(nil, nil), nil)),
+
+		// Named by kind. Spelled out, an interface's method set is a cell
+		// nothing on the page lines up against.
+		"named interface": types.NewInterfaceType([]*types.Func{types.NewFunc(
+			token.NoPos, nil, "Close", types.NewSignatureType(nil, nil, nil, nil, nil, false))}, nil),
+		"named func": types.NewSignatureType(nil, nil, nil,
+			types.NewTuple(types.NewVar(token.NoPos, nil, "n", types.Typ[types.Int])), nil, false),
+	}
+
+	for want, under := range cases {
+		decl := documented()
+		decl.Subject = &model.Struct{Named: named("Held", under)}
+		decl.Stack = nil
+		decl.Layout.Text = "Held"
+
+		if got := explain.Of(decl, layers.Builtins()).Steps[0].Effect; got != want {
+			t.Errorf("a subject over %s reads %q, want %q", under, got, want)
+		}
+	}
+}
+
+// A struct subject reached through its named type is still counted by its
+// fields, which is the branch the check above it must not swallow.
+//
+// The underlying struct carries a member per model field, so a report that
+// counted the wrong one would still count the same number. What it must not do
+// is take the named type for a scalar and stop counting at all.
+func TestANamedStructIsStillCounted(t *testing.T) {
+	decl := documented()
+	decl.Subject = &model.Struct{
+		Named:  named("Person", structOf(person.Fields[:1])),
+		Fields: person.Fields[:1],
+	}
+	decl.Stack = nil
+	decl.Layout.Text = "Person"
+
+	got := explain.Of(decl, layers.Builtins())
+
+	if want := "struct: 1 field, 1 tag"; got.Steps[0].Effect != want {
+		t.Errorf("the subject reads %q, want %q", got.Steps[0].Effect, want)
+	}
+}
+
+// named builds a named type over an underlying one, which is what a subject
+// carries and what says whether it is a struct.
+func named(name string, under types.Type) *types.Named {
+	pkg := types.NewPackage("example/model", "model")
+	return types.NewNamed(types.NewTypeName(token.NoPos, pkg, name, nil), under, nil)
+}
+
+// structOf builds a struct with one member per model field, so that a fixture
+// is one type read two ways rather than two that disagree about how many
+// members there are.
+func structOf(held []model.Field) *types.Struct {
+	out := make([]*types.Var, len(held))
+	for i, one := range held {
+		out[i] = types.NewField(token.NoPos, nil, one.Name, types.Typ[types.String], false)
+	}
+	return types.NewStruct(out, nil)
 }
 
 // A layer that describes itself with nothing said is a layer with no summary,

@@ -2,6 +2,7 @@ package explain
 
 import (
 	"fmt"
+	"go/types"
 
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/model"
@@ -163,9 +164,62 @@ func subjectStep(decl Declaration, exposed shape.Shape) Step {
 		return step
 	}
 
-	step.Effect = fmt.Sprintf("struct model: %s, %s",
-		count(len(decl.Subject.Fields), "field"), count(tagged(decl.Subject), "tag"))
+	step.Effect = modelled(decl.Subject)
 	return step
+}
+
+// modelled says what the subject was read as.
+//
+// Not a struct for every subject. A named scalar is a subject in its own right
+// — a closed set is declared over one, and its members are constants rather
+// than fields — so counting its fields would report zero of something it never
+// had, which reads as a model that failed rather than a type with nothing of
+// that kind to read. What each says instead is the measure a reader of that
+// kind of subject would ask for: how much a struct carries, and what a scalar
+// is underneath.
+func modelled(held *model.Struct) string {
+	// Every subject a loader builds has a type behind it: one that is not a
+	// named type is refused before a model exists, and a refused one is
+	// answered above by the nil model rather than here. The guard is kept
+	// because this is the report somebody runs when something is wrong, and one
+	// that panicked on a model no loader produces would be worse than one that
+	// fell back to counting.
+	if held.Named == nil {
+		return fields(held)
+	}
+
+	if _, is := held.Named.Underlying().(*types.Struct); is {
+		return fields(held)
+	}
+	return "named " + underlying(held.Named.Underlying())
+}
+
+// underlying spells what a subject is made of, in a width a table cell has.
+//
+// Short names, like everything else in the report: a full import path in the
+// middle of a type is unreadable, and the column beside it holds a stack
+// spelled the same way. An interface and a function are named by their kind
+// instead of spelled out — an interface's whole method set in one cell is a
+// row nothing else on the page can line up against, and neither kind has a
+// spelling short enough to be worth the room. What a reader wants from either
+// is that it is not a struct, which the kind alone says.
+func underlying(held types.Type) string {
+	switch held.(type) {
+	case *types.Interface:
+		return "interface"
+	case *types.Signature:
+		return "func"
+	default:
+		return model.TypeString(held)
+	}
+}
+
+// fields measures a struct subject by what a layer generating over it reads:
+// how many fields there are, and how many of them say anything about
+// themselves.
+func fields(held *model.Struct) string {
+	return fmt.Sprintf("struct: %s, %s",
+		count(len(held.Fields), "field"), count(tagged(held), "tag"))
 }
 
 // layerStep describes one layer and the shape it leaves for the layer above it.

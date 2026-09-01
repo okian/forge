@@ -69,3 +69,83 @@ type Recent forge.Collection[forge.Ring[forge.Json[forge.Validate[forge.Clone[fo
 //
 //forge:ring cap=64
 type Roster forge.Guarded[forge.Ring[forge.Json[Person]]]
+
+// Statuses asks for the closed set [Status] already was.
+//
+// What it buys lands on [Status] rather than here, which is what an element
+// layer is: the API of a closed set is about one value, so [Status.String],
+// [Status.Valid], [ParseStatus] and [ValuesStatus] are the four of it a caller
+// reaches for by name. Nothing says what the members are — the const block is the
+// declaration, so a status added there is in the set without anybody editing a
+// second list.
+//
+// This type is a slice of them, which is the storage a declaration that names
+// no container falls back to. It is worth having and is not the point: a list
+// of statuses is a reasonable thing to hold, and the reason to write this line
+// is the seven the declaration produces. Five are methods on [Status]: the two
+// above, and [Status.MarshalText], [Status.AppendText] and
+// [Status.UnmarshalText], which carry a member over a wire under its name. The
+// other two are functions of the package, since a parser has no value to be
+// called on and a list of the members is not about any one of them.
+//
+// It goes in a spec file for the reason every declaration whose underlying type
+// is forge's does: [forge.Enum] is a marker holding nothing, so an inline
+// declaration would make this a zero-sized struct rather than the slice the
+// generated file declares. The build tags are what let the two spellings of one
+// name exist in one package.
+//
+// The text codec is reached by the standard library, which asks a type for one
+// before writing it. It is not reached by the codec forge generates for a
+// struct holding a Status: a generated codec hands a field to something else
+// only where that type declares both halves of a JSON codec itself, and a text
+// codec is not among the things it looks for. So [Credential.State] goes over
+// the wire as its number, whoever wrote the text codec and wherever they wrote
+// it, and a number no member stands for is read back without complaint.
+//
+// What that second half costs is not confined to the wire. A status read off a
+// document is held like any other, and the first thing that happens to a
+// credential holding one is usually that somebody logs it — where slog asks the
+// closed set to write the member, the closed set refuses a value it has no name
+// for, and the line comes out carrying an error where the state should be. A
+// format nobody can read back and a log nobody can read are the same defect
+// twice, which is why it is written down here rather than left in the output
+// for a reader to find.
+//
+//forge:enum
+type Statuses forge.Enum[Status]
+
+// Credentials is a directory of credentials whose elements cannot be logged
+// carelessly.
+//
+// Two element layers over one subject, doing unrelated things and neither
+// knowing about the other. Json gives [Credential] a codec, and Redact gives it
+// and everything it reaches a value that a handler prints instead of the
+// fields — with [Secret.Token] replaced by a fixed string wherever it appears.
+//
+// The redaction is what makes the pairing worth reading. A codec and a log
+// value disagree about a secret on purpose: the token has to go over the wire
+// or the credential is useless, and it must not go into a log or the credential
+// is compromised. Nothing about the subject says which of the two a caller is
+// doing, so each layer answers for its own channel and the tag says which is
+// which.
+//
+// Its elements and not itself. This type is a slice, and slog resolves the
+// value it is handed rather than what is inside one: handed a Credentials it
+// formats the slice, and the method on the element is never called. That is the
+// same limit the layer refuses a secret behind a slice field for — the
+// difference is only that a declared container cannot be refused, since being a
+// slice of the subject is what it is for.
+//
+// What that costs here is nothing, and the reason is luck rather than the
+// layer: [Credential.Secret] is a pointer, so formatting prints an address. A
+// subject holding its secret by value would have it printed in full. Log the
+// element.
+//
+// sort= gives a view ordered by owner and index= a lookup by the same field.
+// One owner can hold several credentials, and a lookup keeps the last of any
+// that share a key, so [Credentials.ByOwner] answers with one credential per
+// owner rather than all of them. That is what an index is; the sorted view is
+// what to walk when every credential for an owner is wanted.
+//
+//forge:collection sort=Owner index=Owner
+type Credentials forge.Collection[forge.Json[forge.Redact[Credential]]]

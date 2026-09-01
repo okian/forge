@@ -57,5 +57,15 @@ type Person struct {
 // the field's own name in the generated method — SortedByName, ByID — because
 // the generator knows the fields rather than taking them as arguments.
 //
+// A projection is spelled the same way, as the plural of its field, which is
+// how [Persons.Names] and [Persons.Ages] get their names. It is also how
+// [Persons.Aliaseses] gets its, from a field whose name was already plural.
+// Nothing in the name says it was: Aliases ends the way Address does, and a
+// projection of Address has to be Addresses. Reading the field's type instead
+// does not settle it either — a field named Alias holding a slice is singular
+// and ends in s just the same, and leaving it alone would name its projection
+// after one alias, so the type would trade a name that is ugly for one that is
+// wrong. It is left as it comes out.
+//
 //forge:collection sort=Name,Age index=ID
 type Persons forge.Collection[Person]

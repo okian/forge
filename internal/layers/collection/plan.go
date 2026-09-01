@@ -380,8 +380,10 @@ func (p plan) build() ([]ast.Decl, error) {
 // and a layer above written against a helper would break the first time one was
 // renamed.
 //
-// Every one takes a value receiver, because every one answers a question rather
-// than changing the collection.
+// Every one takes a value receiver. Most answer a question rather than changing
+// the collection; Swap changes it and still takes one, because what it reorders
+// is the array behind the slice header rather than the header itself, and
+// sort.Sort asks a value for all three.
 func (p plan) surface(owner model.TypeRef) []shape.Method {
 	out := make([]shape.Method, 0, 1+len(p.projections)+len(p.sorts)+len(p.indexes))
 
@@ -407,7 +409,24 @@ func (p plan) surface(owner model.TypeRef) []shape.Method {
 		}
 	}
 
-	return out
+	if !sorts(p) {
+		return out
+	}
+
+	// The pair sort.Sort takes, under the same condition that writes them. The
+	// length is the storage's and is already on the surface beneath this one.
+	by := p.sorts[0].field
+
+	return append(out,
+		shape.Method{
+			Name: "Less", Signature: "(i, j int) bool", Owner: owner,
+			Doc: fmt.Sprintf("Less reports whether the element at i sorts before the one at j, by %s.", by),
+		},
+		shape.Method{
+			Name: "Swap", Signature: "(i, j int)", Owner: owner,
+			Doc: fmt.Sprintf("Swap exchanges the elements at i and j, which is how sorting by %s moves them.", by),
+		},
+	)
 }
 
 // The one-line summaries the generated methods carry. They say what the method

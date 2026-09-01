@@ -3,17 +3,19 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs e6c0d92fe998209f
+// inputs 49747c291edebfa4
 
 //go:build forgespec
 
 package people
 
 import (
+	"cmp"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"io"
 	"iter"
+	"sort"
 )
 
 type RecentSeq struct {
@@ -148,3 +150,89 @@ func rosterHeldIndexOf(from, i, size int) int { panic("forge stub") }
 var (
 	_ json.MarshalerTo = (*Roster)(nil)
 )
+
+func NewStatuses(elems ...Status) Statuses { panic("forge stub") }
+
+func (s Statuses) Len() int { panic("forge stub") }
+
+func (s Statuses) All() iter.Seq[Status] { panic("forge stub") }
+
+func (s Statuses) Backward() iter.Seq[Status] { panic("forge stub") }
+
+func (s *Statuses) AppendSeq(seq iter.Seq[Status]) { panic("forge stub") }
+
+func (s *Statuses) Reset() { panic("forge stub") }
+
+var _ func(*Statuses) iter.Seq[Status] = (*Statuses).All
+
+type CredentialsSeq struct {
+	Seq[Credential]
+}
+
+func (c Credentials) Seq() CredentialsSeq {
+	panic("forge stub")
+}
+func (c Credentials) Owners() []int {
+	panic("forge stub")
+}
+func (c Credentials) States() []Status {
+	panic("forge stub")
+}
+func (c Credentials) Secrets() []*Secret {
+	panic("forge stub")
+}
+func (c Credentials) SortedByOwner() []Credential {
+	panic("forge stub")
+}
+func (c Credentials) ByOwner() map[int]Credential {
+	panic("forge stub")
+}
+func (c Credentials) Less(i, j int) bool {
+	panic("forge stub")
+}
+func (c Credentials) Swap(i, j int) {
+	panic("forge stub")
+}
+
+func (c Credentials) project[V any](of func(Credential) V) []V { panic("forge stub") }
+
+func (c Credentials) keyed[K comparable](by func(Credential) K) map[K]Credential { panic("forge stub") }
+
+func (c Credentials) ordered[K cmp.Ordered](by func(Credential) K) []Credential { panic("forge stub") }
+
+func NewCredentials(elems ...Credential) Credentials { panic("forge stub") }
+
+func (s Credentials) Len() int { panic("forge stub") }
+
+func (s Credentials) All() iter.Seq[Credential] { panic("forge stub") }
+
+func (s Credentials) Backward() iter.Seq[Credential] { panic("forge stub") }
+
+func (s *Credentials) AppendSeq(seq iter.Seq[Credential]) { panic("forge stub") }
+
+func (s *Credentials) Reset() { panic("forge stub") }
+
+func (c Credentials) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+
+type credentialsCounting struct {
+	to io.Writer
+	n  int64
+}
+
+func (w *credentialsCounting) Write(p []byte) (int, error) { panic("forge stub") }
+
+func (c Credentials) WriteTo(w io.Writer) (int64, error) { panic("forge stub") }
+
+func (c *Credentials) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+
+func (c *Credentials) ReadFrom(r io.Reader) (int64, error) { panic("forge stub") }
+
+var (
+	_ io.WriterTo          = *new(Credentials)
+	_ io.ReaderFrom        = (*Credentials)(nil)
+	_ json.MarshalerTo     = *new(Credentials)
+	_ json.UnmarshalerFrom = (*Credentials)(nil)
+	_ sort.Interface       = *new(Credentials)
+)
+
+var _ func(*Credentials) iter.Seq[Credential] = (*Credentials).All

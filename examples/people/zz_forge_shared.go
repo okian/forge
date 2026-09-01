@@ -8,6 +8,7 @@
 package people
 
 import (
+	"encoding"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -145,6 +146,127 @@ func (v Person) String() string {
 	b.WriteString(strconv.FormatInt(int64(v.Age), 10))
 
 	return b.String()
+}
+
+// String returns what this member is called.
+//
+// A value nobody declared renders as the type and the value it holds, rather
+// than as one of the members. It is not one, and a rendering that said
+// otherwise would let an undeclared value travel through a log and a document
+// with nothing saying where it came from.
+func (v Status) String() string {
+	switch v {
+	case StatusPending:
+		return "pending"
+	case StatusActive:
+		return "active"
+	case StatusRevoked:
+		return "revoked"
+	}
+	return "Status(" + strconv.FormatInt(int64(v), 10) + ")"
+}
+
+// Valid reports whether this is a member of the set.
+//
+// Worth asking, because a value of the type is not necessarily one of them: the
+// type is the whole range of whatever it is a name for, and the set is the
+// constants declared of it. A number off a wire, out of a database, or cast
+// from an integer is a value nobody declared, and there is no zero to compare
+// against — for a set counted from iota the zero is an ordinary member.
+func (v Status) Valid() bool {
+	switch v {
+	case StatusPending,
+		StatusActive,
+		StatusRevoked:
+		return true
+	}
+	return false
+}
+
+// ValuesStatus returns every member, in the order they were declared.
+//
+// Declaration order rather than sorted, because that is the order the constant
+// block reads in and the order a run counted by iota means. A fresh slice each
+// call, so that a caller sorting or appending to what they were given does not
+// change what the next one is given.
+func ValuesStatus() []Status {
+	return []Status{
+		StatusPending,
+		StatusActive,
+		StatusRevoked,
+	}
+}
+
+// ParseStatus returns the member with this name.
+//
+// Every name a member has, which for a set with two names for one value is both
+// of them: aliasing is what a package does while a name is being changed, and a
+// reader that took only the new one would break every caller the moment the old
+// one was added.
+func ParseStatus(s string) (Status, error) {
+	switch s {
+	case "pending":
+		return StatusPending, nil
+	case "active":
+		return StatusActive, nil
+	case "revoked":
+		return StatusRevoked, nil
+	}
+
+	var zero Status
+	return zero, errors.New(strconv.Quote(s) + " is not a member of Status")
+}
+
+// MarshalText returns the member's name as text.
+//
+// The same text String renders, because a closed set has one spelling and two
+// would be a value that read one way and travelled another. It is also what a
+// JSON codec reaches for when the type has none of its own, so the member goes
+// over the wire under the name it is known by rather than as the number behind
+// it.
+//
+// A value nobody declared is refused rather than written. String renders one as
+// the type and the value it holds, which is what a log wants and is nothing a
+// reader could take back — so letting it onto a wire would be writing a
+// document that cannot be read, and the zero of a set whose members start
+// elsewhere is exactly such a value.
+func (v Status) MarshalText() ([]byte, error) {
+	if !v.Valid() {
+		return nil, errors.New(v.String() + " is not a member of Status")
+	}
+
+	return []byte(v.String()), nil
+}
+
+// AppendText writes the member's name onto the end of a buffer.
+//
+// What MarshalText does without the slice it has to allocate, for a caller who
+// owns the buffer already. encoding/json reaches for this in preference where a
+// type has it, so it refuses what that refuses: a value nobody declared, which
+// the two would otherwise disagree about depending on which the codec happened
+// to call.
+func (v Status) AppendText(b []byte) ([]byte, error) {
+	if !v.Valid() {
+		return nil, errors.New(v.String() + " is not a member of Status")
+	}
+
+	return append(b, v.String()...), nil
+}
+
+// UnmarshalText reads a member back from its name.
+//
+// A name nobody declared is an error rather than a zero value. The zero of a
+// set counted from iota is an ordinary member, so decoding an unknown name into
+// it would turn a typo in a document into a value the receiver treats as meant
+// — which is the failure a closed set exists to prevent.
+func (v *Status) UnmarshalText(b []byte) error {
+	held, err := ParseStatus(string(b))
+	if err != nil {
+		return err
+	}
+
+	*v = held
+	return nil
 }
 
 // nestedValidation folds what a field's own check reported into the failures of
@@ -363,6 +485,157 @@ func fnvFloat(h uint64, f float64) uint64 {
 // than the bits of math.NaN, so that what a value hashes to is decided here and
 // cannot move under a library release.
 const fnvNaN uint64 = 0x7ff8000000000001
+
+// encodePeopleCredentialJSONTo writes a Credential as JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func encodePeopleCredentialJSONTo(enc *jsontext.Encoder, v Credential) error {
+	return v.MarshalJSONTo(enc)
+}
+
+// MarshalJSONTo writes the Credential as a JSON object.
+//
+// Members are written in the order the fields are declared, an embedded
+// struct's where the embedded field is. A field that takes a name from a
+// shallower one keeps its own place rather than the excluded one's.
+func (v Credential) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Owner")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.Int(int64(v.Owner))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("State")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.Int(int64(v.State))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Secret")); err != nil {
+		return err
+	}
+	if v.Secret == nil {
+		if err := enc.WriteToken(jsontext.Null); err != nil {
+			return err
+		}
+	} else {
+		if err := encodePeopleSecretJSONTo(enc, (*v.Secret)); err != nil {
+			return err
+		}
+	}
+	return enc.WriteToken(jsontext.EndObject)
+}
+
+// decodePeopleCredentialJSONFrom reads a Credential from JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func decodePeopleCredentialJSONFrom(dec *jsontext.Decoder, v *Credential) error {
+	return v.UnmarshalJSONFrom(dec)
+}
+
+// UnmarshalJSONFrom reads a JSON object into the Credential.
+//
+// A member the object holds and the type does not is skipped, which is
+// what keeps a reader working against a writer that has since added one.
+func (v *Credential) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if dec.PeekKind() == 'n' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		var zero Credential
+		*v = zero
+		return nil
+	}
+	if kind := dec.PeekKind(); kind != '{' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		return fmt.Errorf("cannot read Credential from a JSON %s", kind)
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return err
+	}
+	for dec.PeekKind() != '}' {
+		name, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		switch name.String() {
+		case "Owner":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero int
+					v.Owner = zero
+				case '0':
+					number, err := raw.Int()
+					if err != nil {
+						return err
+					}
+					if int64(int(number)) != number {
+						return fmt.Errorf("%d is out of range for int", number)
+					}
+					v.Owner = int(number)
+				default:
+					return fmt.Errorf("cannot read int from a JSON %s", raw.Kind())
+				}
+			}
+		case "State":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero Status
+					v.State = zero
+				case '0':
+					number, err := raw.Int()
+					if err != nil {
+						return err
+					}
+					if int64(Status(number)) != number {
+						return fmt.Errorf("%d is out of range for Status", number)
+					}
+					v.State = Status(number)
+				default:
+					return fmt.Errorf("cannot read Status from a JSON %s", raw.Kind())
+				}
+			}
+		case "Secret":
+			if dec.PeekKind() == 'n' {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+				v.Secret = nil
+			} else {
+				var held Secret
+				if err := decodePeopleSecretJSONFrom(dec, &held); err != nil {
+					return err
+				}
+				v.Secret = &held
+			}
+		default:
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := dec.ReadToken()
+	return err
+}
 
 // encodePeoplePersonJSONTo writes a Person as JSON.
 //
@@ -586,6 +859,118 @@ func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	return err
 }
 
+// encodePeopleSecretJSONTo writes a Secret as JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func encodePeopleSecretJSONTo(enc *jsontext.Encoder, v Secret) error {
+	return v.MarshalJSONTo(enc)
+}
+
+// MarshalJSONTo writes the Secret as a JSON object.
+//
+// Members are written in the order the fields are declared, an embedded
+// struct's where the embedded field is. A field that takes a name from a
+// shallower one keeps its own place rather than the excluded one's.
+func (v Secret) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Issued")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String(string(v.Issued))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Token")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String(string(v.Token))); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
+}
+
+// decodePeopleSecretJSONFrom reads a Secret from JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func decodePeopleSecretJSONFrom(dec *jsontext.Decoder, v *Secret) error {
+	return v.UnmarshalJSONFrom(dec)
+}
+
+// UnmarshalJSONFrom reads a JSON object into the Secret.
+//
+// A member the object holds and the type does not is skipped, which is
+// what keeps a reader working against a writer that has since added one.
+func (v *Secret) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if dec.PeekKind() == 'n' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		var zero Secret
+		*v = zero
+		return nil
+	}
+	if kind := dec.PeekKind(); kind != '{' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		return fmt.Errorf("cannot read Secret from a JSON %s", kind)
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return err
+	}
+	for dec.PeekKind() != '}' {
+		name, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		switch name.String() {
+		case "Issued":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero string
+					v.Issued = zero
+				case '"':
+					v.Issued = string(raw.String())
+				default:
+					return fmt.Errorf("cannot read string from a JSON %s", raw.Kind())
+				}
+			}
+		case "Token":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero string
+					v.Token = zero
+				case '"':
+					v.Token = string(raw.String())
+				default:
+					return fmt.Errorf("cannot read string from a JSON %s", raw.Kind())
+				}
+			}
+		default:
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := dec.ReadToken()
+	return err
+}
+
 // LogValue returns the subject as it may be logged.
 //
 // Every exported field, with the ones tagged redact replaced by a fixed
@@ -683,6 +1068,44 @@ func (p PersonPatch) IsZero() bool {
 		p.Email == nil &&
 		p.Age == nil &&
 		p.Aliases == nil
+}
+
+// LogValue returns Credential as it may be logged.
+//
+// Implementing this is what keeps a field out of a log. slog reaches for a
+// value's fields when the value does not say otherwise, so a type with a secret
+// in it and no LogValue prints the secret. A handler can be given a hook that
+// rewrites attributes, but that is a property of the handler rather than of the
+// type, and every place the value is logged from has to have installed it.
+func (v Credential) LogValue() slog.Value {
+	secretLogged := slog.AnyValue(nil)
+	if v.Secret != nil {
+		secretLogged = v.Secret.LogValue()
+	}
+
+	return slog.GroupValue(
+		slog.Int64("Owner", int64(v.Owner)),
+		slog.Any("State", v.State),
+		slog.Attr{Key: "Secret", Value: secretLogged},
+	)
+}
+
+// LogValue returns Secret as it may be logged.
+//
+// Every exported field, with the one tagged redact replaced by a fixed string.
+// Fixed rather than shortened or starred: a length is something, a prefix is
+// more, and two records holding one secret are told apart by any hash of it.
+//
+// Implementing this is what keeps a field out of a log. slog reaches for a
+// value's fields when the value does not say otherwise, so a type with a secret
+// in it and no LogValue prints the secret. A handler can be given a hook that
+// rewrites attributes, but that is a property of the handler rather than of the
+// type, and every place the value is logged from has to have installed it.
+func (v Secret) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("Issued", v.Issued),
+		slog.String("Token", "[redacted]"),
+	)
 }
 
 // patternPersonEmail is the pattern Email is checked against.
@@ -959,4 +1382,29 @@ var (
 	_ json.UnmarshalerFrom = (*Person)(nil)
 	_ fmt.Stringer         = *new(Person)
 	_ slog.LogValuer       = *new(Person)
+)
+
+// Status satisfies these.
+//
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ fmt.Stringer             = *new(Status)
+	_ encoding.TextAppender    = *new(Status)
+	_ encoding.TextMarshaler   = *new(Status)
+	_ encoding.TextUnmarshaler = (*Status)(nil)
+)
+
+// Credential satisfies these.
+//
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ json.MarshalerTo     = *new(Credential)
+	_ json.UnmarshalerFrom = (*Credential)(nil)
+	_ slog.LogValuer       = *new(Credential)
 )

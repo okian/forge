@@ -90,8 +90,28 @@ func (r Resolution) shapes(b *strings.Builder) {
 // out would read as a stack whose other steps are the only ones there are, and
 // it would hide the difference this table exists to show: a step that emits
 // nothing and a step whose methods are not written yet are not the same claim.
+//
+// Headed with the declared type's name, because a method on the subject is not
+// in it. An element layer attaches to the subject rather than to the container,
+// where the layer above cannot build on what it wrote, so a log value and a
+// codec for the subject's own fields land on a type this table is not about.
+// Without the name a reader takes those rows for layers that write nothing,
+// which is the opposite of true.
+//
+// A row can be empty for a second reason, and the heading does not tell them
+// apart. What a layer contributes here is what it puts on its surface, and a
+// layer is asked for one while the stack is still being composed — so one whose
+// methods depend on what ends up above it cannot answer yet, and says nothing
+// rather than promising a method a decorator may take away. The codec's methods
+// on a container are the case: they exist and they are not listed. The layer
+// says so where it declines to describe them.
+//
+// So the heading is worth what it says and no more. It stops the table being
+// read as everything the stack writes; it does not make the table complete, and
+// completing it needs composition to settle a shape rather than build one in a
+// single pass.
 func (r Resolution) methods(b *strings.Builder) {
-	b.WriteString("\nMethods\n")
+	b.WriteString("\nMethods on " + r.Name + "\n")
 
 	table(b, []string{"Step", "Layer", "Emits", "Withdraws"}, func(rows func(...string)) {
 		for _, step := range r.Steps {
