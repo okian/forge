@@ -41,6 +41,7 @@ var expected = []string{
 	"json.UnmarshalerFrom",
 	"slog.LogValuer",
 	"sort.Interface",
+	"sync.Locker",
 }
 
 // Which declarations a claim can be turned off from.
@@ -62,6 +63,7 @@ var turnedFrom = map[string][]string{
 	"json.UnmarshalerFrom":     {"People"},
 	"slog.LogValuer":           {"People"},
 	"sort.Interface":           {"People"},
+	"sync.Locker":              {"Locked"},
 }
 
 // Every interface this build can claim is one the pack earns, and every one the
@@ -414,6 +416,22 @@ func interfacing(t *testing.T, on map[string][]string) ([]File, diag.Set) {
 				},
 			},
 			Directives: directed(on["Crowd"]...),
+		},
+		{
+			// A declaration behind a lock, with the lock exposed. It is the one
+			// row nothing else here earns: a concurrency layer holds a lock and
+			// does not export it, so sync.Locker is claimed only by a
+			// declaration that asked for it in so many words.
+			Model: &model.Model{
+				Name: "Locked", Form: model.FormSpec,
+				Subject: modelling(t, loaded, pkg, "Person"),
+				Pkg:     pkg, Pos: interfaceAt,
+				Stack: []model.LayerRef{
+					{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Guarded"}, Kind: model.KindDecorator},
+					{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Slice"}, Kind: model.KindStorage},
+				},
+			},
+			Directives: directed(append([]string{"//forge:guarded expose=locker"}, on["Locked"]...)...),
 		},
 	}, cfg)
 }

@@ -211,8 +211,8 @@ func (Layer) apply(ctx *layer.Context, surface plan) (templates.Result, diag.Set
 			Param:     param,
 			Subject:   surface.subject.Text,
 			Container: container,
-			Declared:  ctx.Model.Name,
-			Prefix:    lower(ctx.Model.Name),
+			Declared:  ctx.Declared(),
+			Prefix:    lower(ctx.Declared()),
 		},
 		ctx.Model.Pos)
 }

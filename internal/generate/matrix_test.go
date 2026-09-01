@@ -297,9 +297,15 @@ func among(files []generate.File, name string) bool {
 // type-checks: nothing asks for them. The whole point of writing a file under
 // the tag is that code calling the generated API compiles either way, and that
 // is only tested by having code that calls it.
+//
+// Through a pointer, because a declaration is not required to be copyable. A
+// stack holding a lock is a struct nothing may copy, and a call site taking one
+// by value would be reporting that as a fault in the generated code when it is
+// a fault in the fixture. A pointer's method set holds the value methods too,
+// so nothing is given up by asking this way.
 var using = goldentest.Source{Name: "using.go", Content: []byte(
 	"package model\n\n// counted reads the generated API, so both builds have to hold it.\n" +
-		"func counted(p Persons) int { return p.Len() }\n")}
+		"func counted(p *Persons) int { return p.Len() }\n")}
 
 // The combinations forge refuses by name are refused by that name.
 //

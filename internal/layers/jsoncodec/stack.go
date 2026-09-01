@@ -150,7 +150,7 @@ func (s stack) counting() string { return model.Lower(s.declared) + "Counting" }
 // for — a lock hands out no sequence, so nothing may be written that walks one
 // — and the decorator owns whatever replaces it.
 func streaming(ctx *layer.Context, of *form) (stack, error) {
-	out := stack{declared: ctx.Model.Name, elem: of.spelled.Text, imports: of.spelled.Imports}
+	out := stack{declared: ctx.Declared(), elem: of.spelled.Text, imports: of.spelled.Imports}
 
 	switch of.how {
 	case writtenStruct:
@@ -256,7 +256,7 @@ func filling(ctx *layer.Context, add, reset shape.Method) (refuses bool, err err
 func notTheContract(ctx *layer.Context, one shape.Method, want string) error {
 	return diag.New(codeNotTheContract, ctx.Model.Pos,
 		"%s cannot be given a JSON codec: the %s layer offers %s%s, and a codec is written over %s",
-		ctx.Model.Name, one.Owner.Name, one.Name, one.Signature, want).
+		ctx.Declared(), one.Owner.Name, one.Name, one.Signature, want).
 		WithHint("%s", contractHint)
 }
 

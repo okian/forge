@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs ecc36f3b4fd95a22
+// inputs 3fa375ff490f1b5c
 
 //go:build forgespec
 
@@ -16,6 +16,7 @@ import (
 	"io"
 	"iter"
 	"sort"
+	"sync"
 )
 
 type PeopleSeq struct {
@@ -115,3 +116,47 @@ func (s *Crowd) AppendSeq(seq iter.Seq[Person]) { panic("forge stub") }
 func (s *Crowd) Reset() { panic("forge stub") }
 
 var _ func(*Crowd) iter.Seq[Person] = (*Crowd).All
+
+func (g *Locked) Do(f func(v LockedView)) { panic("forge stub") }
+
+func (g *Locked) RDo(f func(v LockedView)) { panic("forge stub") }
+
+func (g *Locked) Snapshot() []Person { panic("forge stub") }
+
+func (g *Locked) Len() int { panic("forge stub") }
+
+func (g *Locked) Lock() { panic("forge stub") }
+
+func (g *Locked) Unlock() { panic("forge stub") }
+
+type LockedView struct {
+	held *lockedHeld
+}
+
+func (v LockedView) Len() int { panic("forge stub") }
+
+func (v LockedView) All() iter.Seq[Person] { panic("forge stub") }
+
+func (v LockedView) Backward() iter.Seq[Person] { panic("forge stub") }
+
+func (v LockedView) AppendSeq(a0 iter.Seq[Person]) { panic("forge stub") }
+
+func (v LockedView) Reset() { panic("forge stub") }
+
+type lockedHeld []Person
+
+func newLockedHeld(elems ...Person) lockedHeld { panic("forge stub") }
+
+func (s lockedHeld) Len() int { panic("forge stub") }
+
+func (s lockedHeld) All() iter.Seq[Person] { panic("forge stub") }
+
+func (s lockedHeld) Backward() iter.Seq[Person] { panic("forge stub") }
+
+func (s *lockedHeld) AppendSeq(seq iter.Seq[Person]) { panic("forge stub") }
+
+func (s *lockedHeld) Reset() { panic("forge stub") }
+
+var (
+	_ sync.Locker = (*Locked)(nil)
+)

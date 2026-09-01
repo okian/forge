@@ -38,3 +38,26 @@ import "github.com/okian/forge"
 //
 //forge:ring cap=1024
 type Recent forge.Collection[forge.Ring[forge.Json[forge.Validate[forge.Clone[Person]]]]]
+
+// Roster is the same bounded ring, behind a read-write lock.
+//
+// The declaration everything about concurrency in forge exists for. A lock over
+// a container is easy to write and hard to write safely, and the hard part is
+// iteration: a walk handed out from behind a lock races if the caller walks it
+// outside and holds the lock across arbitrary code if they walk it inside.
+//
+// So the lock does not hand one out. Everything the ring offers moves to a type
+// of the lock's own making, unreachable except through [Roster.Do] and
+// [Roster.RDo], which run a function with the lock held and hand it a
+// [RosterView] for as long as the call lasts. What is left on the outside is
+// what can be answered without holding anything open: a count, a copy, and the
+// document.
+//
+// The document is the composition worth reading. Json gives [Person] a codec;
+// the lock, having taken the walk away, is what writes the codec for the
+// container — over a copy taken under the read lock, so that a slow reader on
+// the other end of the encoder's writer cannot hold this against every writer
+// for as long as it takes to time out.
+//
+//forge:ring cap=64
+type Roster forge.Guarded[forge.Ring[forge.Json[Person]]]

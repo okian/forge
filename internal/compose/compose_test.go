@@ -3,6 +3,7 @@ package compose_test
 import (
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 	"testing"
 
@@ -434,6 +435,97 @@ func TestAMethodADecoratorWithdrew(t *testing.T) {
 	// back — nothing a caller can hold open.
 	if _, has := held.Exposed.Method("Len"); !has {
 		t.Errorf("withdrawing the walk took the length with it: %v", held.Exposed.Names())
+	}
+}
+
+// A stack composes without a declaration, including one whose layers are asked
+// questions a declaration is the answer to.
+//
+// Composition works without a model on purpose: a subject that could not be
+// modelled still has a stack, and the rules about that stack are still worth
+// reporting. What made this worth its own test is that composing now asks a
+// layer how the type it declares is made, and the answer to that depends on the
+// declaration's options — so a layer reading them without checking turns a
+// declaration forge could not model into a crash rather than a diagnostic.
+//
+// Over a ring, because a ring is the layer that answers the question. Over a
+// lock, because a lock is what asks it.
+func TestAStackComposedWithoutADeclaration(t *testing.T) {
+	held, diags := compose.Compose(declaration("Guarded", "Ring"), catalog())
+	if !diags.Empty() {
+		t.Fatalf("a lock over a ring was refused:\n%s", diags.Render())
+	}
+
+	if len(held.Steps) != 2 {
+		t.Fatalf("composed %d steps, want 2", len(held.Steps))
+	}
+
+	// And nothing was decided that only a declaration could decide: what a lock
+	// holds is named after the declaration, and there is none.
+	for _, step := range held.Steps {
+		if step.Holds != nil {
+			t.Errorf("%s was told how to make something for a declaration nobody wrote: %v",
+				step.Layer.Origin.Name, step.Holds)
+		}
+	}
+}
+
+// A lock over a container that has to be made is told how to make one, and a
+// lock over one that does not is told nothing.
+//
+// The fact a decorator cannot work out for itself. What it holds is a field of
+// the declaration, so a caller has no reach to it except through whatever the
+// decorator offers — and how one is made is the business of the layer that
+// declared it: a bounded container takes a size, an unbounded one has nothing
+// to take.
+func TestWhatALockIsToldAboutMakingWhatItHolds(t *testing.T) {
+	cases := map[string]struct {
+		stack  []string
+		params []string
+	}{
+		"a container the caller sizes":     {stack: []string{"Guarded", "Ring"}, params: []string{"size int"}},
+		"a container that needs no making": {stack: []string{"Guarded", "Slice"}},
+
+		// The pair that says the walk skips a layer rather than stopping at
+		// one. Both put a refining layer between the lock and the storage; the
+		// first would look the same if the walk gave up at the collection, and
+		// the second would not.
+		"a refining layer over one that needs no making": {stack: []string{"Guarded", "Collection", "Slice"}},
+		"a refining layer over one that does": {
+			stack: []string{"Guarded", "Collection", "Ring"}, params: []string{"size int"},
+		},
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			held, diags := compose.Compose(written(model.FormSpec, want.stack...), catalog())
+			if !diags.Empty() {
+				t.Fatalf("the stack was refused:\n%s", diags.Render())
+			}
+
+			// The lock is the outermost layer, which is the last step composed.
+			lock := held.Steps[len(held.Steps)-1]
+			if lock.Layer.Origin.Name != "Guarded" {
+				t.Fatalf("the last step is %s, want the lock", lock.Layer.Origin.Name)
+			}
+
+			if want.params == nil {
+				if lock.Holds != nil {
+					t.Errorf("a lock over a container that needs no making was told to make one: %v", lock.Holds)
+				}
+				return
+			}
+
+			if lock.Holds == nil {
+				t.Fatal("a lock over a container that has to be made was told nothing about making it")
+			}
+			if !slices.Equal(lock.Holds.Params, want.params) {
+				t.Errorf("the lock takes %v, want %v", lock.Holds.Params, want.params)
+			}
+			if got := lock.Holds.Name; got != "newPersonsHeld" {
+				t.Errorf("the lock forwards to %s, want newPersonsHeld", got)
+			}
+		})
 	}
 }
 

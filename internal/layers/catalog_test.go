@@ -70,9 +70,10 @@ var catalog = map[string]entry{
 		adds: []shape.Cap{shape.Comparable, shape.Encodable},
 	},
 	"Guarded": {
-		kind: model.KindDecorator, stage: layer.StageStub,
-		adds:  []shape.Cap{shape.Concurrent},
-		masks: []shape.Cap{shape.Streamable, shape.Indexed},
+		kind: model.KindDecorator, stage: layer.StageReady,
+		requires: []shape.Cap{shape.Streamable},
+		adds:     []shape.Cap{shape.Concurrent},
+		masks:    []shape.Cap{shape.Streamable, shape.Indexed},
 	},
 
 	"Set": {

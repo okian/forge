@@ -70,9 +70,9 @@ func planned(ctx *layer.Context, below shape.Shape) (plan, diag.Set) {
 	bound = spelled.Bound(bound)
 
 	out := plan{
-		declared: ctx.Model.Name,
+		declared: ctx.Declared(),
 		subject:  spelled,
-		view:     viewName(ctx.Model.Name, named(ctx.Options, "seq")),
+		view:     viewName(ctx.Declared(), named(ctx.Options, "seq")),
 		at:       ctx.Model.Pos,
 		beneath:  below,
 	}

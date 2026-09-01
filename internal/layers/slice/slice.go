@@ -206,7 +206,7 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 		return layer.Unit{}, fmt.Errorf("slice: %s", wrong)
 	}
 
-	decls, err := owned(out.Decls, ctx.Model.Form, ctx.Model.Name)
+	decls, err := owned(out.Decls, ctx.Model.Form, ctx.Declared())
 	if err != nil {
 		return layer.Unit{}, err
 	}
@@ -221,7 +221,7 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 
 // apply specialises the template for one declaration.
 func (Layer) apply(ctx *layer.Context, subject model.Spelling) (templates.Result, diag.Set) {
-	declared := ctx.Model.Name
+	declared := ctx.Declared()
 
 	return templates.Apply(
 		templates.Template{Name: "slice", Source: bodies},

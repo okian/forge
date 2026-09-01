@@ -72,6 +72,11 @@ type Asked struct {
 	// it. What that surface should hold is the decorator's own knowledge — it
 	// withdrew those methods and can see whether the view kept them — so the
 	// check belongs to whoever calls this rather than here.
+	//
+	// In practice a decorator that hands out a scope needs the walk for its own
+	// reasons — a snapshot is one collected — so the check it already makes for
+	// itself is the check this wants, and there is nothing left over for a
+	// second one to catch.
 	Surface []shape.Method
 
 	// Imports are what the forwarded signatures may name.
@@ -102,8 +107,38 @@ type Asked struct {
 // method declared on the pointer below is reachable from a value of the view
 // exactly as one declared on the value is.
 func Write(of Asked) (layer.Unit, error) {
+	held, err := Source(of)
+	if err != nil {
+		return layer.Unit{}, err
+	}
+
+	return assembled(held, of)
+}
+
+// Source returns what Write would emit, as the text it is assembled from.
+//
+// For a caller that has declarations of its own to write beside it. Two parses
+// cannot share one file set, and a comment is placed by position — so a caller
+// that took the declarations and put them next to its own would be printing
+// both against one set and finding the view's comments wherever its own
+// positions happened to land. Text composes; syntax with positions in it does
+// not.
+//
+// One check [Write] makes is not made here, and cannot be. A view whose
+// signatures name a package nothing imported is a file that does not build —
+// which is true of the unit [Write] produces, since that unit is the whole of
+// what is written. It is not true of text somebody merges: a view forwards the
+// methods of the layers beneath it, those layers emit those methods into the
+// same file, and the import came in with them. Refusing here would refuse a
+// view whose every name the file does bind.
+//
+// What that leaves is a caller who merges and has no way to check. Closing it
+// needs a surface that can say what its signatures name — a method carries the
+// text of its signature and nothing about where the types in it come from — and
+// that is a change to what a layer describes rather than to what this writes.
+func Source(of Asked) (string, error) {
 	if of.Name == "" || of.Held == "" || of.Of == "" || of.Guards == "" {
-		return layer.Unit{}, fmt.Errorf(
+		return "", fmt.Errorf(
 			"a view needs a name, a field, a type and the type it guards, and was asked "+
 				"for %q, %q, %q and %q",
 			of.Name, of.Held, of.Of, of.Guards)
@@ -111,7 +146,7 @@ func Write(of Asked) (layer.Unit, error) {
 
 	for _, one := range of.Imports {
 		if one.Name == "" {
-			return layer.Unit{}, fmt.Errorf(
+			return "", fmt.Errorf(
 				"%s was given %s with no name to bind it to, and a view writes what it "+
 					"imports by name", of.Name, one.Path)
 		}
@@ -123,11 +158,21 @@ func Write(of Asked) (layer.Unit, error) {
 
 	for _, one := range of.Surface {
 		if err := forward(w, of, one); err != nil {
-			return layer.Unit{}, err
+			return "", err
 		}
 	}
 
-	return assembled(w.String(), of)
+	return w.String(), nil
+}
+
+// importing returns what the view was given to import, as the emitter holds an
+// import.
+func importing(of Asked) []emit.Import {
+	out := make([]emit.Import, 0, len(of.Imports))
+	for _, one := range of.Imports {
+		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
+	}
+	return out
 }
 
 // reaching returns the name a signature mentions that a view must not, or
@@ -288,7 +333,14 @@ func returning(results []string) string {
 	}
 }
 
-// assembled reads the written source back as declarations.
+// assembled reads the written source back as declarations, and refuses a unit
+// that names a package it does not carry.
+//
+// The check belongs here rather than beside the writing, because here is where
+// the answer is knowable: what this returns is a whole unit, so what it names
+// and what it imports are the same file's two halves. [Source] hands back a
+// fragment somebody else will merge, and the file it lands in binds what every
+// layer in it asked for.
 func assembled(source string, of Asked) (layer.Unit, error) {
 	fset := token.NewFileSet()
 
@@ -297,10 +349,7 @@ func assembled(source string, of Asked) (layer.Unit, error) {
 		return layer.Unit{}, fmt.Errorf("what was written for %s is not valid Go: %w", of.Name, err)
 	}
 
-	held := make([]emit.Import, 0, len(of.Imports))
-	for _, one := range of.Imports {
-		held = append(held, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+	held := importing(of)
 
 	if name, loose := unbound(file.Decls, held); loose {
 		return layer.Unit{}, fmt.Errorf(

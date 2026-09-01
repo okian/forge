@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs 579ab20b87ddd98f
+// inputs 06468907311c71aa
 
 //go:build forgespec
 
@@ -86,3 +86,65 @@ var (
 )
 
 var _ func(*Recent) iter.Seq[Person] = (*Recent).All
+
+func NewRoster() *Roster { panic("forge stub") }
+
+func (g *Roster) Do(f func(v RosterView)) { panic("forge stub") }
+
+func (g *Roster) RDo(f func(v RosterView)) { panic("forge stub") }
+
+func (g *Roster) Snapshot() []Person { panic("forge stub") }
+
+func (g *Roster) Len() int { panic("forge stub") }
+
+func (g *Roster) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+
+type RosterView struct {
+	held *rosterHeld
+}
+
+func (v RosterView) Cap() int { panic("forge stub") }
+
+func (v RosterView) Len() int { panic("forge stub") }
+
+func (v RosterView) All() iter.Seq[Person] { panic("forge stub") }
+
+func (v RosterView) Backward() iter.Seq[Person] { panic("forge stub") }
+
+func (v RosterView) Reset() { panic("forge stub") }
+
+func (v RosterView) Push(a0 Person) { panic("forge stub") }
+
+func (v RosterView) AppendSeq(a0 iter.Seq[Person]) { panic("forge stub") }
+
+const rosterHeldFixedCap = 64
+
+type rosterHeld struct {
+	buf  []Person
+	head int
+	n    int
+}
+
+func newRosterHeld() *rosterHeld { panic("forge stub") }
+
+func (r *rosterHeld) Cap() int { panic("forge stub") }
+
+func (r *rosterHeld) Len() int { panic("forge stub") }
+
+func (r *rosterHeld) Push(v Person) { panic("forge stub") }
+
+func (r *rosterHeld) All() iter.Seq[Person] { panic("forge stub") }
+
+func (r *rosterHeld) Backward() iter.Seq[Person] { panic("forge stub") }
+
+func (r *rosterHeld) AppendSeq(seq iter.Seq[Person]) { panic("forge stub") }
+
+func (r *rosterHeld) Reset() { panic("forge stub") }
+
+func (r *rosterHeld) built() { panic("forge stub") }
+
+func rosterHeldIndexOf(from, i, size int) int { panic("forge stub") }
+
+var (
+	_ json.MarshalerTo = (*Roster)(nil)
+)

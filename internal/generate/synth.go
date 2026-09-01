@@ -59,6 +59,7 @@ var (
 	stdEncoding = model.Import{Path: "encoding", Name: "encoding"}
 	stdSort     = model.Import{Path: "sort", Name: "sort"}
 	stdSlog     = model.Import{Path: "log/slog", Name: "slog"}
+	stdSync     = model.Import{Path: "sync", Name: "sync"}
 )
 
 // tabled is every package a claim in this file can name, by path.
@@ -81,6 +82,7 @@ var tabled = map[string]model.Import{
 	stdEncoding.Path: stdEncoding,
 	stdSort.Path:     stdSort,
 	stdSlog.Path:     stdSlog,
+	stdSync.Path:     stdSync,
 }
 
 // spelled is one type a method's signature names, held as the package it comes
@@ -337,6 +339,15 @@ var synthesised = []synthetic{
 	{
 		from: stdSlog, name: "LogValuer",
 		needs: []wants{{name: "LogValue", results: []spelled{{from: stdSlog, name: "Value"}}}},
+	},
+	{
+		// Only ever earned by a declaration that asked for it. A concurrency
+		// layer holds a lock and does not export it, because a caller holding
+		// the lock directly can reach nothing it guards — so the two methods
+		// exist only where the declaration said to write them, and the row is
+		// here so that the one that did says so where a reader looks for it.
+		from: stdSync, name: "Locker",
+		needs: []wants{{name: "Lock"}, {name: "Unlock"}},
 	},
 }
 

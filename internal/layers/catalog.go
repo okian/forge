@@ -185,31 +185,6 @@ var declared = []*stub{
 		adds: []shape.Cap{shape.Comparable, shape.Encodable},
 		doc:  "the API of a closed set, discovered from the constants declared with the subject",
 	},
-	{
-		origin: marker("Guarded"), kind: model.KindDecorator, stage: layer.StageStub,
-		adds:  []shape.Cap{shape.Concurrent},
-		masks: []shape.Cap{shape.Streamable, shape.Indexed},
-
-		// Every method that hands the caller a sequence, in either direction.
-		// One handed out from behind a lock is broken whichever side of the
-		// lock the caller walks it on: outside it races, and inside it holds
-		// the lock across whatever the caller does with each element. One
-		// handed in is broken the same way, since the lock is held for as long
-		// as whatever is producing the elements takes — and either can call
-		// back into the container and deadlock. Scoped access replaces them.
-		withdraws: []string{"All", "Backward", "AppendSeq", "Seq"},
-		options: []layer.OptionDef{
-			{
-				Key: "encode", Value: layer.ValueEnum, Values: []string{"snapshot", "locked"}, Default: "snapshot",
-				Doc: "whether encoding copies first or holds the lock for the length of the write",
-			},
-			{
-				Key: "expose", Value: layer.ValueEnum, Values: []string{"locker"},
-				Doc: "expose the lock as a sync.Locker, which the layer exists to make unnecessary",
-			},
-		},
-		doc: "read-write lock with scoped access, replacing iteration so that re-entry cannot be written",
-	},
 
 	// Staged: the marker is declared, the layer is not in this release.
 	{

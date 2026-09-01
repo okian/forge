@@ -108,7 +108,210 @@ type Context struct {
 	// answer rather than an obstacle: the decorator withdrew the walk because
 	// walking is no longer safe, and it owns whatever replaces it.
 	Exposed shape.Shape
+
+	// declared is the type this layer puts its methods on, which is not always
+	// the one the author wrote.
+	//
+	// A layer beneath an enclosing decorator declares onto a type of that
+	// decorator's making, because the decorator is the declaration and what is
+	// beneath it is a field. Read through [Context.Declared] rather than
+	// directly, so that a layer with no decorator above it needs to know
+	// nothing about any of this.
+	declared string
+
+	// holds is how the type this layer encloses is made, where it has to be
+	// made at all.
+	//
+	// Only an enclosing decorator has one, and only where what it holds is a
+	// container that cannot start as its zero value. Read through
+	// [Context.Holds].
+	holds *Constructor
 }
+
+// Holds returns how the type this layer encloses is made, and whether it has to
+// be made at all.
+//
+// Nothing for every layer that encloses nothing, and nothing for a decorator
+// over a container whose zero value is ready to use — which is the difference
+// between a lock that needs a way in and one that does not.
+func (c *Context) Holds() (Constructor, bool) {
+	if c == nil || c.holds == nil {
+		return Constructor{}, false
+	}
+	return *c.holds, true
+}
+
+// Holding returns the context told how the type this layer encloses is made.
+//
+// A copy, like [Context.Generating] and [Context.Declaring], and for the same
+// reason: a context is handed to one layer and read by it.
+func (c *Context) Holding(made *Constructor) *Context {
+	if c == nil {
+		return nil
+	}
+
+	held := *c
+	held.holds = made
+
+	return &held
+}
+
+// Declared returns the type this layer puts its methods on.
+//
+// The declaration's own name in the ordinary case, which is every case with no
+// enclosing decorator in the stack. Where there is one, what is beneath it is
+// held as a field rather than being the declared type, so it needs a name of
+// its own — and a layer that wrote onto the declaration instead would be
+// putting the unlocked methods on the locked type, which is the whole of what
+// the decorator exists to prevent.
+func (c *Context) Declared() string {
+	if c == nil {
+		return ""
+	}
+	if c.declared != "" {
+		return c.declared
+	}
+	if c.Model == nil {
+		return ""
+	}
+	return c.Model.Name
+}
+
+// Declaring returns the context with the name a layer declares onto, which is
+// what a stack with an enclosing decorator in it hands the layers beneath.
+//
+// A copy, like [Context.Generating]: a context is handed to one layer and read
+// by it, and one that could be changed by whoever holds it would be a way for
+// two layers to disagree about a declaration neither of them owns.
+func (c *Context) Declaring(name string) *Context {
+	if c == nil {
+		return nil
+	}
+
+	held := *c
+	held.declared = name
+
+	return &held
+}
+
+// Enclosing is a decorator that keeps what is beneath it rather than being it.
+//
+// A decorator that adds methods to what is below can leave it where it is: the
+// methods land on the same type and the stack is one type deep. One that has to
+// own something — a lock, a transaction — cannot, because the methods it wraps
+// have to become unreachable without going through it, and a method on the same
+// type is reachable by anybody holding one.
+//
+// So what is beneath moves to a type of the decorator's naming, and the
+// declaration becomes a struct holding it. This is how a decorator says so, and
+// what it returns is the name the layers beneath it will declare onto.
+type Enclosing interface {
+	// Encloses returns the name for what sits beneath this layer, given the
+	// name whatever is above it declares onto.
+	//
+	// Given rather than assumed, because decorators compose: a lock inside a
+	// lock encloses what the outer one already enclosed, and a name derived
+	// from the declaration alone would have the two fighting over it.
+	Encloses(declared string) string
+}
+
+// Declaring returns the type each layer of a stack puts its methods on, given
+// the name the declaration was written under and the layers outermost first.
+//
+// Outermost inward, which is the only order this can be worked out in: what a
+// layer declares onto is decided by the decorators above it, so the names are
+// settled before anything reads them.
+//
+// A stack with no [Enclosing] layer gives every layer the declaration's own
+// name, which is every stack anybody has written until one of those appears in
+// it. A hole in the list — a marker nothing in the registry claims — encloses
+// nothing, which needs no test of its own: a nil interface satisfies no
+// assertion to a non-empty one.
+//
+// Here rather than where a stack is composed, because more than one stage
+// answers for what a declaration will look like: composing decides it and
+// describing has to agree, and two walks written to the same rule stay in step
+// until the day one of them is edited.
+func Declaring(declared string, layers []Layer) []string {
+	out := make([]string, len(layers))
+
+	held := declared
+	for i, one := range layers {
+		out[i] = held
+
+		// Asked of every layer rather than of the decorators, because what may
+		// enclose is a layer's own answer rather than something a kind decides:
+		// a refining layer that had to own what it wrapped would be saying the
+		// same thing.
+		if enclosing, is := one.(Enclosing); is {
+			held = enclosing.Encloses(held)
+		}
+	}
+
+	return out
+}
+
+// Constructing is a layer whose type has to be made rather than declared.
+//
+// Most generated containers are ready as their zero value, and those say
+// nothing here. One that is not — a bounded container has to be told how much
+// it holds, and has nowhere to be told it but a call — declares the function
+// that makes one, so that a decorator holding that container as a field can
+// hand a caller a way to fill it in.
+//
+// It exists for that one reader. Nothing else needs it: the constructor is
+// written by the layer that declares it, and every other caller reaches it by
+// name in the package it was written into.
+//
+// An [Enclosing] layer that writes a constructor of its own belongs here too,
+// for the case of one enclosing another: what the outer one holds is then the
+// inner one's type, and the inner one is the only thing that knows how it is
+// made. Nothing in this build composes that way — a stack naming one layer
+// twice is refused, and there is one enclosing layer — so it is a note rather
+// than a gap.
+type Constructing interface {
+	// Constructor returns the function that makes one of the type this layer
+	// declares onto, and whether the type needs one at all.
+	//
+	// Asked of the context because the answer depends on the declaration: a
+	// container told its size in the declaration takes nothing, and one whose
+	// size is the caller's takes it as a parameter.
+	Constructor(ctx *Context) (Constructor, bool)
+}
+
+// Constructor is the function that makes one of a generated type, described so
+// that a decorator above it can forward to it.
+//
+// As text rather than as syntax. A decorator writes a call and a signature into
+// a file of its own, and what it needs is how the parameters are spelled there
+// — which is the spelling the layer that wrote the constructor already decided
+// and already emitted.
+type Constructor struct {
+	// Name is the function's own name.
+	Name string
+
+	// Params are its parameters as a signature writes them, each with its own
+	// name — "size int" — and Args are what a call forwarding to it passes,
+	// each matching the parameter of the same index. A variadic parameter is
+	// spelled "elems ...Person" and forwarded as "elems...".
+	//
+	// Two lists rather than one, because a forwarding call is not the
+	// signature with the types removed: the spread on a variadic argument is
+	// written at the call and nowhere else.
+	Params []string
+	Args   []string
+
+	// Pointer records that the function answers with a pointer to the type,
+	// which decides whether a caller storing the result into a field has to
+	// dereference it.
+	Pointer bool
+}
+
+// Call returns the constructor as a call forwarding the arguments it was given.
+func (c Constructor) Call() string { return c.Name + "(" + strings.Join(c.Args, ", ") + ")" }
+
+// Signature returns the parameters as a function declaring them writes them.
+func (c Constructor) Signature() string { return strings.Join(c.Params, ", ") }
 
 // Generating returns the context a layer is asked to generate against, which is
 // what it was composed against plus what the composed stack turned out to

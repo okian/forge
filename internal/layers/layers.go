@@ -4,6 +4,7 @@ import (
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/clone"
 	"github.com/okian/forge/internal/layers/collection"
+	"github.com/okian/forge/internal/layers/guarded"
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/layers/ring"
 	"github.com/okian/forge/internal/layers/slice"
@@ -24,6 +25,7 @@ func written() []layer.Layer {
 	return []layer.Layer{
 		clone.New(),
 		collection.New(),
+		guarded.New(),
 		jsoncodec.New(),
 		ring.New(),
 		slice.New(),

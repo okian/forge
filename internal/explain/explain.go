@@ -114,14 +114,37 @@ func Of(decl Declaration, registry *layer.Registry) Resolution {
 
 	out.Steps = append(out.Steps, subjectStep(decl, below))
 
+	// What each layer declares onto, worked out before the walk because it can
+	// only be worked out in the other direction: an enclosing decorator moves
+	// what is beneath it onto a type of its own, and a layer names what it
+	// emits after that. A description that skipped this would report method
+	// names the run will not write.
+	names := layer.Declaring(decl.Name, claiming(decl.Stack, registry))
+
 	// Outermost first is how the stack is stored, because that is how it was
 	// written; the walk needs the other end first.
 	for i := len(decl.Stack) - 1; i >= 0; i-- {
-		step, above := layerStep(len(out.Steps)+1, decl.Stack[i], decl, below, registry)
+		step, above := layerStep(len(out.Steps)+1, decl.Stack[i], decl, below, registry, names[i])
 		out.Steps = append(out.Steps, step)
 		below = above
 	}
 
+	return out
+}
+
+// claiming returns the layer claiming each entry of a stack, with nothing where
+// nothing claims one.
+//
+// A hole rather than a shorter list, because what the names are worked out from
+// is positional: a marker nothing claims still occupies a place in the stack,
+// and dropping it would move every layer beneath it up one.
+func claiming(stack []model.LayerRef, registry *layer.Registry) []layer.Layer {
+	out := make([]layer.Layer, len(stack))
+	for i, ref := range stack {
+		if found, claims := registry.Lookup(ref.Origin); claims {
+			out[i] = found
+		}
+	}
 	return out
 }
 
@@ -146,7 +169,10 @@ func subjectStep(decl Declaration, exposed shape.Shape) Step {
 }
 
 // layerStep describes one layer and the shape it leaves for the layer above it.
-func layerStep(number int, ref model.LayerRef, decl Declaration, below shape.Shape, registry *layer.Registry) (Step, shape.Shape) {
+func layerStep(
+	number int, ref model.LayerRef, decl Declaration, below shape.Shape,
+	registry *layer.Registry, declared string,
+) (Step, shape.Shape) {
 	step := Step{Number: number, Name: ref.Origin.Name, Kind: model.KindInvalid, Shape: names(below.Caps)}
 
 	found, ok := registry.Lookup(ref.Origin)
@@ -179,7 +205,7 @@ func layerStep(number int, ref model.LayerRef, decl Declaration, below shape.Sha
 		return step, below
 	}
 
-	above, ok := shaped(found, layer.ContextFor(decl.Model, ref), below)
+	above, ok := shaped(found, layer.ContextFor(decl.Model, ref).Declaring(declared), below)
 	if !ok {
 		// A layer that cannot say what it exposes has said something about
 		// itself worth printing, and the layers above it are described against

@@ -683,7 +683,10 @@ func contributions(held *model.Model, composed compose.Composed, cfg Config, dia
 			continue
 		}
 
-		ctx := layer.ContextFor(held, step.Layer).Generating(composed.Exposed)
+		ctx := layer.ContextFor(held, step.Layer).
+			Generating(composed.Exposed).
+			Declaring(step.Declared).
+			Holding(step.Holds)
 
 		unit, err := generated(found, ctx, step.Below)
 		if err != nil {

@@ -66,7 +66,7 @@ func TestWhatTheCatalogSaysAboutAShape(t *testing.T) {
 	cases := map[string]struct{ requires, adds, masks []string }{
 		"Collection": {requires: []string{"Streamable"}},
 		"Ring":       {adds: []string{"Sized", "Ordered", "Streamable", "Bounded"}},
-		"Guarded":    {adds: []string{"Concurrent"}, masks: []string{"Indexed", "Streamable"}},
+		"Guarded":    {requires: []string{"Streamable"}, adds: []string{"Concurrent"}, masks: []string{"Indexed", "Streamable"}},
 	}
 
 	for name, want := range cases {

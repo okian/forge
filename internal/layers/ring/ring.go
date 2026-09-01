@@ -300,6 +300,51 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	}, nil
 }
 
+// Constructor returns the function that makes one of these containers.
+//
+// A ring always has one. The buffer is allocated once and never grows, which is
+// the whole of what the type is for, so a zero value has no buffer and can hold
+// nothing — and adding to one says so rather than carrying on. A decorator
+// holding a ring as a field therefore has to offer a way to make the ring, or
+// what it holds is a container nobody can fill.
+//
+// It takes a size where the declaration did not write one and nothing where it
+// did, which is the same pair of constructors the layer emits: a capacity in
+// the declaration is part of the type, and one left out is the caller's.
+//
+// A capacity the option validator would refuse is reported as no constructor
+// rather than as a wrong one. The refusal itself belongs to generation, where
+// it points at the declaration; answering here with a signature built from a
+// number this layer is about to reject would have a decorator above writing a
+// call against it.
+//
+// Asked without a declaration it answers with none, for the reason [Layer.Shape]
+// does: a caller asking that way is asking what the layer is rather than what
+// it would emit here, and what a constructor is called is a fact about a
+// declaration that has not been given.
+func (Layer) Constructor(ctx *layer.Context) (layer.Constructor, bool) {
+	if ctx == nil || ctx.Model == nil {
+		return layer.Constructor{}, false
+	}
+
+	fixed, err := declaredCapacity(ctx)
+	if err != nil {
+		return layer.Constructor{}, false
+	}
+
+	out := layer.Constructor{Name: constructorFor(ctx.Declared()), Pointer: true}
+	if fixed == 0 {
+		out.Params, out.Args = []string{sizeParam + " int"}, []string{sizeParam}
+	}
+
+	return out, true
+}
+
+// sizeParam is what the constructor taking a capacity calls it, which is the
+// name the template gives it and the name a decorator forwarding to it has to
+// write.
+const sizeParam = "size"
+
 // declaredCapacity returns the capacity written for this declaration, and zero
 // where none was.
 //
@@ -363,7 +408,7 @@ type plan struct {
 
 // planned decides what this declaration makes of the template.
 func planned(ctx *layer.Context, fixed int) plan {
-	declared := ctx.Model.Name
+	declared := ctx.Declared()
 
 	held := plan{
 		names:  map[string]string{fullError: errorFor(declared)},
@@ -427,9 +472,9 @@ func (Layer) apply(ctx *layer.Context, subject model.Spelling, held plan) (templ
 			Param:     param,
 			Subject:   subject.Text,
 			Container: container,
-			Declared:  ctx.Model.Name,
+			Declared:  ctx.Declared(),
 			Names:     held.names,
-			Prefix:    lower(ctx.Model.Name),
+			Prefix:    lower(ctx.Declared()),
 		},
 		ctx.Model.Pos)
 }
@@ -479,11 +524,11 @@ func chosen(decls []ast.Decl, held plan, ctx *layer.Context, fixed int) ([]ast.D
 	// dropped nothing chose nothing — which means a name this file expects the
 	// template to declare is not the name the template declares any more.
 	if len(kept) == len(decls) {
-		return nil, fmt.Errorf("ring: nothing was left out of %s, so the template no longer declares what this expects", ctx.Model.Name)
+		return nil, fmt.Errorf("ring: nothing was left out of %s, so the template no longer declares what this expects", ctx.Declared())
 	}
 
 	if fixed > 0 {
-		if err := size(kept, held.spelled(capacityConst, ctx.Model.Name), fixed); err != nil {
+		if err := size(kept, held.spelled(capacityConst, ctx.Declared()), fixed); err != nil {
 			return nil, err
 		}
 	}

@@ -114,6 +114,26 @@ type Step struct {
 	// Below is the shape the layers beneath this one expose, which is what the
 	// layer was asked to accept and what it is given to generate against.
 	Below shape.Shape
+
+	// Declared is the type this step's layer puts its methods on.
+	//
+	// The declaration's own name for every step with no enclosing decorator
+	// above it, which is every step of most stacks. Where there is one, what is
+	// beneath it is held rather than being the declared type, and this is the
+	// name it is held as — worked out here because it is a fact about the
+	// stack, and the layer it is handed to is generated before the decorator
+	// that decided it.
+	Declared string
+
+	// Holds is how the type this step encloses is made, for a step that
+	// encloses one that has to be made at all.
+	//
+	// Nothing for every other step, which is nearly all of them: a container
+	// that starts as its zero value needs no way in, and a layer that encloses
+	// nothing has nothing to make. Worked out here for the same reason Declared
+	// is — it is a fact about the stack, and the decorator that needs it is
+	// generated with no view of the layers beneath it beyond their shape.
+	Holds *layer.Constructor
 }
 
 // Composed is a stack that holds together.
@@ -189,11 +209,13 @@ func Compose(decl Declaration, cat Catalog) (Composed, diag.Set) {
 
 	out := Composed{Steps: make([]Step, 0, len(stack))}
 	below := shape.Subject(decl.Subject)
+	names := layer.Declaring(declared(decl), layers)
+	made := holding(decl, stack, layers, names)
 
 	// Innermost first: what a layer exposes depends on what is beneath it, so
 	// the walk runs from the subject outward whatever order the stack is in.
 	for i := len(stack) - 1; i >= 0; i-- {
-		out.Steps = append(out.Steps, Step{Layer: stack[i], Below: below})
+		out.Steps = append(out.Steps, Step{Layer: stack[i], Below: below, Declared: names[i], Holds: made[i]})
 
 		accepts, refused := asked(layers[i], below)
 		if refused != nil {
@@ -210,7 +232,14 @@ func Compose(decl Declaration, cat Catalog) (Composed, diag.Set) {
 			return out, diags
 		}
 
-		above, refused := exposed(layers[i], layer.ContextFor(decl.Model, stack[i]), below)
+		// Told what it declares onto, the same as at generation. A layer names
+		// what it emits after that type, so a shape worked out without it
+		// describes methods returning types the generated file does not hold —
+		// and the mismatch surfaces as a call site referring to a name nothing
+		// declares rather than as a disagreement anybody can see.
+		ctx := layer.ContextFor(decl.Model, stack[i]).Declaring(names[i])
+
+		above, refused := exposed(layers[i], ctx, below)
 		if refused != nil {
 			diags.Add(diag.New(codeMisbehaved, decl.Pos,
 				"the %s layer failed while composing: %v", stack[i].Origin.Name, refused).
@@ -223,6 +252,58 @@ func Compose(decl Declaration, cat Catalog) (Composed, diag.Set) {
 
 	out.Exposed = below
 	return out, diags
+}
+
+// declared returns the name the declaration was written under, or nothing where
+// composition was handed no declaration.
+func declared(decl Declaration) string {
+	if decl.Model == nil {
+		return ""
+	}
+	return decl.Model.Name
+}
+
+// holding returns, for each layer of the stack, how the type it encloses is
+// made — and nothing for a layer that encloses nothing or encloses something
+// that needs no making.
+//
+// A decorator that owns what is beneath it has to offer a way to fill that in,
+// because the type it holds is a field of the declaration and a caller has no
+// other reach to it. What it cannot know is how one is made: a bounded
+// container is told how much it holds and an unbounded one has nothing to be
+// told, and which of those applies is the business of the layer that declared
+// it. So the question is put to that layer here and the answer is carried up.
+//
+// The nearest one beneath that declares onto the same type. Nearest because a
+// stack has one storage layer in it and the refining layers above it declare
+// onto what it declared; the same type because an enclosing decorator further
+// down would have moved what is beneath it somewhere else, and a constructor
+// for that type is not a constructor for this one.
+func holding(decl Declaration, stack []model.LayerRef, layers []layer.Layer, names []string) []*layer.Constructor {
+	out := make([]*layer.Constructor, len(layers))
+
+	for i, one := range layers {
+		if _, encloses := one.(layer.Enclosing); !encloses {
+			continue
+		}
+
+		for j := i + 1; j < len(layers); j++ {
+			if names[j] != names[i+1] {
+				break
+			}
+
+			builds, can := layers[j].(layer.Constructing)
+			if !can {
+				continue
+			}
+			if made, needs := builds.Constructor(layer.ContextFor(decl.Model, stack[j]).Declaring(names[j])); needs {
+				out[i] = &made
+				break
+			}
+		}
+	}
+
+	return out
 }
 
 // claimed looks up every marker in the stack, reporting the ones nothing
