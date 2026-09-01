@@ -32,7 +32,7 @@ func TestAMethodThatOnlyLooksLikeTheOne(t *testing.T) {
 
 	for name, written := range cases {
 		t.Run(name, func(t *testing.T) {
-			if satisfies(having(t, written), writerTo(t), nil) {
+			if _, does := satisfies(having(t, written), writerTo(t), nil); does {
 				t.Errorf("%s earned io.WriterTo:\n%s", name, written)
 			}
 		})
@@ -41,7 +41,7 @@ func TestAMethodThatOnlyLooksLikeTheOne(t *testing.T) {
 	// And the one that does match, so that the cases above are read as near
 	// misses rather than as a check that never says yes.
 	written := "func (p *Persons) WriteTo(w io.Writer) (int64, error) { return 0, nil }"
-	if !satisfies(having(t, written), writerTo(t), nil) {
+	if _, does := satisfies(having(t, written), writerTo(t), nil); !does {
 		t.Errorf("the method the interface asks for earned nothing:\n%s", written)
 	}
 }
@@ -162,7 +162,7 @@ func TestAClaimWhoseNameIsAlreadyTaken(t *testing.T) {
 	// somebody else's, which is not the interface — so the row failing is the
 	// right answer rather than a lucky one.
 	written := "func (p *Persons) WriteTo(w io.Writer) (int64, error) { return 0, nil }"
-	if satisfies(having(t, written), writerTo(t), held) {
+	if _, does := satisfies(having(t, written), writerTo(t), held); does {
 		t.Errorf("io.WriterTo was earned in a file where io means something else:\n%s", written)
 	}
 }

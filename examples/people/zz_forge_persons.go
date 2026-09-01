@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.0
-// inputs fb23b4f81df42d06
+// inputs 3167212e3050a081
 
 package people
 

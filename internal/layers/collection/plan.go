@@ -344,10 +344,10 @@ func (p plan) build() ([]ast.Decl, error) {
 		{p.indexes, keyedBy, keying, mapOfKey},
 	} {
 		for _, one := range kind.columns {
-			key, err := spelled(one.typ.Text)
-			if err != nil {
+			key, wrong := spelled(one.typ.Text)
+			if wrong != nil {
 				return nil, fmt.Errorf("collection: %s is written as %q, which is not a type: %w",
-					one.field, one.typ.Text, err)
+					one.field, one.typ.Text, wrong)
 			}
 
 			out = append(out, method(built{
@@ -360,7 +360,9 @@ func (p plan) build() ([]ast.Decl, error) {
 		}
 	}
 
-	return out, nil
+	// Last, because it is the one thing here that is not per field: the sorted
+	// views are a method each and this is a single order over the whole.
+	return append(out, sortable(p)...), nil
 }
 
 // surface is the plan as the layers above it see it: every method this layer

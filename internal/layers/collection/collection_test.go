@@ -157,7 +157,11 @@ func generated(t *testing.T, ctx *layer.Context) []byte {
 		t.Fatalf("the storage layer refused: %v", err)
 	}
 
-	query, err := collection.New().Generate(ctx, shape.Shape{Caps: shape.Set(shape.Streamable)})
+	// The shape the storage beneath actually exposes, rather than one written
+	// out here: what this layer generates depends on it, and a shape assembled
+	// for the test would be a second account of the storage to keep in step
+	// with the first.
+	query, err := collection.New().Generate(ctx, slice.New().Shape(ctx, shape.Shape{}))
 	if err != nil {
 		t.Fatalf("the collection layer refused: %v", err)
 	}
@@ -513,5 +517,71 @@ func TestANameTheStorageBeneathAlreadyHas(t *testing.T) {
 	}
 	if !strings.Contains(reported.Message, "Lens") {
 		t.Errorf("the message %q does not name the method", reported.Message)
+	}
+}
+
+// One declared sort key is an order the type itself is in, and several are not.
+//
+// With one there is a natural order and sort.Sort can be handed the collection.
+// With several there are several and no reason to prefer any of them, so what
+// would have to be chosen is somebody's data order picked because they named a
+// field first. The sorted views are generated either way; what is missing from
+// the second case is only the unqualified order.
+func TestWhenACollectionIsSortableInPlace(t *testing.T) {
+	cases := map[string]struct {
+		directive string
+		sortable  bool
+	}{
+		"one sort key":  {"//forge:collection sort=Name", true},
+		"two sort keys": {"//forge:collection sort=Name,ID", false},
+		"no sort key":   {"//forge:collection index=ID", false},
+	}
+
+	for name, one := range cases {
+		t.Run(name, func(t *testing.T) {
+			held := string(generated(t, declaration(t, one.directive)))
+
+			for _, want := range []string{
+				"func (c Persons) Less(i, j int) bool",
+				"func (c Persons) Swap(i, j int)",
+			} {
+				if got := strings.Contains(held, want); got != one.sortable {
+					t.Errorf("%s is %v, want %v:\n%s", want, got, one.sortable, held)
+				}
+			}
+
+			// The views are there whichever way it went, so a missing order is
+			// read as one thing missing rather than as the option being ignored.
+			if !strings.Contains(held, "SortedBy") && one.directive != "//forge:collection index=ID" {
+				t.Errorf("the sorted views went with the order:\n%s", held)
+			}
+		})
+	}
+}
+
+// The order is the declared key's, and swapping is the language's.
+func TestWhatSortingInPlaceCompares(t *testing.T) {
+	held := string(generated(t, declaration(t, "//forge:collection sort=Name")))
+
+	for _, want := range []string{
+		"return c[i].Name < c[j].Name",
+		"c[i], c[j] = c[j], c[i]",
+	} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the ordering does not hold %q:\n%s", want, held)
+		}
+	}
+
+	// And both arrive documented. A generated method that ships bare is a
+	// method a reader has to work out from its body, in a file they did not
+	// write — and the way to ship one is to build it so that its comment has
+	// nowhere to be printed, which nothing but reading the output would catch.
+	for _, want := range []string{
+		"// Less reports whether the element at i sorts before the one at j, by Name.",
+		"// Swap exchanges the elements at i and j",
+	} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the ordering is not documented with %q:\n%s", want, held)
+		}
 	}
 }

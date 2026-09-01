@@ -18,6 +18,7 @@ import (
 	"github.com/okian/forge/internal/merge"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
+	"github.com/okian/forge/internal/scalars"
 	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/shared/seq"
 )
@@ -117,12 +118,18 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		taken[held] = ""
 	}
 
+	// Which subjects will be given a String, decided before any of them is
+	// generated for. A field of one is rendered through it, and a declaration
+	// asked on its own could only answer that by reading what the last run
+	// left behind.
+	willRead := reading(requests)
+
 	for _, req := range requests {
 		if req.Model == nil {
 			continue
 		}
 
-		file, unit, ok := one(req, name, cfg, taken, &diags)
+		file, unit, ok := one(req, name, cfg, taken, willRead, &diags)
 		if !ok {
 			continue
 		}
@@ -179,6 +186,25 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 		return File{}, false
 	}
 
+	// The subjects earn claims here for the same reason the declarations earn
+	// them in their own files: what is written about a subject is written here,
+	// so this is where a reader looks and where the compiler can be made to
+	// check. Reported into the run's own set, since a package is written whole
+	// and a claim that cannot be built is not a reason to write the rest.
+	for _, one := range subjects(requests) {
+		claims, imports, made := synthesise(held, synthesis{
+			declared: model.Spell(one.Type(), path, binds(held.Imports)).Text,
+			elem:     model.Spell(one.Type(), path, binds(held.Imports)),
+			pkg:      path,
+			at:       one.Pos,
+		}, diags)
+
+		if made {
+			held.Sections = append(held.Sections, claims)
+			held.Imports = merged(held.Imports, imports)
+		}
+	}
+
 	var sum emit.Digest
 	FingerprintShared(&sum, required, name, cfg)
 
@@ -191,6 +217,57 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	return File{Name: Shared(), Content: content}, true
 }
 
+// reading returns the subjects of this package that will be given a String, by
+// the identity of each.
+//
+// Computed for the package rather than per declaration, because it is a
+// question about the run: a field is rendered through its type's String, and
+// whether that type has one depends on whether anything in this run is over it.
+// A declaration asked on its own could answer only by reading what the last run
+// left on disk, which is how a package comes to build from a committed tree and
+// fail from a clean checkout.
+func reading(requests []Request) map[string]bool {
+	out := make(map[string]bool, len(requests))
+
+	for _, one := range subjects(requests) {
+		if scalars.Earns(one) {
+			out[model.TypeIdentity(one.Type())] = true
+		}
+	}
+
+	return out
+}
+
+// subjects returns the distinct subjects a package's declarations are over, in
+// the order they were first named.
+//
+// Distinct, because what is written about a subject is written once however
+// many declarations are over it, and a claim about it belongs beside that. In
+// the order they were named rather than sorted, so that the claims read in the
+// order the file's declarations do.
+func subjects(requests []Request) []*model.Struct {
+	var (
+		out  []*model.Struct
+		seen = make(map[string]bool, len(requests))
+	)
+
+	for _, req := range requests {
+		if req.Model == nil || req.Model.Subject == nil {
+			continue
+		}
+
+		held := model.TypeIdentity(req.Model.Subject.Type())
+		if seen[held] {
+			continue
+		}
+
+		seen[held] = true
+		out = append(out, req.Model.Subject)
+	}
+
+	return out
+}
+
 // one generates the file a single declaration asks for, and hands back what it
 // composed to so that the package can see what several declarations share.
 //
@@ -198,7 +275,10 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 // wanting one file is a thing only the package can see. Anything reported is
 // added to the run's own set rather than returned, so that a declaration
 // refused here does not need a second path out.
-func one(req Request, name string, cfg Config, taken map[string]string, diags *diag.Set) (File, merge.Unit, bool) {
+func one(
+	req Request, name string, cfg Config,
+	taken map[string]string, reads map[string]bool, diags *diag.Set,
+) (File, merge.Unit, bool) {
 	into := Named(req.Model.Name)
 	if first, twice := taken[into]; twice {
 		diags.Add(collision(req.Model, into, first))
@@ -213,7 +293,7 @@ func one(req Request, name string, cfg Config, taken map[string]string, diags *d
 	var sum emit.Digest
 	Fingerprint(&sum, req, name, cfg)
 
-	unit, problems := declaration(req, cfg)
+	unit, problems := declaration(req, cfg, reads)
 	diags.Merge(&problems)
 
 	if !problems.Empty() {
@@ -312,7 +392,7 @@ func asUnit(held merge.Unit) layer.Unit {
 
 // declaration generates for one declaration: what its options mean, what its
 // stack composes to, and what each of its layers contributes.
-func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
+func declaration(req Request, cfg Config, reads map[string]bool) (merge.Unit, diag.Set) {
 	var diags diag.Set
 
 	held := req.Model
@@ -350,7 +430,8 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 	// written: a refining layer over no storage has one filled in.
 	held.Stack = composed.Stack()
 
-	units := contributions(held, composed, cfg, &diags)
+	units := earned(held, contributions(held, composed, cfg, &diags), cfg, reads, &diags)
+
 	if !diags.Empty() {
 		return merge.Unit{}, diags
 	}
@@ -414,6 +495,58 @@ func binds(imports []emit.Import) []model.Import {
 	for _, one := range imports {
 		out = append(out, model.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
+	return out
+}
+
+// earned adds what the subject gets from its own shape and tags to what the
+// layers contributed.
+//
+// No layer is asked for these and none could be: what they answer is a tag an
+// author wrote and a shape the subject has, neither of which is any layer's
+// business. Added to the layers' contributions rather than kept beside them, so
+// that everything downstream — the collision policy, what a claim reads, what
+// the shared file holds — sees one set of declarations.
+func earned(
+	held *model.Model, units []layer.Unit, cfg Config,
+	reads map[string]bool, diags *diag.Set,
+) []layer.Unit {
+	written, err := scalars.For(scalars.Asked{
+		Subject:   held.Subject,
+		Local:     held.Pkg.PkgPath,
+		Bound:     asked(units),
+		At:        held.Pos,
+		Earning:   reads,
+		Generated: cfg.Generated,
+	}, diags)
+	if err != nil {
+		diags.AddError(err)
+		return units
+	}
+	if len(written) == 0 {
+		return units
+	}
+
+	return append(units, layer.Unit{Provides: written})
+}
+
+// asked returns every import the layers asked for, as a spelling reads them.
+//
+// What it is for is the subject's own name. A subject is named in whatever the
+// emitters below write about it, and a subject from a package sharing a name
+// with one a layer already bound has to be written under another — which is a
+// decision the spelling makes, and can only make when it is told what is taken.
+func asked(units []layer.Unit) []model.Import {
+	var out []model.Import
+
+	for _, unit := range units {
+		for _, one := range unit.Imports {
+			held := model.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased}
+			if one.Path != "" && !slices.Contains(out, held) {
+				out = append(out, held)
+			}
+		}
+	}
+
 	return out
 }
 

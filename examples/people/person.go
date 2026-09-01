@@ -17,7 +17,10 @@ type Person struct {
 	ID int `validate:"min=1"`
 
 	// Name is how the person is listed, and is the first declared sort key.
-	Name string `validate:"required,max=64"`
+	//
+	// The display tag is what asks for a String. It carries no name, so the
+	// name is rendered on its own rather than labelled.
+	Name string `validate:"required,max=64" display:""`
 
 	// Email reaches them. It is projected like any other field; nothing about
 	// a projection needs the field to be interesting.
@@ -25,11 +28,18 @@ type Person struct {
 	// The pattern is deliberately the loose one: a check that insists on a
 	// stricter shape than the world uses rejects real addresses, and the only
 	// way to know an address works is to send to it.
-	Email string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$"`
+	//
+	// The redact tag keeps it out of logs, and is what asks for a LogValue at
+	// all. Without one slog reaches for the fields of a Person and prints every
+	// address it finds.
+	Email string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:""`
 
 	// Age is the second declared sort key, so that the example has a sorted
 	// view over something that is not a string.
-	Age int `validate:"min=0,max=150"`
+	//
+	// Its display tag carries a name, so it is labelled where Name is not —
+	// which is the difference between the two forms of the tag.
+	Age int `validate:"min=0,max=150" display:"age"`
 
 	// Aliases are the other names this person is listed under.
 	//

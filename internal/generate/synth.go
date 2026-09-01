@@ -55,6 +55,10 @@ var (
 	stdJSON     = model.Import{Path: "encoding/json/v2", Name: "json"}
 	stdJSONText = model.Import{Path: "encoding/json/jsontext", Name: "jsontext"}
 	stdIter     = model.Import{Path: "iter", Name: "iter"}
+	stdFmt      = model.Import{Path: "fmt", Name: "fmt"}
+	stdEncoding = model.Import{Path: "encoding", Name: "encoding"}
+	stdSort     = model.Import{Path: "sort", Name: "sort"}
+	stdSlog     = model.Import{Path: "log/slog", Name: "slog"}
 )
 
 // tabled is every package a claim in this file can name, by path.
@@ -73,6 +77,10 @@ var tabled = map[string]model.Import{
 	stdJSON.Path:     stdJSON,
 	stdJSONText.Path: stdJSONText,
 	stdIter.Path:     stdIter,
+	stdFmt.Path:      stdFmt,
+	stdEncoding.Path: stdEncoding,
+	stdSort.Path:     stdSort,
+	stdSlog.Path:     stdSlog,
 }
 
 // spelled is one type a method's signature names, held as the package it comes
@@ -245,6 +253,12 @@ type wants struct {
 type has struct {
 	params  []string
 	results []string
+
+	// pointer records that the method is declared on the pointer, which is what
+	// decides how a claim about it has to be written: a value's method set
+	// holds only its own methods, so a claim naming the value is a claim only
+	// the value-receiver half can answer.
+	pointer bool
 }
 
 // synthesised is every interface this build can decide about, in the order the
@@ -286,6 +300,67 @@ var synthesised = []synthetic{
 			results: []spelled{{name: "error"}},
 		}},
 	},
+	{
+		from: stdFmt, name: "Stringer",
+		needs: []wants{{name: "String", results: []spelled{{name: "string"}}}},
+	},
+	{
+		from: stdEncoding, name: "TextAppender",
+		needs: []wants{{
+			name:    "AppendText",
+			params:  []spelled{{name: "[]byte"}},
+			results: []spelled{{name: "[]byte"}, {name: "error"}},
+		}},
+	},
+	{
+		from: stdEncoding, name: "TextMarshaler",
+		needs: []wants{{name: "MarshalText", results: []spelled{{name: "[]byte"}, {name: "error"}}}},
+	},
+	{
+		from: stdEncoding, name: "TextUnmarshaler",
+		needs: []wants{{
+			name:   "UnmarshalText",
+			params: []spelled{{name: "[]byte"}}, results: []spelled{{name: "error"}},
+		}},
+	},
+	{
+		from: stdSort, name: "Interface",
+		needs: []wants{
+			{name: "Len", results: []spelled{{name: "int"}}},
+			{
+				name:   "Less",
+				params: []spelled{{name: "int"}, {name: "int"}}, results: []spelled{{name: "bool"}},
+			},
+			{name: "Swap", params: []spelled{{name: "int"}, {name: "int"}}},
+		},
+	},
+	{
+		from: stdSlog, name: "LogValuer",
+		needs: []wants{{name: "LogValue", results: []spelled{{from: stdSlog, name: "Value"}}}},
+	},
+}
+
+// claim is one interface a declaration is about to say it satisfies, and which
+// of the type and its pointer says it.
+type claim struct {
+	ref     string
+	through bool
+}
+
+// written returns the claim as the file writes it.
+//
+// Through a pointer where the methods are on one, and through the zero value
+// otherwise. The zero value is spelled *new(T) rather than T{}, which reads
+// better and is not valid for every type a declaration can be: a composite
+// literal needs a struct, an array, a slice or a map underneath it, and a
+// declaration over a named basic — which is what an enum is — has none of
+// those. A claim that does not compile in somebody's package is a worse trade
+// than four characters of noise in one that does.
+func (c claim) written(declared string) string {
+	if c.through {
+		return "_ " + c.ref + " = (*" + declared + ")(nil)"
+	}
+	return "_ " + c.ref + " = *new(" + declared + ")"
 }
 
 // synthesis is what deciding what a declaration claims needs to know.
@@ -326,7 +401,7 @@ func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, [
 	var (
 		earned     []string
 		unnameable []string
-		claims     []string
+		claims     []claim
 		imports    []emit.Import
 		skipped    = named(of.skipped)
 	)
@@ -337,7 +412,8 @@ func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, [
 	// nothing left to compare a skip against, and every skip would look like
 	// one that named something the declaration never claimed.
 	for _, row := range synthesised {
-		if !satisfies(have, row, as) {
+		through, does := satisfies(have, row, as)
+		if !does {
 			continue
 		}
 
@@ -359,7 +435,7 @@ func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, [
 			continue
 		}
 
-		claims = append(claims, ref)
+		claims = append(claims, claim{ref: ref, through: through})
 		imports = append(imports, bound)
 	}
 
@@ -408,18 +484,25 @@ func synthesise(held merge.Unit, of synthesis, diags *diag.Set) (emit.Section, [
 const walkedRef = "All"
 
 // satisfies reports whether the methods a declaration ends up with add up to an
-// interface, as the file being written spells both.
-func satisfies(have map[string]has, one synthetic, as binding) bool {
+// interface, as the file being written spells both, and whether the claim has
+// to be written about the pointer.
+//
+// It has to whenever any of the methods is declared on one. A value's method
+// set holds only the methods declared on the value, so a claim naming the value
+// would not compile — and where every method is on the value, naming the
+// pointer would compile and would understate what the type does.
+func satisfies(have map[string]has, one synthetic, as binding) (through, does bool) {
 	for _, need := range one.needs {
 		got, declares := have[need.name]
 		if !declares {
-			return false
+			return false, false
 		}
 		if !agrees(got.params, need.params, as) || !agrees(got.results, need.results, as) {
-			return false
+			return false, false
 		}
+		through = through || got.pointer
 	}
-	return true
+	return through, true
 }
 
 // agrees reports whether a method's parameters or results are the ones an
@@ -590,7 +673,11 @@ func methods(sections []emit.Section, of synthesis, as binding) map[string]has {
 				continue
 			}
 
-			out[fn.Name.Name] = has{params: rendered(fn.Type.Params), results: rendered(fn.Type.Results)}
+			out[fn.Name.Name] = has{
+				params:  rendered(fn.Type.Params),
+				results: rendered(fn.Type.Results),
+				pointer: indirect(fn),
+			}
 		}
 	}
 
@@ -599,13 +686,25 @@ func methods(sections []emit.Section, of synthesis, as binding) map[string]has {
 		if !is {
 			continue
 		}
+		_, through := signature.Recv().Type().(*types.Pointer)
+
 		out[name] = has{
 			params:  tupled(signature.Params(), of.pkg, as),
 			results: tupled(signature.Results(), of.pkg, as),
+			pointer: through,
 		}
 	}
 
 	return out
+}
+
+// indirect reports whether a method is declared on the pointer.
+func indirect(fn *ast.FuncDecl) bool {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 {
+		return false
+	}
+	_, through := fn.Recv.List[0].Type.(*ast.StarExpr)
+	return through
 }
 
 // rendered returns the types a parameter or result list holds, as they are
@@ -729,7 +828,7 @@ func importing(held model.Spelling) []emit.Import {
 }
 
 // asserted builds the declarations that make the claims.
-func asserted(of synthesis, claims []string, walked string) (emit.Section, error) {
+func asserted(of synthesis, claims []claim, walked string) (emit.Section, error) {
 	w := &strings.Builder{}
 
 	if len(claims) > 0 {
@@ -741,7 +840,7 @@ func asserted(of synthesis, claims []string, walked string) (emit.Section, error
 		w.WriteString("// forty methods can see what they add up to.\n")
 		w.WriteString("var (\n")
 		for _, one := range claims {
-			w.WriteString("\t_ " + one + " = (*" + of.declared + ")(nil)\n")
+			w.WriteString("\t" + one.written(of.declared) + "\n")
 		}
 		w.WriteString(")\n\n")
 	}

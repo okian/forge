@@ -9,9 +9,11 @@ package people
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"iter"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strconv"
@@ -39,6 +41,25 @@ func (v Person) Clone() Person {
 
 	out.Aliases = slices.Clone(v.Aliases)
 	return out
+}
+
+// String returns the subject as the display tags on its fields ask for it.
+//
+// The fields in the order they were written, separated by a space, each
+// labelled where its tag gave it a name. It is a rendering for a person to
+// read rather than a format anything should parse: nothing here escapes a
+// separator that turns up inside a value, because a reader can see what
+// happened and a parser was never the point.
+func (v Person) String() string {
+	var b strings.Builder
+
+	b.WriteString(v.Name)
+
+	b.WriteString(" ")
+	b.WriteString("age=")
+	b.WriteString(strconv.FormatInt(int64(v.Age), 10))
+
+	return b.String()
 }
 
 // encodePeoplePersonJSONTo writes a Person as JSON.
@@ -261,6 +282,26 @@ func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	}
 	_, err := dec.ReadToken()
 	return err
+}
+
+// LogValue returns the subject as it may be logged.
+//
+// Every exported field, with the ones tagged redact replaced by a fixed
+// string. Fixed rather than shortened or starred: a length is something,
+// a prefix is more, and a field marked as not for logs was marked by
+// somebody who did not want to work out which of those is safe.
+//
+// Implementing this is what takes the field out of a log. slog reaches for
+// a value's fields when the value does not say otherwise, so a type with a
+// secret in it and no LogValue prints the secret.
+func (v Person) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int64("ID", int64(v.ID)),
+		slog.String("Name", v.Name),
+		slog.String("Email", "[redacted]"),
+		slog.Int64("Age", int64(v.Age)),
+		slog.Any("Aliases", v.Aliases),
+	)
 }
 
 // patternPersonEmail is the pattern Email is checked against.
@@ -638,3 +679,16 @@ func (s Seq[U]) Reduce[A any](initial A, combine func(A, U) A) A {
 	}
 	return out
 }
+
+// Person satisfies these.
+//
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ json.MarshalerTo     = *new(Person)
+	_ json.UnmarshalerFrom = (*Person)(nil)
+	_ fmt.Stringer         = *new(Person)
+	_ slog.LogValuer       = *new(Person)
+)

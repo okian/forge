@@ -20,10 +20,16 @@ import (
 func TestWhatADeclarationClaims(t *testing.T) {
 	held := claiming(t, "Persons")
 
+	// Each named with the half of the type that satisfies it. Writing a
+	// document needs nothing of the container but its elements and is declared
+	// on the value; reading one into it assigns, so it is declared on the
+	// pointer — and a claim naming the value for that one would not compile,
+	// while one naming the pointer for the others would understate what the
+	// type does.
 	for _, want := range []string{
-		"_ io.WriterTo          = (*Persons)(nil)",
+		"_ io.WriterTo          = *new(Persons)",
 		"_ io.ReaderFrom        = (*Persons)(nil)",
-		"_ json.MarshalerTo     = (*Persons)(nil)",
+		"_ json.MarshalerTo     = *new(Persons)",
 		"_ json.UnmarshalerFrom = (*Persons)(nil)",
 	} {
 		if !strings.Contains(held, want) {
@@ -44,8 +50,8 @@ func TestTheWalkIsClaimedWithoutBeingCalled(t *testing.T) {
 	if !strings.Contains(held, "var _ func(*Persons) iter.Seq[Person] = (*Persons).All") {
 		t.Errorf("the walk's signature is not claimed:\n%s", held)
 	}
-	if strings.Contains(held, "= Persons{}") || strings.Contains(held, "= Persons(nil)") {
-		t.Errorf("a claim names a value where a method expression would do:\n%s", held)
+	if strings.Contains(held, "iter.Seq[Person] = *new(Persons)") {
+		t.Errorf("the walk names a value where a method expression would do:\n%s", held)
 	}
 }
 

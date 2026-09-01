@@ -11,6 +11,7 @@ import (
 	"cmp"
 	"iter"
 	"slices"
+	"sort"
 )
 
 // PersonsSeq is a lazy view over the elements of Persons.
@@ -44,6 +45,23 @@ func (c Persons) SortedByName() []Person {
 	return c.ordered(func(v Person) string {
 		return v.Name
 	})
+}
+
+// Less reports whether the element at i sorts before the one at j, by Name. It
+// is one of the three sort.Sort takes: the storage answers the length, and Swap
+// below is the other. The order is Name's because it is the one sort key this
+// declaration names — one naming several has several orders and no reason to
+// prefer any of them, and gets its sorted views without these. Unlike
+// SortedByName, sorting through this rearranges the collection rather than
+// answering with a copy of it in order.
+func (c Persons) Less(i, j int) bool {
+	return c[i].Name < c[j].Name
+}
+
+// Swap exchanges the elements at i and j, which is the last of the three
+// sort.Sort takes.
+func (c Persons) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
 }
 
 // project collects one value from every element, in the order the elements come
@@ -120,11 +138,19 @@ func (s *Persons) AppendSeq(seq iter.Seq[Person]) { *s = slices.AppendSeq(*s, se
 // container instead.
 func (s *Persons) Reset() { *s = (*s)[:0] }
 
-// The walk's own signature, checked when the package is built.
+// Persons satisfies these.
 //
-// A method expression is resolved by the compiler and costs nothing at run
-// time, where an interface assertion would have to name a value and initialise
-// it. What it holds the walk to is the element type of the declaration, so a
-// container that walks something else fails here rather than wherever somebody
-// ranges over it.
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ sort.Interface = *new(Persons)
+)
+
+// And the walk's own signature, checked without calling it.
+//
+// A method expression is resolved when the package is built and costs nothing
+// at run time, where an interface assertion would have to name a value and
+// initialise it.
 var _ func(*Persons) iter.Seq[Person] = (*Persons).All

@@ -102,6 +102,45 @@
 // Unlike the directives above, skip is forge's own rather than a layer's, and
 // no layer may take a directive by that name.
 //
+// # Tags on the subject
+//
+// Some of what forge writes comes from the subject rather than from a marker.
+// Two struct tags ask for it:
+//
+//	type Person struct {
+//		Name  string `display:""`
+//		Age   int    `display:"age"`
+//		Email string `redact:""`
+//	}
+//
+// A display tag puts the field in the type's String, in the order the fields
+// were declared; a tag with a name labels it, so the Person above reads as
+// "Ada age=36". Nothing is rendered through fmt, so a String costs what the one
+// you would have written costs.
+//
+// A redact tag writes a LogValue with that field replaced by a fixed string.
+// Implementing it is what takes the field out of a log — slog reaches for a
+// value's fields when the value does not say otherwise, so a type with a secret
+// in it and no LogValue prints the secret.
+//
+// A subject that is a struct around a single field of a predeclared type, whose
+// display tag carries no label, also gets a text codec — MarshalText,
+// AppendText and UnmarshalText. Its text is that field's, so there is nothing
+// to decide; a struct with two fields has a format, and a format is something
+// you pick rather than something forge guesses.
+//
+// The tag is what asks for it, for the same reason it asks for the String: a
+// wrapper's text form and its rendering are one question, and encoding/json
+// takes a TextMarshaler for a type with no JSON codec of its own — so a codec
+// written unasked would turn {"ID":"x"} into "x" in every document the type
+// appears in. A label means the rendering is for a person to read, which is a
+// different answer to that question, so a labelled wrapper reads and does not
+// encode.
+//
+// A collection that names exactly one sort key also gets Less and Swap, so that
+// sort.Sort takes it directly. One naming several has several orders and no
+// reason to prefer any of them, and gets its sorted views without these.
+//
 // # Running the generator
 //
 // Generation is driven by the forge command, usually through go generate:
