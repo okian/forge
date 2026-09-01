@@ -1,6 +1,10 @@
 package shape
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/types"
 	"slices"
 	"strconv"
 	"strings"
@@ -356,6 +360,51 @@ func (s Shape) Names() []string {
 	out := make([]string, len(s.Surface))
 	for i, method := range s.Surface {
 		out[i] = method.Name
+	}
+	return out
+}
+
+// Rendered returns the parameters and the results of a method's signature, each
+// as the type it was written as.
+//
+// Parsed rather than scanned. A signature here is written as it reads in source
+// — "(seq iter.Seq[Person]) error" — and the parser is what already knows that
+// the comma in a type argument list separates nothing, and that an entry
+// written with several names is several values of one type.
+//
+// What comes back is a spelling and not an identity, because a surface is
+// written for a person to read: the element in it is spelled by its bare name
+// whatever the file that will hold the method would have to call it. So a
+// caller comparing against go/types can trust the counts and the predeclared
+// names, and nothing else.
+func (m Method) Rendered() (params, results []string, err error) {
+	parsed, err := parser.ParseExpr("func" + m.Signature)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fn, ok := parsed.(*ast.FuncType)
+	if !ok {
+		return nil, nil, fmt.Errorf("%q is not a method signature", m.Signature)
+	}
+
+	return listed(fn.Params), listed(fn.Results), nil
+}
+
+// listed returns one entry per value a parameter or result list holds, as the
+// type it was written as: an entry written with several names is several values
+// of one type, and one written with no name is one value.
+func listed(list *ast.FieldList) []string {
+	if list == nil {
+		return nil
+	}
+
+	var out []string
+	for _, field := range list.List {
+		written := types.ExprString(field.Type)
+		for range max(len(field.Names), 1) {
+			out = append(out, written)
+		}
 	}
 	return out
 }

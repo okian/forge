@@ -125,7 +125,8 @@ func regenerating(t *testing.T) map[string][]byte {
 		t.Fatalf("the example is %d packages, want 1", len(packages))
 	}
 
-	files, problems := generated.Package(packages[0].path, packages[0].name, packages[0].requests, configured(layers.Builtins()))
+	files, problems := generated.Package(packages[0].path, packages[0].name, packages[0].requests,
+		against(layers.Builtins(), found.Session))
 	if !problems.Empty() {
 		t.Fatalf("generating the example was refused:\n%s", problems.Render())
 	}

@@ -105,7 +105,7 @@ func freshness(found resolved) (diag.Set, int) {
 		checked int
 	)
 
-	cfg := configured(layers.Builtins())
+	cfg := against(layers.Builtins(), found.Session)
 
 	for _, pkg := range grouped(found.Requests) {
 		if pkg.dir == "" {

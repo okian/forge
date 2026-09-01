@@ -8,6 +8,7 @@ import (
 	generated "github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
+	"github.com/okian/forge/internal/load"
 )
 
 // generate resolves declarations and writes the files they ask for.
@@ -54,7 +55,7 @@ func generate(env *environment, cmd command, args []string) error {
 // Keeping them one path is what stops --dry-run and --diff from disagreeing
 // about what would happen.
 func emitting(env *environment, found resolved, hold, show bool) error {
-	cfg := configured(layers.Builtins())
+	cfg := against(layers.Builtins(), found.Session)
 
 	var (
 		problems diag.Set
@@ -131,6 +132,19 @@ func configured(catalog *layer.Registry) generated.Config {
 		},
 		Forge: self, Markers: markers, Toolchain: toolchain,
 	}
+}
+
+// against returns the same configuration with what the load found already
+// generated, which is what the collision check needs and nothing else does.
+//
+// Separate from the description of the build because it is a fact about a run:
+// a verb that composes a stack without generating one has no load to answer it
+// from, and would have to be given a load it has no other use for.
+func against(catalog *layer.Registry, session *load.Session) generated.Config {
+	cfg := configured(catalog)
+	cfg.Generated = session.Generated()
+
+	return cfg
 }
 
 // placing does what the flags asked with one package's files.

@@ -27,6 +27,8 @@ var (
 	codeFileCollision = diag.Register(4006, "two declarations want one file")
 	codeNoProvider    = diag.Register(4007, "nothing provides a helper a layer requires")
 	codeLayerFailed   = diag.Register(4008, "layer could not generate")
+	codeNothingGiven  = diag.Register(4014, "a layer handed over nothing where a declaration should be")
+	codeImportUnnamed = diag.Register(4015, "a layer named an import path that is empty")
 )
 
 // Request is one declaration to generate for.
@@ -54,6 +56,19 @@ type Config struct {
 	Forge     string
 	Markers   string
 	Toolchain string
+
+	// Generated reports whether a declaration was written by a generator rather
+	// than by hand, as [load.Session.Generated] answers it.
+	//
+	// The collision check needs it and nothing else here does. What a package
+	// already declares is what generated code may not redeclare — and a
+	// generated file is loaded with the package it belongs to, so a run without
+	// this would report the whole of its own last output as a collision with
+	// itself.
+	//
+	// No function means nothing was generated, which is what a caller with no
+	// load has and what is true of the run before the first one.
+	Generated func(token.Pos) bool
 }
 
 // File is one file generation would write.
@@ -334,10 +349,31 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 	// written: a refining layer over no storage has one filled in.
 	held.Stack = composed.Stack()
 
+	units := contributions(held, composed, cfg, &diags)
+	if !diags.Empty() {
+		return merge.Unit{}, diags
+	}
+
+	out := policed(merge.Units(units...), policing{
+		held:     holds(held.Pkg, cfg.Generated),
+		exposed:  composed.Exposed,
+		at:       held.Pos,
+		declared: held.Name,
+	}, &diags)
+
+	if !diags.Empty() {
+		return merge.Unit{}, diags
+	}
+	return out, diags
+}
+
+// contributions asks every layer of a composed stack what it writes.
+//
+// Outermost first in the file, innermost first in the walk: a layer is
+// generated against what is beneath it, and read above what is above it.
+func contributions(held *model.Model, composed compose.Composed, cfg Config, diags *diag.Set) []layer.Unit {
 	units := make([]layer.Unit, 0, len(composed.Steps))
 
-	// Outermost first in the file, innermost first in the walk: a layer is
-	// generated against what is beneath it, and read above what is above it.
 	for i := len(composed.Steps) - 1; i >= 0; i-- {
 		step := composed.Steps[i]
 
@@ -354,14 +390,58 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 			continue
 		}
 
+		if wrong := misgiven(unit, step.Layer.Origin.Name, held.Pos); len(wrong) > 0 {
+			for _, one := range wrong {
+				diags.Add(one)
+			}
+			continue
+		}
+
 		units = append(units, unit)
 	}
 
-	if !diags.Empty() {
-		return merge.Unit{}, diags
-	}
-	return merge.Units(units...), diags
+	return units
 }
+
+// misgiven reports what is wrong with what one layer handed over, before the
+// merge folds it in with everybody else's.
+//
+// Here rather than after the merge, because the answer names the layer — and
+// after the merge there is no layer to name. Both are things the merge would
+// otherwise pass over in silence: a gap where a declaration should be is
+// printed as nothing at all, and an import with no path is dropped, leaving a
+// file that names a package it does not import and a diagnostic pointing at the
+// generated line rather than at whoever wrote it.
+func misgiven(unit layer.Unit, named string, at token.Position) []diag.Diagnostic {
+	var out []diag.Diagnostic
+
+	gaps := 0
+	for _, decl := range unit.Decls {
+		if decl == nil {
+			gaps++
+		}
+	}
+	if gaps > 0 {
+		out = append(out, diag.New(codeNothingGiven, at,
+			"the %s layer handed over %d declarations that are not there", named, gaps).
+			WithHint("%s", reportFault))
+	}
+
+	for _, one := range unit.Imports {
+		if one.Path == "" {
+			out = append(out, diag.New(codeImportUnnamed, at,
+				"the %s layer asked for an import bound to %s with no path", named, one.Name).
+				WithHint("%s", reportFault))
+		}
+	}
+
+	return out
+}
+
+// reportFault says what an author can do about a layer that misbehaved, which
+// is nothing except say so.
+const reportFault = "this is a fault in the layer rather than in the declaration; " +
+	"report it with the declaration that produced it"
 
 // generated asks a layer for its unit, surviving one that answers with a panic.
 //

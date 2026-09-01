@@ -2,9 +2,6 @@ package jsoncodec
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/types"
 	"strconv"
 	"strings"
 
@@ -204,7 +201,7 @@ func streaming(ctx *layer.Context, of *form) (stack, error) {
 func walking(ctx *layer.Context, one shape.Method) error {
 	want := walkMethod + "() " + sequenceOpens + "E]"
 
-	params, results, err := signature(one.Signature)
+	params, results, err := one.Rendered()
 	if err != nil || len(params) != 0 || len(results) != 1 {
 		return notTheContract(ctx, one, want)
 	}
@@ -216,7 +213,7 @@ func walking(ctx *layer.Context, one shape.Method) error {
 
 // measuring checks the method a container says how much it can hold through.
 func measuring(ctx *layer.Context, one shape.Method) error {
-	params, results, err := signature(one.Signature)
+	params, results, err := one.Rendered()
 	if err != nil || len(params) != 0 || len(results) != 1 || results[0] != countResult {
 		return notTheContract(ctx, one, capMethod+"() "+countResult)
 	}
@@ -229,7 +226,7 @@ func measuring(ctx *layer.Context, one shape.Method) error {
 // Both are checked before either is used, so that a layer offering one of them
 // in the wrong shape is reported rather than half-generated against.
 func filling(ctx *layer.Context, add, reset shape.Method) (refuses bool, err error) {
-	params, results, err := signature(reset.Signature)
+	params, results, err := reset.Rendered()
 	if err != nil || len(params) != 0 || len(results) != 0 {
 		return false, notTheContract(ctx, reset, resetMethod+"()")
 	}
@@ -237,7 +234,7 @@ func filling(ctx *layer.Context, add, reset shape.Method) (refuses bool, err err
 	want := appendMethod + "(" + sequenceOpens + "E]), and an " + errorResult +
 		" where it can refuse one"
 
-	params, results, err = signature(add.Signature)
+	params, results, err = add.Rendered()
 	switch {
 	case err != nil, len(params) != 1, len(results) > 1:
 		return false, notTheContract(ctx, add, want)
@@ -261,44 +258,6 @@ func notTheContract(ctx *layer.Context, one shape.Method, want string) error {
 		"%s cannot be given a JSON codec: the %s layer offers %s%s, and a codec is written over %s",
 		ctx.Model.Name, one.Owner.Name, one.Name, one.Signature, want).
 		WithHint("%s", contractHint)
-}
-
-// signature returns the parameters and the results of a rendered method
-// signature, each as the type it was written as.
-//
-// Parsed rather than scanned. A signature on a surface is written as it reads
-// in source — "(seq iter.Seq[Person]) error" — and the parser is what already
-// knows that the comma in a type argument list separates nothing.
-func signature(rendered string) (params, results []string, err error) {
-	parsed, err := parser.ParseExpr("func" + rendered)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	fn, ok := parsed.(*ast.FuncType)
-	if !ok {
-		return nil, nil, fmt.Errorf("%q is not a function signature", rendered)
-	}
-
-	return listed(fn.Params), listed(fn.Results), nil
-}
-
-// listed returns one entry per value a parameter or result list holds, as the
-// type it was written as: an entry written with several names is several values
-// of one type, and one written with no name is one value.
-func listed(list *ast.FieldList) []string {
-	if list == nil {
-		return nil
-	}
-
-	var out []string
-	for _, field := range list.List {
-		written := types.ExprString(field.Type)
-		for range max(len(field.Names), 1) {
-			out = append(out, written)
-		}
-	}
-	return out
 }
 
 // container writes the codec for the declared type, which is the whole stack as
