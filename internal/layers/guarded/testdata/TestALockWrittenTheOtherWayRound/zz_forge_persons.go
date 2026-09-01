@@ -98,11 +98,18 @@ func (g *Persons) RDo(f func(v PersonsView)) {
 // those from here is a write to memory another goroutine reads under the
 // lock, which the lock cannot see and will not stop. Treat what comes
 // back as readable rather than as yours.
+//
+// One allocation, because the container can say how much it holds before
+// the walk starts. A copy that grew as it went would allocate once per
+// doubling and copy what it had each time — which is what collecting a
+// sequence of unknown length has to do, and is not what this is.
 func (g *Persons) Snapshot() []Person {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	return slices.Collect(g.held.All())
+	return slices.AppendSeq(
+		make([]Person, 0, g.held.Len()),
+		g.held.All())
 }
 
 // Len returns how many elements there are.

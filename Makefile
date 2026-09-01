@@ -48,8 +48,23 @@ fmt-check: require-golangci ## Fail, with a diff, if any source file is not form
 	golangci-lint fmt --diff
 
 .PHONY: vet
-vet: ## Run go vet over the module.
+vet: spec-vet ## Run go vet over the module, in both of the builds it is written for.
 	$(GO) vet ./...
+
+# The other half of a spec-form declaration.
+#
+# Generation writes a stub file under the marker package's build tag, mirroring
+# the API the untagged build gets, so that a caller compiles either way. Nothing
+# else in this Makefile builds with that tag — `go vet ./...` uses the default
+# one — so a stub file that is wrong is a file no gate reads. It fails at the
+# next `forge generate`, in somebody else's checkout, which is the worst place
+# for it.
+#
+# Named packages rather than ./..., because the tag means something only where a
+# declaration is written under it, and the rest of the module has no such file.
+.PHONY: spec-vet
+spec-vet: ## Type-check the packages that carry spec-form declarations, under the marker tag.
+	$(GO) vet -tags forgespec ./examples/... ./internal/racetest/matrix
 
 .PHONY: lint
 lint: require-golangci ## Run golangci-lint over the module.
@@ -162,6 +177,18 @@ example: ## Regenerate the worked example under examples/.
 .PHONY: fresh
 fresh: ## Run forge check over the worked example under examples/.
 	$(GO) run -buildvcs=false ./cmd/forge check ./examples/...
+
+# The race matrix is generated like the example and for the same reason — it is
+# code that has to be compiled and run, so it is committed — but it is written
+# by forge's own harness rather than by the verb, because what it holds is one
+# declaration per concurrent layer and that list comes from the catalog.
+#
+# Regenerating is how a new concurrent layer gets a stress test: the harness
+# writes the declaration, the package and the test, and `make race` runs the
+# result under the detector.
+.PHONY: race-matrix
+race-matrix: ## Regenerate the race matrix under internal/racetest/matrix.
+	$(GO) test ./internal/racetest -update
 
 .PHONY: check
 check: fmt-check vet lint cover ## Run every gate CI runs.

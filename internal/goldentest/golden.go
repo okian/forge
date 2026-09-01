@@ -116,6 +116,56 @@ func Compare(t T, name string, got []byte) {
 	}
 }
 
+// At holds bytes to the copy committed at a path, and records them the first
+// time or when asked to.
+//
+// [Compare] with the golden directory taken out of it. What that is for is
+// output whose recorded copy has to be compiled rather than merely kept: a
+// package a test generates into is one the go command builds, and a file under
+// testdata is one it never sees. Everything else is the same — a first run
+// records and fails, a mismatch prints the disagreement and names the flag —
+// so a caller keeping its output somewhere other than testdata does not also
+// have to reimplement how a golden behaves.
+//
+// The path has to name somewhere below the package running the test, for the
+// reason [Compare]'s does: this writes a file nobody asked for on the first
+// run, and a path that climbed would write it outside the package.
+func At(t T, path string, got []byte) {
+	t.Helper()
+
+	for part := range strings.SplitSeq(filepath.ToSlash(path), "/") {
+		if !addressable(part) {
+			t.Fatalf("%s does not name a file below the package under test", path)
+			return
+		}
+	}
+
+	held := filepath.FromSlash(path)
+
+	if Updating() {
+		record(t, held, got)
+		return
+	}
+
+	// Every element of the path was just refused unless it names one step down,
+	// so nothing left in it can reach outside the package.
+	want, err := os.ReadFile(held) //nolint:gosec // addressable already held the path inside the package
+	if os.IsNotExist(err) {
+		record(t, held, got)
+		t.Errorf("%s had not been recorded, and now holds what this run produced; read it and run again", path)
+		return
+	}
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+		return
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s is not what was recorded:\n%s\nif the change is deliberate, rerun with -%s",
+			path, difference("recorded", string(want), "generated", string(got)), updateName)
+	}
+}
+
 // where places a test's golden under the golden directory, refusing a name that
 // would leave it.
 //

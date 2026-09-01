@@ -103,3 +103,38 @@ github.com/okian/forge/examples/people  CloneByHand     1  32
 github.com/okian/forge/internal/shared/seq/tmpl  Chain                 9  264
 github.com/okian/forge/internal/shared/seq/tmpl  ChainIntoOwnedMemory  7  192
 github.com/okian/forge/internal/shared/seq/tmpl  Range                 3   56
+
+# The lock, and the same work under a mutex somebody wrote by hand.
+#
+# Nothing allocates on either side of the pair, which is the claim: a lock that
+# allocated would be a lock nobody could put on a hot path, and the arrangement
+# that makes the unlocked methods unreachable — a view built and handed to a
+# closure — is arranged so that it costs nothing to build.
+#
+# What the timings say, which nothing here gates, is that a count costs what a
+# hand-written one costs (3.6ns against 3.5ns on an M3, so the difference is the
+# measurement) and a write scope costs about five nanoseconds more (11.4 against
+# 6.5). Those five are the closure and the view, and they are what a caller pays
+# for not being able to reach the container without taking the lock. Written
+# down because "overhead ≈ 0" is true of one of the two and not of the other,
+# and the half it is not true of is the half worth knowing about.
+github.com/okian/forge/examples/people  GuardedScope           0  0
+github.com/okian/forge/examples/people  GuardedScopeByHand     0  0
+github.com/okian/forge/examples/people  GuardedLen             0  0
+github.com/okian/forge/examples/people  GuardedLenByHand       0  0
+
+# The copy a guarded stack hands out, and the document written from one.
+#
+# One allocation, which is the copy itself: the container is asked how much it
+# holds before the walk starts, so the slice is made once at the right size
+# rather than grown as it goes. It was seven allocations and ten kilobytes when
+# this benchmark was first written — a doubling per growth, copying what it had
+# each time — and the figure is here so that it cannot quietly go back.
+#
+# The encode is the same one allocation, so the copy is the whole of what
+# encoding a guarded container costs over encoding an unguarded one. That is the
+# bargain the layer's default makes: one copy of the elements per document, in
+# exchange for never holding the lock against every writer for as long as the
+# caller's writer takes to accept the bytes.
+github.com/okian/forge/examples/people  GuardedSnapshot   1  4866
+github.com/okian/forge/examples/people  GuardedEncode     1  4864

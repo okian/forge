@@ -3,11 +3,11 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs 8e45bdbbdf0f2fc9
+// inputs e0b332944ba40e47
 
 //go:build !forgespec
 
-package model
+package matrix
 
 import (
 	"encoding/json/jsontext"
@@ -17,24 +17,24 @@ import (
 	"sync"
 )
 
-// Persons is Person behind a read-write lock.
+// GuardedPersons is Person behind a read-write lock.
 //
-// Everything the stack below offers is on personsHeld, which this holds
+// Everything the stack below offers is on guardedPersonsHeld, which this holds
 // and nothing else can reach. What reaches it is a scope: Do under the
-// write lock, RDo under the read lock, each handed a PersonsView for
+// write lock, RDo under the read lock, each handed a GuardedPersonsView for
 // as long as the call lasts.
 //
 // The zero value holds a container that was never made and can hold
-// nothing, so use NewPersons.
+// nothing, so use NewGuardedPersons.
 //
 // The lock must not be copied once it has been used, which is why every
 // method here is on the pointer.
-type Persons struct {
+type GuardedPersons struct {
 	mu   sync.RWMutex
-	held personsHeld
+	held guardedPersonsHeld
 }
 
-// NewPersons returns a lock around a new personsHeld.
+// NewGuardedPersons returns a lock around a new guardedPersonsHeld.
 //
 // The container beneath a lock is made rather than declared — it has to be
 // told how much it holds — so this is the way in, and the zero value of
@@ -42,8 +42,8 @@ type Persons struct {
 //
 // What is made here is reachable through this lock and through nothing
 // else, which is the whole of what the lock is for.
-func NewPersons() *Persons {
-	return &Persons{held: *newPersonsHeld()}
+func NewGuardedPersons() *GuardedPersons {
+	return &GuardedPersons{held: *newGuardedPersonsHeld()}
 }
 
 // Do runs f with the write lock held.
@@ -53,11 +53,11 @@ func NewPersons() *Persons {
 // with nothing held. The lock is not reentrant, so a call back into this
 // value from inside f deadlocks — which the view cannot be used to write,
 // and the value f closed over still can.
-func (g *Persons) Do(f func(v PersonsView)) {
+func (g *GuardedPersons) Do(f func(v GuardedPersonsView)) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	f(PersonsView{held: &g.held})
+	f(GuardedPersonsView{held: &g.held})
 }
 
 // RDo runs f with the read lock held.
@@ -78,11 +78,11 @@ func (g *Persons) Do(f func(v PersonsView)) {
 // contention and pass every test that runs without it. Do from inside f
 // deadlocks outright, since it waits for the read lock f is holding.
 // Read what you need through the view.
-func (g *Persons) RDo(f func(v PersonsView)) {
+func (g *GuardedPersons) RDo(f func(v GuardedPersonsView)) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	f(PersonsView{held: &g.held})
+	f(GuardedPersonsView{held: &g.held})
 }
 
 // Snapshot returns the elements, copied under the read lock.
@@ -103,7 +103,7 @@ func (g *Persons) RDo(f func(v PersonsView)) {
 // the walk starts. A copy that grew as it went would allocate once per
 // doubling and copy what it had each time — which is what collecting a
 // sequence of unknown length has to do, and is not what this is.
-func (g *Persons) Snapshot() []Person {
+func (g *GuardedPersons) Snapshot() []Person {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -120,7 +120,7 @@ func (g *Persons) Snapshot() []Person {
 //
 // It is a fact about the past by the time it is read, like every count of
 // something another goroutine may be changing.
-func (g *Persons) Len() int {
+func (g *GuardedPersons) Len() int {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -138,7 +138,7 @@ func (g *Persons) Len() int {
 // It costs one copy of the elements per document. A caller who owns their
 // writer and would rather not pay it can ask for the lock to be held
 // instead.
-func (g *Persons) MarshalJSONTo(enc *jsontext.Encoder) error {
+func (g *GuardedPersons) MarshalJSONTo(enc *jsontext.Encoder) error {
 	held := g.Snapshot()
 
 	if err := enc.WriteToken(jsontext.BeginArray); err != nil {
@@ -152,7 +152,7 @@ func (g *Persons) MarshalJSONTo(enc *jsontext.Encoder) error {
 	return enc.WriteToken(jsontext.EndArray)
 }
 
-// PersonsView is what a scope over Persons hands the function it runs.
+// GuardedPersonsView is what a scope over GuardedPersons hands the function it runs.
 //
 // No method on it names this type or the one it guards, so the call that
 // deadlocks by accident — reaching for the value you were just handed and
@@ -169,68 +169,68 @@ func (g *Persons) MarshalJSONTo(enc *jsontext.Encoder) error {
 // is declared in your own package, so its field is reachable by hand and
 // its zero value exists — neither of which any arrangement of methods can
 // prevent.
-type PersonsView struct {
-	held *personsHeld
+type GuardedPersonsView struct {
+	held *guardedPersonsHeld
 }
 
 // Cap how many elements the container can hold
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Cap() int {
+func (v GuardedPersonsView) Cap() int {
 	return v.held.Cap()
 }
 
 // Len how many elements the container holds
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Len() int {
+func (v GuardedPersonsView) Len() int {
 	return v.held.Len()
 }
 
 // All walks from the oldest element to the newest
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) All() iter.Seq[Person] {
+func (v GuardedPersonsView) All() iter.Seq[Person] {
 	return v.held.All()
 }
 
 // Backward walks from the newest element to the oldest
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Backward() iter.Seq[Person] {
+func (v GuardedPersonsView) Backward() iter.Seq[Person] {
 	return v.held.Backward()
 }
 
 // Reset empties the container, keeping the buffer it was constructed with
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Reset() {
+func (v GuardedPersonsView) Reset() {
 	v.held.Reset()
 }
 
 // Push adds an element, dropping the oldest to make room
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Push(a0 Person) {
+func (v GuardedPersonsView) Push(a0 Person) {
 	v.held.Push(a0)
 }
 
 // AppendSeq adds every element a sequence yields, dropping older ones as it fills
 //
 // It is the same method the stack below declares, reached through the view.
-func (v PersonsView) AppendSeq(a0 iter.Seq[Person]) {
+func (v GuardedPersonsView) AppendSeq(a0 iter.Seq[Person]) {
 	v.held.AppendSeq(a0)
 }
 
-// personsHeldFixedCap is how many elements the buffer holds.
+// guardedPersonsHeldFixedCap is how many elements the buffer holds.
 //
 // It is a constant rather than a field, so the size is part of the type rather
 // than of a value: every container of this type holds the same number, the
 // compiler knows it, and no caller can be handed one sized differently from the
 // one it expected.
-const personsHeldFixedCap = 8
+const guardedPersonsHeldFixedCap = 64
 
-// personsHeld holds a fixed number of the most recent elements.
+// guardedPersonsHeld holds a fixed number of the most recent elements.
 //
 // The buffer is allocated once and never grows, so a producer that outruns its
 // consumer costs a bounded amount of memory rather than an increasing one. That
@@ -245,40 +245,40 @@ const personsHeldFixedCap = 8
 // The zero value has no buffer at all, which is not the same as an empty
 // container and is not something any method can make sense of. Adding to one
 // says so rather than carrying on. Use the constructor.
-type personsHeld struct {
+type guardedPersonsHeld struct {
 	buf  []Person
 	head int
 	n    int
 }
 
-// newPersonsHeld returns an empty container, whose capacity is the one the
+// newGuardedPersonsHeld returns an empty container, whose capacity is the one the
 // declaration fixed.
-func newPersonsHeld() *personsHeld {
-	return &personsHeld{buf: make([]Person, personsHeldFixedCap)}
+func newGuardedPersonsHeld() *guardedPersonsHeld {
+	return &guardedPersonsHeld{buf: make([]Person, guardedPersonsHeldFixedCap)}
 }
 
 // Cap reports how many elements the container can hold, which does not change.
-func (r *personsHeld) Cap() int { return len(r.buf) }
+func (r *guardedPersonsHeld) Cap() int { return len(r.buf) }
 
 // Len reports how many elements the container holds, which is never more than
 // its capacity.
-func (r *personsHeld) Len() int { return r.n }
+func (r *guardedPersonsHeld) Len() int { return r.n }
 
 // Push adds an element, dropping the oldest one if the buffer is full.
 //
 // Dropping rather than growing is the point of the type: the newest elements
 // are the ones kept, and how much memory that costs was decided when the
 // container was made.
-func (r *personsHeld) Push(v Person) {
+func (r *guardedPersonsHeld) Push(v Person) {
 	r.built()
 
 	if r.n == len(r.buf) {
 		r.buf[r.head] = v
-		r.head = personsHeldIndexOf(r.head, 1, len(r.buf))
+		r.head = guardedPersonsHeldIndexOf(r.head, 1, len(r.buf))
 		return
 	}
 
-	r.buf[personsHeldIndexOf(r.head, r.n, len(r.buf))] = v
+	r.buf[guardedPersonsHeldIndexOf(r.head, r.n, len(r.buf))] = v
 	r.n++
 }
 
@@ -293,12 +293,12 @@ func (r *personsHeld) Push(v Person) {
 // Fixing that too would mean copying the elements, which is the one thing a
 // container that exists to bound its memory should not do behind a caller's
 // back. Walk it, or push to it, or take a copy and do both.
-func (r *personsHeld) All() iter.Seq[Person] {
+func (r *guardedPersonsHeld) All() iter.Seq[Person] {
 	held, from, size := r.n, r.head, len(r.buf)
 
 	return func(yield func(Person) bool) {
 		for i := range held {
-			if !yield(r.buf[personsHeldIndexOf(from, i, size)]) {
+			if !yield(r.buf[guardedPersonsHeldIndexOf(from, i, size)]) {
 				return
 			}
 		}
@@ -307,12 +307,12 @@ func (r *personsHeld) All() iter.Seq[Person] {
 
 // Backward walks the container from the newest element to the oldest. Like All,
 // which slots it covers is fixed when it is called.
-func (r *personsHeld) Backward() iter.Seq[Person] {
+func (r *guardedPersonsHeld) Backward() iter.Seq[Person] {
 	held, from, size := r.n, r.head, len(r.buf)
 
 	return func(yield func(Person) bool) {
 		for i := held - 1; i >= 0; i-- {
-			if !yield(r.buf[personsHeldIndexOf(from, i, size)]) {
+			if !yield(r.buf[guardedPersonsHeldIndexOf(from, i, size)]) {
 				return
 			}
 		}
@@ -324,7 +324,7 @@ func (r *personsHeld) Backward() iter.Seq[Person] {
 //
 // A sequence longer than the container leaves the last capacity elements of it,
 // which is what pushing them one at a time would leave.
-func (r *personsHeld) AppendSeq(seq iter.Seq[Person]) {
+func (r *guardedPersonsHeld) AppendSeq(seq iter.Seq[Person]) {
 	for v := range seq {
 		r.Push(v)
 	}
@@ -340,7 +340,7 @@ func (r *personsHeld) AppendSeq(seq iter.Seq[Person]) {
 // so a container holding the last reference to something large holds it until
 // then. Nothing can read them: what a walk covers is the count, and the count
 // is what this sets to none.
-func (r *personsHeld) Reset() { r.head, r.n = 0, 0 }
+func (r *guardedPersonsHeld) Reset() { r.head, r.n = 0, 0 }
 
 // built stops a container that was never constructed from being added to.
 //
@@ -350,13 +350,13 @@ func (r *personsHeld) Reset() { r.head, r.n = 0, 0 }
 // which is true and useless, since a caller checking for a full container reads
 // that as back-pressure and retries for ever. Saying the same thing both ways
 // makes the mistake one answer rather than two.
-func (r *personsHeld) built() {
+func (r *guardedPersonsHeld) built() {
 	if len(r.buf) == 0 {
 		panic("forge: this container was never constructed; use the constructor")
 	}
 }
 
-// personsHeldIndexOf returns where the element i places after the one at from is kept.
+// guardedPersonsHeldIndexOf returns where the element i places after the one at from is kept.
 //
 // Given the buffer's own head and size it answers for the container as it is;
 // given a head a walk took when it started, it answers for the container as it
@@ -365,19 +365,19 @@ func (r *personsHeld) built() {
 // One subtraction rather than a remainder: i is never more than the number of
 // elements held, which is never more than the size, so the sum passes the end
 // of the buffer at most once.
-func personsHeldIndexOf(from, i, size int) int {
+func guardedPersonsHeldIndexOf(from, i, size int) int {
 	if slot := from + i; slot < size {
 		return slot
 	}
 	return from + i - size
 }
 
-// Persons satisfies these.
+// GuardedPersons satisfies these.
 //
 // The claim is checked when the package is built rather than when a caller
 // first tries, so a stack that stops satisfying one of these fails here
 // rather than at somebody's call site. And a reader who is not going to read
 // forty methods can see what they add up to.
 var (
-	_ json.MarshalerTo = (*Persons)(nil)
+	_ json.MarshalerTo = (*GuardedPersons)(nil)
 )

@@ -374,10 +374,27 @@ func (p plan) copying(w *strings.Builder) {
 	w.WriteString("// those from here is a write to memory another goroutine reads under the\n")
 	w.WriteString("// lock, which the lock cannot see and will not stop. Treat what comes\n")
 	w.WriteString("// back as readable rather than as yours.\n")
+
+	if p.sized {
+		w.WriteString("//\n")
+		w.WriteString("// One allocation, because the container can say how much it holds before\n")
+		w.WriteString("// the walk starts. A copy that grew as it went would allocate once per\n")
+		w.WriteString("// doubling and copy what it had each time — which is what collecting a\n")
+		w.WriteString("// sequence of unknown length has to do, and is not what this is.\n")
+	}
+
 	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + snapshot + "() []" + p.elem + " {\n")
 	w.WriteString("\t" + receiverName + "." + lockField + ".RLock()\n")
 	w.WriteString("\tdefer " + receiverName + "." + lockField + ".RUnlock()\n\n")
-	w.WriteString("\treturn slices.Collect(" + receiverName + "." + heldField + ".All())\n")
+
+	if p.sized {
+		w.WriteString("\treturn slices.AppendSeq(\n")
+		w.WriteString("\t\tmake([]" + p.elem + ", 0, " + receiverName + "." + heldField + "." + length + "()),\n")
+		w.WriteString("\t\t" + receiverName + "." + heldField + "." + walkMethod + "())\n")
+	} else {
+		w.WriteString("\treturn slices.Collect(" + receiverName + "." + heldField + "." + walkMethod + "())\n")
+	}
+
 	w.WriteString("}\n\n")
 }
 

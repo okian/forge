@@ -240,7 +240,7 @@ linters:
     generated: lax
     rules:
       # Generated output is checked by the golden suite, not by the linter.
-      - path: 'zz_forge_.*\.go'
+      - path: 'zz_(forge|race)_.*\.go'
         linters:
           - dupl
           - errcheck
@@ -288,7 +288,10 @@ linters:
       # This exception is what a user of forge will need in their own
       # configuration, which is the reason it is spelled out here rather than as
       # a directive in the example's source: the example is what they will copy.
-      - path: 'examples/.*\.go$'
+      # The race matrix is generated into a package for the same reason the
+      # example is — so that it is compiled and run — and inherits the same
+      # mixed receivers.
+      - path: '(examples|internal/racetest/matrix)/.*\.go$'
         linters:
           - recvcheck
 
@@ -347,5 +350,10 @@ formatters:
     generated: lax
     paths:
       # Generated output is formatted by the emitter, whose grouping of imports
-      # is its own business.
+      # is its own business. The race harness groups its own the way a formatter
+      # would, so this excludes nothing today — it is here because a formatter
+      # that ever did rewrite one of these would put the file it rewrote out of
+      # step with the recorded copy it is held to, and the run that noticed
+      # would blame the harness.
       - 'zz_forge_.*\.go'
+      - 'zz_race_.*\.go'

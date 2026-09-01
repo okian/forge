@@ -73,6 +73,9 @@ jobs:
       - name: build
         run: go build ./...
 
+      # Both builds a spec-form declaration is written for. `make vet` runs the
+      # default one and the marker-tagged one, because a stub file lives only in
+      # the second and a wrong one is otherwise a file no gate ever reads.
       - name: go vet
         run: make vet
 
@@ -113,6 +116,14 @@ jobs:
           path: cover.out
           if-no-files-found: ignore
 
+  # The detector over the whole module, which is also where the generated stress
+  # tests run. One declaration per concurrent layer is generated and committed
+  # under internal/racetest/matrix, so this job is what turns "the layer says
+  # this stack is safe to share" into something checked rather than claimed.
+  #
+  # Its own job rather than a flag on the test job above, because the detector
+  # costs an order of magnitude on every memory access and the two answer
+  # different questions.
   race:
     name: race
     runs-on: ubuntu-latest
