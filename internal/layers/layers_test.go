@@ -89,10 +89,39 @@ func TestStagedMarkersAreClaimedToo(t *testing.T) {
 	}
 }
 
-// Generating from a stub is a diagnostic rather than a panic or an empty unit,
-// because both of those lie about what happened.
-func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
-	found, _ := layers.Builtins().Lookup(marker("Enum"))
+// No marker this release promised is still a stub.
+//
+// The assertion has turned over. It used to name whichever layer was next to be
+// written and check that asking one to generate said so; there is no such layer
+// now, and what is worth holding is that there is not. A stub added later fails
+// this rather than shipping as a marker that composes, explains, and quietly
+// writes nothing.
+//
+// Staged is a different thing and is not counted. A staged marker is one forge
+// declares and has not committed to, so that a declaration naming it is
+// answered with what it is rather than with "undefined" — and there will be
+// staged markers for as long as there is a roadmap.
+func TestNoMarkerThisReleasePromisedIsAStub(t *testing.T) {
+	for _, one := range layers.Builtins().All() {
+		described, ok := one.(layer.Described)
+		if !ok {
+			t.Errorf("%s says nothing about itself", one.Origin().Name)
+			continue
+		}
+		if described.Stage() == layer.StageStub {
+			t.Errorf("%s composes and generates nothing", one.Origin().Name)
+		}
+	}
+}
+
+// Generating from a marker with no generator is a diagnostic rather than a
+// panic or an empty unit, because both of those lie about what happened.
+//
+// Over a staged marker, since no stub is left to ask. What is under test is the
+// machinery rather than which layer is unwritten: a marker that composes and
+// writes nothing has to say so, whichever of the two reasons it has.
+func TestAMarkerWithNoGeneratorReportsThat(t *testing.T) {
+	found, _ := layers.Builtins().Lookup(marker("Csv"))
 
 	unit, err := found.Generate(&layer.Context{
 		Model: &model.Model{Name: "Persons"},
@@ -112,39 +141,11 @@ func TestAStubReportsThatItGeneratesNothing(t *testing.T) {
 	if got, want := reported.Code.String(), "FRG4900"; got != want {
 		t.Errorf("code is %s, want %s", got, want)
 	}
-	if !strings.Contains(reported.Message, "Enum") {
+	if !strings.Contains(reported.Message, "Csv") {
 		t.Errorf("message %q does not name the layer", reported.Message)
 	}
 	if reported.Hint == "" {
 		t.Error("the diagnostic carries no hint")
-	}
-}
-
-// The hint distinguishes a layer whose generator is merely unwritten from a
-// marker forge has not committed to, because what an author can do about the
-// two is different.
-func TestAStagedLayerSaysSoDifferently(t *testing.T) {
-	registry := layers.Builtins()
-
-	stub, _ := registry.Lookup(marker("Validate"))
-	staged, _ := registry.Lookup(marker("Csv"))
-
-	_, stubErr := stub.Generate(nil, shape.Shape{})
-	_, stagedErr := staged.Generate(nil, shape.Shape{})
-
-	first, _ := diag.From(stubErr)
-	second, _ := diag.From(stagedErr)
-
-	if first.Hint == second.Hint {
-		t.Errorf("both hints read %q", first.Hint)
-	}
-	if !strings.Contains(second.Hint, "not in this release") {
-		t.Errorf("the staged hint %q does not say the layer is absent", second.Hint)
-	}
-	// Generating without a context is a programming error, not a crash: the
-	// diagnostic simply has nowhere to point.
-	if first.Pos.Line != 0 {
-		t.Errorf("a generate with no model reported at %s", first.Pos)
 	}
 }
 

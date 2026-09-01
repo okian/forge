@@ -66,7 +66,7 @@ var catalog = map[string]entry{
 		requires: []shape.Cap{shape.Structured},
 	},
 	"Enum": {
-		kind: model.KindElement, stage: layer.StageStub,
+		kind: model.KindElement, stage: layer.StageReady,
 		adds: []shape.Cap{shape.Comparable, shape.Encodable},
 	},
 	"Guarded": {

@@ -170,12 +170,6 @@ func marker(name string) model.TypeRef {
 // being told the layer is not in this release is a better answer than being
 // told nothing claims a marker forge plainly ships.
 var declared = []*stub{
-	{
-		origin: marker("Enum"), kind: model.KindElement, stage: layer.StageStub,
-		adds: []shape.Cap{shape.Comparable, shape.Encodable},
-		doc:  "the API of a closed set, discovered from the constants declared with the subject",
-	},
-
 	// Staged: the marker is declared, the layer is not in this release.
 	{
 		origin: marker("Set"), kind: model.KindStorage, stage: layer.StageStaged,

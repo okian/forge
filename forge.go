@@ -59,9 +59,13 @@ type Patch[T any] struct{ _ [0]T }
 type Redact[T any] struct{ _ [0]T }
 
 // Enum generates the API of a closed set over a named scalar subject,
-// discovering its members from the constants declared with it: String, a
-// parser, Values, text and JSON codecs, and an error for values outside the
-// set.
+// discovering its members from the constants declared with it: String, Valid, a
+// parser, Values, and a text codec that refuses a value outside the set.
+//
+// No JSON codec of its own, and none is wanted: encoding/json reaches for a
+// text codec where a type has one, so a member goes over the wire under the
+// name it is known by rather than as the number behind it. A second codec would
+// be a second answer to one question.
 //
 // Kind: element. Stage: v1. Directive: //forge:enum.
 type Enum[T any] struct{ _ [0]T }

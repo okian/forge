@@ -212,13 +212,12 @@ func TestExplainingSaysWhatGeneratingWouldRefuse(t *testing.T) {
 // report has a column that says it instead, and says it as pending work rather
 // than as a mistake.
 func TestExplainingALayerWhoseGeneratorIsNotWritten(t *testing.T) {
-	// The closed set of an enumeration is not something the raw underlying type
-	// upholds — any value of it is a value of the type, whatever the constants
-	// say — so the layer says it is not transparent and the declaration belongs
-	// in a spec file. That is a rule about where the declaration is written
-	// rather than about the layer's generator, which is the part that is not
-	// written yet.
-	got := asking(t, []request{spec(specialising("Persons", nil, "Slice", "Enum"))}, "-t", "Persons")
+	// A staged marker rather than a stub, because there is no stub left: every
+	// marker this release promised is written. Staged is the other half of the
+	// same thing and the half that will always exist — a marker forge declares
+	// and has not committed to, so that a declaration naming one is answered
+	// with what it is rather than with "undefined".
+	got := asking(t, []request{spec(specialising("Persons", nil, "Slice", "Binary"))}, "-t", "Persons")
 
 	if got.status != 0 {
 		t.Errorf("explaining a layer forge has not written ended with %d:\n%s", got.status, got.err)
