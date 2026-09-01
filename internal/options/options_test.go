@@ -387,3 +387,21 @@ func TestWhereAFieldScopedOptionIsSentInstead(t *testing.T) {
 		t.Errorf("the hint still tells the author to delete the option:\n%s", rendered)
 	}
 }
+
+// A directive forge answers itself is passed over rather than held to a layer's
+// schema.
+//
+// Everything after //forge: is one word, and this stage decides what a word
+// means by looking for a layer of that name. Without the reservation //forge:skip
+// would be reported as naming a layer the declaration does not use — a complaint
+// about a mistake nobody made, pointing at a directive that works.
+func TestADirectiveForgeAnswersItself(t *testing.T) {
+	set, reported := on(naming("Collection"), "//forge:skip io.WriterTo")
+
+	if reported != "" {
+		t.Errorf("a directive forge answers itself was judged as a layer's:\n%s", reported)
+	}
+	if len(set) != 0 {
+		t.Errorf("read %d options from a directive no layer takes, want 0", len(set))
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/okian/forge/internal/compose"
 	"github.com/okian/forge/internal/diag"
@@ -354,8 +355,10 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 		return merge.Unit{}, diags
 	}
 
+	already := holds(held.Pkg, cfg.Generated)
+
 	out := policed(merge.Units(units...), policing{
-		held:     holds(held.Pkg, cfg.Generated),
+		held:     already,
 		exposed:  composed.Exposed,
 		at:       held.Pos,
 		declared: held.Name,
@@ -364,7 +367,65 @@ func declaration(req Request, cfg Config) (merge.Unit, diag.Set) {
 	if !diags.Empty() {
 		return merge.Unit{}, diags
 	}
+
+	// After the policy rather than before it: what a declaration claims is what
+	// its methods add up to, and which methods those are is not settled until an
+	// override has taken the place of what would have been generated.
+	claims, imports, made := synthesise(out, synthesis{
+		declared: held.Name,
+		elem:     model.Spell(held.Subject.Type(), held.Pkg.PkgPath, binds(out.Imports)),
+		pkg:      held.Pkg.PkgPath,
+		at:       held.Pos,
+		held:     already,
+		skipped:  skips(req.Directives),
+	}, &diags)
+
+	if made {
+		out.Sections = append(out.Sections, claims)
+		out.Imports = merged(out.Imports, imports)
+	}
+
+	if !diags.Empty() {
+		return merge.Unit{}, diags
+	}
 	return out, diags
+}
+
+// skips returns the directives asking for an interface not to be claimed.
+func skips(directives []discover.Directive) []discover.Directive {
+	var out []discover.Directive
+	for _, one := range directives {
+		if strings.EqualFold(one.Layer, model.SkipDirective) {
+			out = append(out, one)
+		}
+	}
+	return out
+}
+
+// binds returns what the file already imports, in the form a spelling reads it
+// in.
+//
+// Passed rather than left empty because a spelling that ignores what a file
+// binds is a spelling for some other file: the element type would be written
+// under forge's own idea of its package's name, in a file where a layer may
+// already have bound that path to something else.
+func binds(imports []emit.Import) []model.Import {
+	out := make([]model.Import, 0, len(imports))
+	for _, one := range imports {
+		out = append(out, model.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
+	}
+	return out
+}
+
+// merged adds the imports an assertion needs to the ones the declarations
+// already asked for, without repeating one.
+func merged(held, adding []emit.Import) []emit.Import {
+	for _, one := range adding {
+		if !slices.Contains(held, one) {
+			held = append(held, one)
+		}
+	}
+	return held
 }
 
 // contributions asks every layer of a composed stack what it writes.

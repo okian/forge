@@ -174,3 +174,12 @@ func (s *Persons) AppendSeq(seq iter.Seq[Person]) { *s = slices.AppendSeq(*s, se
 // a buffer, and a caller who would rather have the memory back can assign a new
 // container instead.
 func (s *Persons) Reset() { *s = (*s)[:0] }
+
+// The walk's own signature, checked when the package is built.
+//
+// A method expression is resolved by the compiler and costs nothing at run
+// time, where an interface assertion would have to name a value and initialise
+// it. What it holds the walk to is the element type of the declaration, so a
+// container that walks something else fails here rather than wherever somebody
+// ranges over it.
+var _ func(*Persons) iter.Seq[Person] = (*Persons).All

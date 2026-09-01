@@ -89,6 +89,15 @@ func Read(decl Declaration, registry *layer.Registry) ([]model.Options, diag.Set
 			continue
 		}
 
+		if model.Reserved(directive.Layer) {
+			// Forge's own, answered by a later stage rather than by a layer.
+			// Passed over rather than validated here, because what it takes is
+			// not an option schema: what //forge:skip names is an interface,
+			// and the stage that knows which interfaces there are is the one
+			// that decides what a stack claims.
+			continue
+		}
+
 		ref, named := within(decl.Stack, directive.Layer)
 		if !named {
 			diags.Add(diag.New(codeLayerNotInStack, directive.Pos,

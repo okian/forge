@@ -11,6 +11,7 @@ package people
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"iter"
 )
@@ -76,3 +77,12 @@ func (c *Recent) WriteTo(w io.Writer) (int64, error) { panic("forge stub") }
 func (c *Recent) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
 
 func (c *Recent) ReadFrom(r io.Reader) (int64, error) { panic("forge stub") }
+
+var (
+	_ io.WriterTo          = (*Recent)(nil)
+	_ io.ReaderFrom        = (*Recent)(nil)
+	_ json.MarshalerTo     = (*Recent)(nil)
+	_ json.UnmarshalerFrom = (*Recent)(nil)
+)
+
+var _ func(*Recent) iter.Seq[Person] = (*Recent).All

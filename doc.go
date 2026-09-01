@@ -74,6 +74,34 @@
 // — Set, Index, Page, Default, Slice, Hash, Clone — into file scope, where any
 // of them can collide with the author's own declarations.
 //
+// # Interfaces
+//
+// A generated type claims the standard library interfaces its methods add up
+// to, in a var block near the end of its file:
+//
+//	var (
+//		_ io.WriterTo      = (*Persons)(nil)
+//		_ json.MarshalerTo = (*Persons)(nil)
+//	)
+//
+// What is claimed is read off what was written rather than off what the stack
+// was expected to write, so the claims are an account of the file they are in.
+// They cost nothing at run time and are checked when the package is built: a
+// stack that stops satisfying one fails there rather than at a call site.
+//
+// A claim can be turned off one at a time:
+//
+//	//forge:skip io.WriterTo
+//	type Persons Collection[Json[Person]]
+//
+// The methods are still generated; only the claim goes. Skipping something the
+// declaration was not going to claim is reported rather than passed over, since
+// an author who wrote it believes the declaration does something it does not.
+// The name All turns off the claim about the walk.
+//
+// Unlike the directives above, skip is forge's own rather than a layer's, and
+// no layer may take a directive by that name.
+//
 // # Running the generator
 //
 // Generation is driven by the forge command, usually through go generate:

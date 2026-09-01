@@ -341,9 +341,23 @@ func bound(imports []emit.Import, of policing, diags *diag.Set) {
 // one on the value are both methods of the type and neither may be declared
 // twice.
 func methodOf(decl ast.Decl) (on, name string, is bool) {
+	fn, on, is := methodOn(decl)
+	if !is {
+		return "", "", false
+	}
+	return on, fn.Name.Name, true
+}
+
+// methodOn answers the same question and hands back the declaration itself,
+// for a caller that goes on to read the signature.
+//
+// Worth having beside [methodOf] because the alternative is a second type
+// assertion at the caller, on a value this one already decided the type of —
+// and an assertion whose answer is known is one nobody checks.
+func methodOn(decl ast.Decl) (fn *ast.FuncDecl, on string, is bool) {
 	fn, ok := decl.(*ast.FuncDecl)
 	if !ok || fn == nil || fn.Name == nil || fn.Recv == nil || len(fn.Recv.List) != 1 {
-		return "", "", false
+		return nil, "", false
 	}
 
 	held := fn.Recv.List[0].Type
@@ -356,9 +370,9 @@ func methodOf(decl ast.Decl) (on, name string, is bool) {
 
 	ident, named := held.(*ast.Ident)
 	if !named {
-		return "", "", false
+		return nil, "", false
 	}
-	return ident.Name, fn.Name.Name, true
+	return fn, ident.Name, true
 }
 
 // declares returns the package-level names a declaration introduces, which is

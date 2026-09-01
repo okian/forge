@@ -260,3 +260,24 @@ func TestAcceptsComposesWithOrdinaryErrors(t *testing.T) {
 		t.Errorf("Accepts() = %v, want the error it was given", err)
 	}
 }
+
+// A layer may not take a directive forge answers itself.
+//
+// The two live in one flat namespace: what a word after //forge: means is
+// decided by looking it up, and a layer called Skip would answer to the word
+// that turns a claim off. Nothing downstream could tell which was meant, so the
+// two would be told apart by whichever lookup ran first — which is a coin toss
+// written into a build.
+func TestRegistryRefusesALayerNamedForAReservedDirective(t *testing.T) {
+	for _, directive := range model.ReservedDirectives() {
+		claimed := marker(strings.ToUpper(directive[:1]) + directive[1:])
+
+		err := layer.New().Register(fake{origin: claimed, kind: model.KindElement})
+		if err == nil {
+			t.Fatalf("a layer answering to //forge:%s was registered", directive)
+		}
+		if !strings.Contains(err.Error(), directive) {
+			t.Errorf("error %q does not name the directive it collides with", err)
+		}
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"golang.org/x/tools/go/packages"
 
 	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/model"
@@ -127,17 +128,25 @@ func TestAPackageDoesNotCollideWithItsOwnOutput(t *testing.T) {
 func reported(t *testing.T, diags diag.Set, code string) diag.Diagnostic {
 	t.Helper()
 
+	found := reportedAll(t, diags, code)
+	if len(found) != 1 {
+		t.Fatalf("%d diagnostics carry %s, want one:\n%s", len(found), code, diags.Render())
+	}
+	return found[0]
+}
+
+// reportedAll returns every diagnostic carrying a code, for a test about how
+// many times something is said rather than about what it says.
+func reportedAll(t *testing.T, diags diag.Set, code string) []diag.Diagnostic {
+	t.Helper()
+
 	var found []diag.Diagnostic
 	for _, one := range diags.All() {
 		if one.Code.String() == code {
 			found = append(found, one)
 		}
 	}
-
-	if len(found) != 1 {
-		t.Fatalf("%d diagnostics carry %s, want one:\n%s", len(found), code, diags.Render())
-	}
-	return found[0]
+	return found
 }
 
 // colliding builds one inline declaration over the fixture's subject, named
@@ -213,11 +222,24 @@ func collidePackage(t *testing.T) *packages.Package {
 // collideSubject models the fixture's subject.
 func collideSubject(t *testing.T) *model.Struct {
 	t.Helper()
+	return subjectFrom(t, collidePkg)
+}
+
+// subjectFrom models the Person a given fixture package declares, so that a
+// declaration can be generated over a subject that is not the local package's.
+func subjectFrom(t *testing.T, path string) *model.Struct {
+	t.Helper()
 
 	loaded := loadCollide(t)
-	obj := collidePackage(t).Types.Scope().Lookup("Person")
+
+	pkg, ok := loaded.Package(path)
+	if !ok {
+		t.Fatalf("the fixture has no package %s", path)
+	}
+
+	obj := pkg.Types.Scope().Lookup("Person")
 	if obj == nil {
-		t.Fatalf("%s declares no Person", collidePkg)
+		t.Fatalf("%s declares no Person", path)
 	}
 
 	held, is := types.Unalias(obj.Type()).(*types.Named)
@@ -236,4 +258,140 @@ func collideSubject(t *testing.T) *model.Struct {
 	}
 
 	return built
+}
+
+// A claim about an author's own method is spelled the way the package spells
+// it.
+//
+// The walk is where this shows, since its signature names the element type. A
+// method forge wrote is spelled by forge and cannot be got wrong; one the
+// author wrote is read back out of the type checker, which knows types by the
+// package they came from rather than by the file the claim is written in.
+func TestAClaimAboutTheAuthorsOwnMethod(t *testing.T) {
+	files, diags := generate.Package(collidePkg, "model",
+		[]generate.Request{colliding(t, "Walked")}, collideConfig(t))
+
+	if !diags.Empty() {
+		t.Fatalf("an author's own walk was reported:\n%s", diags.Render())
+	}
+
+	held := string(written(t, files, generate.Named("Walked")))
+	if !strings.Contains(held, "var _ func(*Walked) iter.Seq[Person] = (*Walked).All") {
+		t.Errorf("the author's walk is not claimed as the package spells it:\n%s", claimed(held))
+	}
+}
+
+// A claim about an author's walk over an element from another package is
+// written once, in one language.
+//
+// Two renderers meet here and only this case tells them apart. What the author
+// declared is read out of the type checker, which knows a type by the package
+// it came from; the element a claim is written with is spelled for the file the
+// claim goes in. Where the element is local both arrive at Person and agree by
+// accident. Where it is not, one of them can say domain.Person and the other
+// something else, and the disagreement would be reported as though the walk
+// were over the wrong type.
+func TestAClaimAboutAWalkOverAnotherPackagesElement(t *testing.T) {
+	asked := colliding(t, "Elsewhere")
+	asked.Model.Subject = subjectFrom(t, "collidefixture/domain")
+
+	files, diags := generate.Package(collidePkg, "model",
+		[]generate.Request{asked}, collideConfig(t))
+
+	if !diags.Empty() {
+		t.Fatalf("a walk over another package's element was reported:\n%s", diags.Render())
+	}
+
+	held := string(written(t, files, generate.Named("Elsewhere")))
+	if !strings.Contains(held, "var _ func(*Elsewhere) iter.Seq[domain.Person] = (*Elsewhere).All") {
+		t.Errorf("the walk is not claimed as the file writes its element:\n%s", claimed(held))
+	}
+}
+
+// And where the element had to be renamed, the claim and the method are still
+// read as being about one type.
+//
+// The collection imports the standard library's slices, so a subject from a
+// package of that name cannot keep it and the spelling binds it under another.
+// That binding is carried with the spelling rather than with the declarations,
+// so a comparison that read only the declarations would write the element one
+// way, read the author's method the other way, and refuse a build that is
+// perfectly correct.
+func TestAClaimAboutAWalkOverARenamedElement(t *testing.T) {
+	asked := colliding(t, "Renamed")
+	asked.Model.Subject = subjectFrom(t, "collidefixture/slices")
+
+	files, diags := generate.Package(collidePkg, "model",
+		[]generate.Request{asked}, collideConfig(t))
+
+	if !diags.Empty() {
+		t.Fatalf("a walk over a renamed element was reported:\n%s", diags.Render())
+	}
+
+	held := string(written(t, files, generate.Named("Renamed")))
+	if !strings.Contains(held, "var _ func(*Renamed) iter.Seq[slices2.Person] = (*Renamed).All") {
+		t.Errorf("the walk is not claimed under the name the element was bound to:\n%s", claimed(held))
+	}
+}
+
+// A walk that answers with something other than the declaration's elements is
+// reported rather than claimed.
+//
+// It is the one contract break the surface check cannot reach: a surface spells
+// the walk's result as iter.Seq[Person], which is written for a person to read
+// rather than to be lined up against the type checker, so FRG4011 falls back to
+// arity and this passes it. Synthesis holds both spellings at once and is the
+// only stage that can tell — and writing the claim anyway would hand the author
+// a package that does not build, pointing at a file they may not edit.
+func TestAWalkOverSomethingElse(t *testing.T) {
+	_, diags := generate.Package(collidePkg, "model",
+		[]generate.Request{colliding(t, "Wandering")}, collideConfig(t))
+
+	if diags.Empty() {
+		t.Fatal("a walk over the wrong thing was claimed without a word")
+	}
+
+	found := reported(t, diags, "FRG4017")
+	for _, want := range []string{"Wandering", "iter.Seq[string]", "Person"} {
+		if !strings.Contains(found.Message, want) {
+			t.Errorf("the complaint does not mention %q:\n%s", want, found.Message)
+		}
+	}
+	if found.Hint == "" {
+		t.Error("the complaint says nothing to do about it")
+	}
+}
+
+// And skipping that walk is not also answered with "there is no walk".
+//
+// The run is refused either way, so this is about what the author reads while
+// they fix it. Two complaints about one line, the second saying the opposite of
+// the first, is worse than one.
+func TestSkippingAWalkOverSomethingElse(t *testing.T) {
+	asked := colliding(t, "Wandering")
+	asked.Directives = []discover.Directive{{
+		Layer: "skip", Args: "All", Text: "//forge:skip All",
+		ArgsOffset: len("//forge:skip "),
+		Pos:        token.Position{Filename: "model.go", Line: 1, Column: 1},
+	}}
+
+	_, diags := generate.Package(collidePkg, "model",
+		[]generate.Request{asked}, collideConfig(t))
+
+	if got := reportedAll(t, diags, "FRG3019"); len(got) != 0 {
+		t.Errorf("skipping a walk that was reported is also called unclaimed:\n%s", diags.Render())
+	}
+	if got := reportedAll(t, diags, "FRG4017"); len(got) != 1 {
+		t.Errorf("the walk itself was reported %d times, want once:\n%s", len(got), diags.Render())
+	}
+}
+
+// claimed returns the part of a generated file that makes its claims, so that a
+// failure shows them rather than the whole file.
+func claimed(held string) string {
+	at := strings.Index(held, "var _ func(")
+	if at < 0 {
+		return held
+	}
+	return held[at:]
 }

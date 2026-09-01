@@ -7,6 +7,13 @@
 // above it were written against.
 package model
 
+import (
+	"iter"
+
+	"collidefixture/domain"
+	"collidefixture/slices"
+)
+
 // Person is the subject every declaration below is over.
 type Person struct {
 	Name string
@@ -37,3 +44,74 @@ type Contradicting []Person
 // Len here answers with a string, which is not what a layer written against a
 // sized shape can call.
 func (c Contradicting) Len() string { return "some" }
+
+// Walked is a collection whose author wrote the walk itself.
+//
+// The walk is the one method whose signature names the element type, so it is
+// where a claim about it has to be spelled the way the package spells it —
+// which is with no package name at all.
+type Walked []Person
+
+// All is the author's own, doing what the contract says it does.
+func (w Walked) All() iter.Seq[Person] {
+	return func(yield func(Person) bool) {
+		for _, held := range w {
+			if !yield(held) {
+				return
+			}
+		}
+	}
+}
+
+// Wandering is a collection whose author wrote the walk over something other
+// than what the collection holds.
+//
+// It is the one contract break the surface check cannot see: a surface spells
+// the walk's result as iter.Seq[Person], which is a spelling for a person to
+// read rather than one that can be lined up against the type checker, so the
+// comparison there is arity only and this passes it.
+type Wandering []Person
+
+// All answers with the wrong thing entirely, which the methods generated around
+// it are written against.
+func (w Wandering) All() iter.Seq[string] { return nil }
+
+// Elsewhere is a collection over a subject from another package, whose author
+// wrote the walk.
+//
+// It is where two ways of writing one type could disagree: a method the author
+// declared is read back out of the type checker, and the element a claim is
+// written with comes from the subject — so a claim about this one is right only
+// if the two arrive at the same words.
+type Elsewhere []domain.Person
+
+// All is the author's own, over the element the collection holds.
+func (e Elsewhere) All() iter.Seq[domain.Person] {
+	return func(yield func(domain.Person) bool) {
+		for _, held := range e {
+			if !yield(held) {
+				return
+			}
+		}
+	}
+}
+
+// Renamed is a collection whose subject lives in a package named after one the
+// generated file already imports, and whose author wrote the walk.
+//
+// The spelling has to rename it, and where it records that rename is the whole
+// of what this fixture is about: a claim written with one name and a method read
+// under another are two spellings of one type, and nothing downstream can tell
+// that from two types.
+type Renamed []slices.Person
+
+// All is the author's own, over the element the collection holds.
+func (r Renamed) All() iter.Seq[slices.Person] {
+	return func(yield func(slices.Person) bool) {
+		for _, held := range r {
+			if !yield(held) {
+				return
+			}
+		}
+	}
+}

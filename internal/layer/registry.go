@@ -62,6 +62,15 @@ func (r *Registry) Register(l Layer) error {
 		return fmt.Errorf("layer %T claims marker %s and reports no kind; a layer says where in a stack it may appear",
 			l, origin)
 	}
+	// Everything after //forge: is one word, and what that word means is
+	// decided by looking it up — so a word forge answers itself is a word no
+	// layer may have. A layer called Skip would otherwise register without
+	// complaint and take the directive that turns a claim off, and the two
+	// would be told apart by whichever lookup happened first.
+	if directive := (model.LayerRef{Origin: origin}).Directive(); model.Reserved(directive) {
+		return fmt.Errorf("layer %T claims marker %s, whose directive //forge:%s is one forge answers itself",
+			l, origin, directive)
+	}
 
 	if existing, ok := r.byOrigin[origin]; ok {
 		return fmt.Errorf("marker %s is claimed by %s and by %s", origin, name(existing), name(l))

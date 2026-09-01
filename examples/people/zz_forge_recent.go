@@ -11,6 +11,7 @@ package people
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -350,3 +351,23 @@ func (c *Recent) ReadFrom(r io.Reader) (int64, error) {
 	}
 	return dec.InputOffset(), nil
 }
+
+// Recent satisfies these.
+//
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ io.WriterTo          = (*Recent)(nil)
+	_ io.ReaderFrom        = (*Recent)(nil)
+	_ json.MarshalerTo     = (*Recent)(nil)
+	_ json.UnmarshalerFrom = (*Recent)(nil)
+)
+
+// And the walk's own signature, checked without calling it.
+//
+// A method expression is resolved when the package is built and costs nothing
+// at run time, where an interface assertion would have to name a value and
+// initialise it.
+var _ func(*Recent) iter.Seq[Person] = (*Recent).All
