@@ -136,10 +136,17 @@ type Recent forge.Collection[forge.Ring[forge.Json[Person]]]
 ```
 
 Two builds then exist, and both have to compile. The default build gets
-`zz_forge_recent.go`, which declares the type and its methods. The tagged build
-gets the spec file plus `zz_forge_stubs.go`, which mirrors the same API with
+`forge.gen.go`, which declares the type and its methods. The tagged build gets
+the spec file plus `forge_stubs.gen.go`, which mirrors the same API with
 panicking bodies — so a call site compiles either way, and `gopls` resolves the
 declaration while an author is looking at it.
+
+A second file only where the language requires one. Everything a package's
+declarations ask for goes in `forge.gen.go`; the stub file exists because a
+spec-form declaration's type is written by forge under one build constraint and
+by the author under its complement, so the two can never be in scope together.
+Exactly one of the pair is in any build, so a package has one generated file
+however it is compiled.
 
 ## Composition
 

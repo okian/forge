@@ -122,7 +122,6 @@ Found while deciding what to write. These are about the output rather than about
 | `FRG4003` | one import path is bound to two names |
 | `FRG4004` | build constraint is not a constraint |
 | `FRG4005` | generated header cannot be written |
-| `FRG4006` | two declarations want one file |
 | `FRG4007` | nothing provides a helper a layer requires |
 | `FRG4008` | layer could not generate |
 | `FRG4009` | a layer's streaming method is not the one a codec is written against |
@@ -138,6 +137,7 @@ Found while deciding what to write. These are about the output rather than about
 | `FRG4020` | a patch's field wants a name the patch already has |
 | `FRG4021` | two layers disagree about the name an import binds |
 | `FRG4101` | two generated names are one |
+| `FRG4102` | two fields project to one name |
 | `FRG4900` | layer generates nothing yet |
 | `FRG4910` | template does not parse |
 | `FRG4911` | template is not shaped like a template |
@@ -156,6 +156,7 @@ Loading the packages, reading the tree, and writing the files.
 | `FRG5005` | declaration has no generated file |
 | `FRG5006` | a file forge did not write is in the way |
 | `FRG5007` | generated file was written by different tooling |
+| `FRG5008` | generated file was written by a forge that wrote one file per declaration |
 
 ## Layers — `FRG6xxx` and above
 

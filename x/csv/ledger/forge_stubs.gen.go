@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.1
-// inputs 470965ba498b7a85
+// inputs dff9b2898e2b4227
 
 //go:build forgespec
 
@@ -185,3 +185,31 @@ func (s *Bare) AppendSeq(seq iter.Seq[Entry]) { panic("forge stub") }
 func (s *Bare) Reset() { panic("forge stub") }
 
 var _ func(*Bare) iter.Seq[Entry] = (*Bare).All
+
+func encodeLedgerEntryCSVInto(record []string, v Entry) ([]string, error) { panic("forge stub") }
+
+func decodeLedgerEntryCSVFrom(record []string) (Entry, error) { panic("forge stub") }
+
+type Seq[U any] iter.Seq[U]
+
+func (s Seq[U]) All() iter.Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Filter(keep func(U) bool) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Map[V any](to func(U) V) Seq[V] { panic("forge stub") }
+
+func (s Seq[U]) Take(n int) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Skip(n int) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Dedup(same func(a, b U) bool) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Chunk(n int) iter.Seq[[]U] { panic("forge stub") }
+
+func (s Seq[U]) Collect() []U { panic("forge stub") }
+
+func (s Seq[U]) Into(dst []U) []U { panic("forge stub") }
+
+func (s Seq[U]) First() (U, bool) { panic("forge stub") }
+
+func (s Seq[U]) Reduce[A any](initial A, combine func(A, U) A) A { panic("forge stub") }

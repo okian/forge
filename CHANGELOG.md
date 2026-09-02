@@ -13,7 +13,7 @@ Entries are written in the commit that makes the change, under `Unreleased`, and
 them from the log, which is how a changelog turns into a worse copy of one.
 
 Generated code is where "somebody would notice" is widest. A change to what
-forge writes reaches every committed `zz_forge_*.go` in every checkout, and the
+forge writes reaches every committed `forge.gen.go` in every checkout, and the
 diff arrives in a review that has nothing to do with forge — so it is called out
 here whether or not the API moved.
 

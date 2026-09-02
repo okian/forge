@@ -103,7 +103,7 @@ func TestTheCompositionMatrix(t *testing.T) {
 				t.Errorf("%s was reported and generated anyway:\n%s", spelled(stack), out)
 			}
 			write(t, filepath.Join(dir, "using.go"),
-				callSite(named(at), stack, declarationIn(t, dir, files)))
+				callSite(named(at), stack, declarationIn(t, dir)))
 		}
 	}
 
@@ -298,33 +298,20 @@ func directives(stack []string) string {
 // needed holds the options a layer cannot be generated without.
 var needed = map[string]string{"Ring": "cap=4"}
 
-// declarationIn returns the declaration's own generated file, as source.
+// declarationIn returns what forge wrote for the package, as source.
 //
 // Which of the transport's methods a stack got is decided by what the layers
 // beneath it turned out to expose, so the only way to write a call site that
 // exercises all of them is to read what was written.
-func declarationIn(t *testing.T, dir string, files []string) string {
+//
+// One file to read, which it did not used to be: a package's output was spread
+// over a file per declaration and this had to pick the right one out. A
+// constant name is one of the things that arrangement cost.
+func declarationIn(t *testing.T, dir string) string {
 	t.Helper()
 
-	for _, one := range files {
-		if one == stubs || one == shared {
-			continue
-		}
-
-		return read(t, filepath.Join(dir, one))
-	}
-
-	t.Fatalf("%s holds no file for its own declaration: %q", dir, files)
-
-	return ""
+	return read(t, filepath.Join(dir, generated))
 }
-
-// The two generated files that are not a declaration's own: the one the package
-// shares, and the one the build without the declaration in it holds.
-const (
-	shared = "zz_forge_shared.go"
-	stubs  = "zz_forge_stubs.go"
-)
 
 // The three methods the transport puts on the declared type.
 //

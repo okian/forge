@@ -80,10 +80,9 @@ Run the generator:
 go run github.com/okian/forge/cmd/forge generate ./model
 ```
 
-Two files appear. `model/zz_forge_persons.go` is this declaration's, and
-`model/zz_forge_shared.go` holds what the whole package's declarations reach
-into — one copy of it however many ask. `Persons` now has a query surface named
-after the fields it was built from:
+`model/forge.gen.go` appears — one file per package, holding everything every
+declaration in it asked for. `Persons` now has a query surface named after the
+fields it was built from:
 
 ```go
 held := model.NewPersons(one, two, three)
@@ -102,9 +101,8 @@ for _, name := range held.Seq().
 ```
 
 No helper package, no `func(Person) string` at every call site, and no
-reflection. Commit both files — the declaration's own file calls into the shared
-one, so a package holding one without the other does not build — and builds and
-editors then work with nothing installed.
+reflection. Commit `forge.gen.go`: builds and editors then work with nothing
+installed.
 
 The declaration went in an ordinary file because its underlying type really is
 `[]Person` — anything in the package may index it and range over it. Ask what
@@ -148,10 +146,10 @@ methods — so the name resolves either way and the compiler checks the spec.
 
 `forge generate` writes both halves:
 
-- `zz_forge_recent.go`, under `//go:build !forgespec`: the type, the ring's
-  methods, the JSON codec over them, and the interface assertions they earn.
-- `zz_forge_stubs.go`, under `//go:build forgespec`: the same API with panicking
-  bodies, so a caller compiles in the tagged build too.
+- `forge.gen.go`, under `//go:build !forgespec`: the type, the ring's methods,
+  the JSON codec over them, and the interface assertions they earn.
+- `forge_stubs.gen.go`, under `//go:build forgespec`: the same API with
+  panicking bodies, so a caller compiles in the tagged build too.
 
 Nothing calls a stub. It exists so that the two builds agree about what `Recent`
 can do, and `make vet` type-checks both — a stub that has drifted is a file that

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/okian/forge/driver"
@@ -137,19 +136,35 @@ func read(t *testing.T, path string) string {
 	return string(held)
 }
 
-// generated returns the names of the files forge wrote into a directory.
+// The files forge writes into a package.
+//
+// One for the package, and a second only where the language requires it: a
+// spec-form declaration's type is written by forge under one build constraint
+// and by the author's own file under its complement, so the two can never be in
+// scope together and the stub file stands in for the package under the second.
+//
+// Written down here rather than asked of forge, because a layer lives outside
+// it: `internal/generate` names them and no module but forge's own may import
+// it. So this is a layer author reading the output, which is the position the
+// rest of this module is written from — and a rename of either would fail here
+// rather than somewhere further from the cause.
+const (
+	generated = "forge.gen.go"
+	stubs     = "forge_stubs.gen.go"
+)
+
+// generatedIn returns the names of the files forge wrote into a directory, in
+// the order above.
 func generatedIn(t *testing.T, dir string) []string {
 	t.Helper()
 
-	held, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("reading %s: %v", dir, err)
-	}
-
 	var out []string
-	for _, one := range held {
-		if strings.HasPrefix(one.Name(), "zz_forge_") {
-			out = append(out, one.Name())
+
+	for _, one := range []string{generated, stubs} {
+		if _, err := os.Stat(filepath.Join(dir, one)); err == nil {
+			out = append(out, one)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("looking for %s in %s: %v", one, dir, err)
 		}
 	}
 

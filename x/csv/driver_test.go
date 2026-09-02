@@ -81,49 +81,44 @@ func TestTheLayerEndToEnd(t *testing.T) {
 		t.Fatalf("generating exited %d:\n%s", status, out)
 	}
 
-	declared := read(t, filepath.Join(root, "zz_forge_rows.go"))
+	// Everything the package asked for is in the one file forge writes for it:
+	// the declared type's methods, the row codec the subject earns, and what
+	// the storage beneath contributed. It used to be three files, and what a
+	// layer author has to know now is that there is one.
+	written := read(t, filepath.Join(root, generated))
 	for _, want := range []string{
 		"func (c Rows) CSVHeader() []string",
 		"func (c Rows) WriteCSVTo(w io.Writer) (int64, error)",
 		"func (c *Rows) ReadCSVFrom(r io.Reader) (int64, error)",
 		`return []string{"id", "name"}`,
-	} {
-		if !strings.Contains(declared, want) {
-			t.Errorf("the generated file does not carry %q:\n%s", want, declared)
-		}
-	}
 
-	// The row codec went to the file the package shares, because it is about
-	// the subject rather than about this declaration.
-	shared := read(t, filepath.Join(root, "zz_forge_shared.go"))
-	for _, want := range []string{
+		// The row codec, which is the subject's rather than this
+		// declaration's — one copy of it however many declarations ask.
 		"func encodeFixturePersonCSVInto(record []string, v Person) ([]string, error)",
 		"func decodeFixturePersonCSVFrom(record []string) (Person, error)",
-	} {
-		if !strings.Contains(shared, want) {
-			t.Errorf("the shared file does not carry %q:\n%s", want, shared)
-		}
-	}
 
-	// And forge's own storage layer is in the declaration's file, which is what
-	// composing with a layer somebody added means.
-	if !strings.Contains(declared, "func (s Rows) Len() int") {
-		t.Errorf("the storage beneath it wrote nothing:\n%s", declared)
+		// And forge's own storage layer, which is what composing with a layer
+		// somebody added means.
+		"func (s Rows) Len() int",
+	} {
+		if !strings.Contains(written, want) {
+			t.Errorf("the generated file does not carry %q:\n%s", want, written)
+		}
 	}
 
 	// Both halves of a spec-form declaration, so that a caller compiles whether
-	// or not the marker's file is in the build.
-	if !strings.Contains(read(t, filepath.Join(root, "zz_forge_stubs.go")), "WriteCSVTo") {
+	// or not the spec file is in the build.
+	if !strings.Contains(read(t, filepath.Join(root, stubs)), "WriteCSVTo") {
 		t.Error("the build the declaration is absent from holds no matching API")
 	}
 
 	// Generating twice writes the same bytes, which is what a committed output
 	// has to do or every run is a diff.
-	first := declared
+	first := written
 	if out, status := running(t, held, "-C", root, "generate", "."); status != 0 {
 		t.Fatalf("generating a second time exited %d:\n%s", status, out)
 	}
-	if again := read(t, filepath.Join(root, "zz_forge_rows.go")); again != first {
+	if again := read(t, filepath.Join(root, generated)); again != first {
 		t.Error("generating twice from one declaration produced two files")
 	}
 
@@ -297,15 +292,15 @@ type Rows forge.Csv[forge.Collection[other.Person]]
 		t.Fatalf("generating for a subject in another package exited %d:\n%s", status, out)
 	}
 
-	shared := read(t, filepath.Join(root, "zz_forge_shared.go"))
+	written := read(t, filepath.Join(root, generated))
 
 	for _, want := range []string{
 		`"example.com/fixture/other"`,
 		"v other.Person",
 		"other.Kind(",
 	} {
-		if !strings.Contains(shared, want) {
-			t.Errorf("the shared file does not carry %q:\n%s", want, shared)
+		if !strings.Contains(written, want) {
+			t.Errorf("the generated file does not carry %q:\n%s", want, written)
 		}
 	}
 
@@ -343,7 +338,7 @@ type Tags forge.Csv[forge.Collection[Tag]]
 		t.Fatalf("a one-column table was refused at the declaration, exiting %d:\n%s", status, out)
 	}
 
-	written := read(t, filepath.Join(root, "zz_forge_tags.go"))
+	written := read(t, filepath.Join(root, generated))
 	for _, want := range []string{
 		`if record[0] == ""`,
 		"cannot write an empty name",
@@ -360,7 +355,7 @@ type Tags forge.Csv[forge.Collection[Tag]]
 	if out, status := running(t, catalog(t), "-C", pair, "generate", "."); status != 0 {
 		t.Fatalf("generating exited %d:\n%s", status, out)
 	}
-	if held := read(t, filepath.Join(pair, "zz_forge_rows.go")); strings.Contains(held, `record[0] == ""`) {
+	if held := read(t, filepath.Join(pair, generated)); strings.Contains(held, `record[0] == ""`) {
 		t.Error("a two-column table carries a check only a one-column table needs")
 	}
 
@@ -460,7 +455,7 @@ func TestEverySpellingOfABooleanOption(t *testing.T) {
 				t.Fatalf("header=%s was refused, exiting %d:\n%s", held, status, out)
 			}
 
-			written := read(t, filepath.Join(root, "zz_forge_rows.go"))
+			written := read(t, filepath.Join(root, generated))
 			headed := strings.Contains(written, "out.Write(c.CSVHeader())")
 
 			if want := slices.Contains(on, held); headed != want {
@@ -497,15 +492,15 @@ type Strs forge.Csv[forge.Collection[Box[string]]]
 		t.Fatalf("two instantiations of one generic subject exited %d:\n%s", status, out)
 	}
 
-	shared := read(t, filepath.Join(root, "zz_forge_shared.go"))
+	written := read(t, filepath.Join(root, generated))
 	for _, want := range []string{
 		"func encodeFixtureBoxIntCSVInto(",
 		"func encodeFixtureBoxStringCSVInto(",
 		"func decodeFixtureBoxIntCSVFrom(",
 		"func decodeFixtureBoxStringCSVFrom(",
 	} {
-		if !strings.Contains(shared, want) {
-			t.Errorf("the shared file does not carry %q:\n%s", want, shared)
+		if !strings.Contains(written, want) {
+			t.Errorf("the generated file does not carry %q:\n%s", want, written)
 		}
 	}
 

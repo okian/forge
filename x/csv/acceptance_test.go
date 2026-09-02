@@ -172,7 +172,7 @@ func TestTheWorkedExampleHoldsOnlyWhatItShould(t *testing.T) {
 		case strings.HasSuffix(name, "_test.go"), slices.Contains(authored, name):
 			// Written by a person, and read as usage.
 
-		case strings.HasPrefix(name, "zz_forge_"):
+		case name == generated, name == stubs:
 			if !strings.Contains(read(t, filepath.Join(example, name)), "DO NOT EDIT") {
 				t.Errorf("%s is named as generated and does not say so", name)
 			}

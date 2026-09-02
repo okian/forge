@@ -443,7 +443,7 @@ type Broken[T any] struct{ _ [0]T }
 		t.Fatalf("generating over a sink that can refuse exited %d:\n%s", status, out)
 	}
 
-	written := read(t, filepath.Join(root, "zz_forge_rows.go"))
+	written := read(t, filepath.Join(root, generated))
 	for _, want := range []string{
 		"refused := c.AppendSeq(",
 		"if failed != nil {",
