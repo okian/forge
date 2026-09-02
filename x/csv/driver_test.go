@@ -1,6 +1,7 @@
 package csv_test
 
 import (
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -522,4 +523,192 @@ func building(t *testing.T, root string) {
 			t.Errorf("what was generated does not build with %v: %v\n%s", tags, err, out)
 		}
 	}
+}
+
+// theBound are the names the generated bodies bind, which is the set a
+// subject's own package must be allowed to collide with.
+var theBound = []string{"record", "counted", "held", "out", "in", "header", "failed", "want"}
+
+// A subject from a package named after something the bodies bind still
+// generates code that compiles.
+//
+// The one name a layer cannot know in advance is the subject's package, and the
+// bodies bind a dozen of their own. A body that binds record and also has to
+// spell record.Person writes that inside a scope where record is a variable —
+// a file this layer generated without complaint and the compiler then refused,
+// in a file the author cannot edit.
+//
+// Every local is asked for against what the file binds now, so the one that
+// moves is this layer's. One case per bound name, because what is under test is
+// the allocation rather than any one collision.
+//
+// Five of them are live today: record, counted, in, header and failed are each
+// bound in a scope that also spells the element. The other three are insurance
+// — want closes with its if statement, held is bound after the closure's own
+// signature has resolved, and out lives in a body that names no element — and
+// they become live the moment somebody hoists one of those out of its scope.
+func TestASubjectFromAPackageTheBodiesBind(t *testing.T) {
+	for _, one := range theBound {
+		t.Run(one, func(t *testing.T) {
+			root := module(t,
+				fixture{
+					name: one,
+					dir:  one,
+					subject: `// Person is the subject, in a package named after a local.
+type Person struct {
+	ID   int  ` + "`csv:\"id\"`" + `
+	Kind Kind ` + "`csv:\"kind\"`" + `
+}
+
+// Kind is a named string, so a cell of it is converted through its own name —
+// which is the spelling that needs the package.
+type Kind string
+`,
+				},
+				fixture{
+					name:    "fixture",
+					subject: "// The declaration below is over a subject from elsewhere.\n",
+					spec: fmt.Sprintf(`import (
+	"github.com/okian/forge"
+
+	%q
+)
+
+//forge:csv
+type Rows forge.Csv[forge.Collection[%s.Person]]
+`, "example.com/fixture/"+one, one),
+				},
+			)
+
+			if out, status := running(t, catalog(t), "-C", root, "generate", "./..."); status != 0 {
+				t.Fatalf("generating over a subject from package %s exited %d:\n%s", one, status, out)
+			}
+
+			// The package keeps the spelling its author gave it, which is the
+			// half a rename could get backwards: moving the import instead
+			// would leave the author's own code naming something forge had
+			// renamed underneath it.
+			written := read(t, filepath.Join(root, generated))
+			if want := one + ".Person"; !strings.Contains(written, want) {
+				t.Errorf("the generated file does not spell %s:\n%s", want, written)
+			}
+
+			building(t, root)
+		})
+	}
+}
+
+// A subject declared in the package being generated into still generates code
+// that compiles.
+//
+// The half that arrives through no import. A subject from elsewhere is found by
+// its package name, which the file imports and the allocation can therefore
+// see; one declared beside the declaration is spelled bare, so the only place
+// its name appears is the spelling itself. A layer seeded from imports alone
+// would reserve nothing for it and write `var v record` into a body whose
+// parameter is already called record.
+func TestASubjectDeclaredInThePackageGeneratedInto(t *testing.T) {
+	cases := map[string]struct{ declared, subject string }{
+		// The element itself, which is what the row codec's signature spells.
+		"the element": {"record", `// record is the subject, declared right here.
+type record struct {
+	ID   int    ` + "`csv:\"id\"`" + `
+	Name string ` + "`csv:\"name\"`" + `
+}
+`},
+
+		// A field's own type, which a converted cell spells to convert through.
+		// Named record rather than anything else because the row codec binds
+		// that one: the decoder would otherwise write record(record[1]) with
+		// the parameter in scope, and call a []string.
+		"a field's type": {"Holder", `// Holder is the subject.
+type Holder struct {
+	ID   int    ` + "`csv:\"id\"`" + `
+	Kind record ` + "`csv:\"kind\"`" + `
+}
+
+// record is a named string, so a cell of it converts through its own name.
+type record string
+`},
+	}
+
+	for name, held := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := module(t, fixture{
+				name:    "fixture",
+				subject: held.subject,
+				spec: fmt.Sprintf(`import "github.com/okian/forge"
+
+//forge:csv
+type Rows forge.Csv[forge.Collection[%s]]
+`, held.declared),
+			})
+
+			if out, status := running(t, catalog(t), "-C", root, "generate", "./..."); status != 0 {
+				t.Fatalf("generating over a same-package subject exited %d:\n%s", status, out)
+			}
+
+			building(t, root)
+		})
+	}
+}
+
+// A subject whose type argument is declared in the same package compiles too.
+//
+// Separately, because the hazard hides inside the argument rather than at the
+// front of the spelling: a fix that reserved only the leading identifier of
+// Box[record] would reserve Box and leave record to collide.
+func TestASubjectWhoseTypeArgumentIsDeclaredHere(t *testing.T) {
+	root := module(t, fixture{
+		name: "fixture",
+		subject: `// Box holds one of something.
+type Box[T any] struct {
+	Held  T      ` + "`csv:\"held\"`" + `
+	Label string ` + "`csv:\"label\"`" + `
+}
+
+// record is a named string, reached only as a type argument below.
+type record string
+`,
+		spec: `import "github.com/okian/forge"
+
+//forge:csv
+type Rows forge.Csv[forge.Collection[Box[record]]]
+`,
+	})
+
+	if out, status := running(t, catalog(t), "-C", root, "generate", "./..."); status != 0 {
+		t.Fatalf("generating over Box[record] exited %d:\n%s", status, out)
+	}
+
+	building(t, root)
+}
+
+// A subject with two fields of one camel form gets a local for each.
+//
+// Camel lowers a whole word, so ID and Id both come back id. A codec that built
+// the per-column name from the field would declare idCell twice in one scope,
+// which is a file this layer wrote and the compiler refused. The header keeps
+// the two columns apart on its own, so nothing upstream catches this.
+func TestASubjectWithTwoFieldsOfOneCamelForm(t *testing.T) {
+	root := module(t, fixture{
+		name: "fixture",
+		subject: `// Person has two fields whose camel forms are the same word.
+type Person struct {
+	ID int ` + "`csv:\"id\"`" + `
+	Id int ` + "`csv:\"other\"`" + `
+}
+`,
+		spec: `import "github.com/okian/forge"
+
+//forge:csv
+type Rows forge.Csv[forge.Collection[Person]]
+`,
+	})
+
+	if out, status := running(t, catalog(t), "-C", root, "generate", "./..."); status != 0 {
+		t.Fatalf("generating over two fields with one camel form exited %d:\n%s", status, out)
+	}
+
+	building(t, root)
 }

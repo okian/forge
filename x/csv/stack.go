@@ -44,13 +44,6 @@ const (
 	countResult   = "int"
 )
 
-// receiverVar is what the declared type's methods call the container, and
-// valueVar is what they call one element of it.
-const (
-	receiverVar = "c"
-	valueVar    = "v"
-)
-
 // stack is the document the declared type carries, described in the terms the
 // two halves are written in.
 //
@@ -65,12 +58,12 @@ type stack struct {
 	elem     string
 
 	// encode and decode name the two functions one row goes through, columns is
-	// how many cells a record holds, and names is the header as the literal
+	// how many cells a record holds, and literal is the header as the source
 	// that declares it.
 	encode  string
 	decode  string
 	columns int
-	names   string
+	literal string
 
 	// blank names the one column whose emptiness would be written as a blank
 	// line and read back as nothing, or is empty where the table cannot produce
@@ -115,6 +108,10 @@ type stack struct {
 	// document opens with a row naming the columns.
 	comma  string
 	header bool
+
+	// names are the identifiers the bodies bind, allocated out of the way of
+	// what the file already binds. See [locals].
+	names locals
 }
 
 // receiver returns how the container is written in the receiver of a method
@@ -128,9 +125,9 @@ func (s stack) receiver() string {
 
 // binding returns what takes the result of adding the elements, which is
 // nothing where adding them cannot fail.
-func (s stack) binding() string {
+func (s stack) binding(names locals) string {
 	if s.refuses {
-		return "refused := "
+		return names.refused + " := "
 	}
 	return ""
 }
@@ -174,7 +171,7 @@ func streaming(ctx *plugin.Context, below plugin.Shape, of table) (stack, error)
 		encode:   of.encode,
 		decode:   of.decode,
 		columns:  len(of.columns),
-		names:    quotedNames(of.headings()),
+		literal:  quotedNames(of.headings()),
 	}
 
 	if held, is := of.blank(); is {

@@ -240,12 +240,14 @@ func TestWhichColumnsConvert(t *testing.T) {
 		},
 	}
 
+	names := naming(nil, table{})
+
 	for name, held := range cases {
 		t.Run(name, func(t *testing.T) {
 			if got := held.held.converts(); got != held.converts {
 				t.Errorf("the column converts: %v, want %v", got, held.converts)
 			}
-			if got := held.held.out(); got != held.out {
+			if got := held.held.out(names); got != held.out {
 				t.Errorf("the value goes out as %s, want %s", got, held.out)
 			}
 			if got := held.held.in("record[0]"); got != held.in {
@@ -255,19 +257,114 @@ func TestWhichColumnsConvert(t *testing.T) {
 	}
 }
 
-// A cell's local is named after its field and cannot be the name the codec
-// already uses.
+// A cell's local is named after its field.
+//
+// Suffixed, so that a field called Range or Type does not name a variable after
+// a keyword, and so that a reader of the generated code can see which column
+// went wrong without counting them.
 func TestWhatACellsLocalIsCalled(t *testing.T) {
-	for field, want := range map[string]string{
+	want := map[string]string{
 		"ID":       "idCell",
 		"Payee":    "payeeCell",
 		"JSONBlob": "jsonBlobCell",
 		"Range":    "rangeCell",
 		"Record":   "recordCell",
-	} {
-		if got := (column{field: field}).local(); got != want {
+	}
+
+	of := table{}
+	for field := range want {
+		of.columns = append(of.columns, column{field: field})
+	}
+
+	names := naming(nil, of)
+
+	for field, want := range want {
+		if got := (column{field: field}).local(names); got != want {
 			t.Errorf("%s reads into %s, want %s", field, got, want)
 		}
+	}
+}
+
+// Two fields whose camel forms are one word still get a local each.
+//
+// Camel lowers a whole word, so ID and Id both come back id and both would ask
+// for idCell. A body declaring it twice is a file this layer wrote and the
+// compiler refused with "no new variables on left side of :=", which is why the
+// per-column names are allocated rather than built from the field.
+func TestTwoFieldsWhoseCamelFormsAgree(t *testing.T) {
+	of := table{columns: []column{{field: "ID"}, {field: "Id"}}}
+	names := naming(nil, of)
+
+	first, second := column{field: "ID"}.local(names), column{field: "Id"}.local(names)
+
+	if first == second {
+		t.Fatalf("both fields read into %s, which cannot be declared twice", first)
+	}
+	if first != "idCell" {
+		t.Errorf("the first field reads into %q, want idCell", first)
+	}
+	if second != "idCell2" {
+		t.Errorf("the second field reads into %q, want idCell2", second)
+	}
+}
+
+// Every identifier the bodies bind moves out of the way of a package the file
+// binds, and the package keeps its name.
+//
+// The one a layer cannot know in advance is the subject's. A body that binds
+// `record` and has to spell `record.Person` is a file this layer used to
+// generate and the compiler then refused — so the names are asked for against
+// what the file binds rather than chosen.
+func TestALocalMovesRatherThanThePackage(t *testing.T) {
+	bound := []plugin.Import{
+		{Path: "encoding/csv", Name: "csv"},
+		{Path: "example.com/record", Name: "record"},
+		{Path: "example.com/counted", Name: "counted"},
+	}
+
+	held := naming(bound, table{})
+
+	// The number rather than merely something else, because "not the name the
+	// file binds" is satisfied by the empty string.
+	for what, held := range map[string]struct{ got, want string }{
+		"the row parameter": {held.record, "record2"},
+		"the counting one":  {held.counted, "counted2"},
+	} {
+		if held.got != held.want {
+			t.Errorf("%s is %q, want %q", what, held.got, held.want)
+		}
+	}
+
+	// And the names nothing collides with are the ones a reader would have
+	// written, since moving those would cost a reader for no reason.
+	if held.value != "v" {
+		t.Errorf("the element is called %q with nothing in its way", held.value)
+	}
+	if held.err != "err" {
+		t.Errorf("the error is called %q with nothing in its way", held.err)
+	}
+}
+
+// A type declared in the package being generated into moves a local too.
+//
+// The half that is easy to miss, because it arrives through no import: a
+// subject declared beside the declaration is spelled bare, so the only place
+// its name appears is the spelling. Type arguments included — Box[record]
+// needs record reserved as much as a bare record does.
+func TestALocalMovesForASpellingWithNoImport(t *testing.T) {
+	cases := map[string]table{
+		"the element itself":   {elem: "record"},
+		"a type argument":      {elem: "Box[record]"},
+		"a field's own type":   {elem: "Holder", columns: []column{{field: "Kind", typ: "record"}}},
+		"a qualified spelling": {elem: "other.record"},
+	}
+
+	for name, of := range cases {
+		t.Run(name, func(t *testing.T) {
+			if held := naming(nil, of); held.record != "record2" {
+				t.Errorf("the row parameter is %q, want record2", held.record)
+			}
+		})
 	}
 }
 
@@ -396,7 +493,7 @@ func TestHowTheHeaderIsRendered(t *testing.T) {
 func TestAColumnWithNoFormProducesNothingThatCompiles(t *testing.T) {
 	held := column{field: "Whatever", form: formInvalid}
 
-	if got := formatted(held); got != "nil" {
+	if got := formatted(held, naming(nil, table{})); got != "nil" {
 		t.Errorf("a column with no form is written as %s, want something that does not compile", got)
 	}
 	if got := scanned(held, "record[0]"); got != "nil, nil" {

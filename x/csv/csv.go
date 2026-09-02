@@ -292,6 +292,13 @@ func contributed(of table, over stack) (plugin.Unit, error) {
 	// and imported the other would not compile.
 	offered := append(slices.Clone(imports), of.imports...)
 
+	// The identifiers the bodies bind, allocated against what the file names
+	// rather than spelled here. It has to happen after the table, because the
+	// table holds the other half of what the bodies have to spell: a subject
+	// declared in this very package imports nothing, so its name reaches the
+	// allocation through its spelling or not at all.
+	over.names = naming(offered, of)
+
 	if !over.writes && !over.reads {
 		// Nothing beneath offers a walk or a sink, so there is no document to
 		// write and none to read — and a lone method naming the columns of a

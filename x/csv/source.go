@@ -128,8 +128,8 @@ func (w *writer) header(held stack) {
 			headerMethod, held.declared),
 		"A fresh slice on every call, so that a caller sorting or rewriting what it was "+
 			"given cannot change what the next document is checked against.")
-	w.line("func (%s %s) %s() []string {", receiverVar, held.receiver(), headerMethod)
-	w.line("return []string{%s}", held.names)
+	w.line("func (%s %s) %s() []string {", held.names.receiver, held.receiver(), headerMethod)
+	w.line("return []string{%s}", held.literal)
 	w.line("}")
 	w.blank()
 }
@@ -165,10 +165,10 @@ func (w *writer) writeCounter(held stack) {
 	w.blank()
 
 	w.doc("Write passes the bytes on and counts the ones that were taken.")
-	w.line("func (w *%s) Write(p []byte) (int, error) {", name)
-	w.line("n, err := w.to.Write(p)")
-	w.line("w.n += int64(n)")
-	w.line("return n, err")
+	w.line("func (%[1]s *%[2]s) Write(p []byte) (int, error) {", held.names.sink, name)
+	w.line("n, %[1]s := %[2]s.to.Write(p)", held.names.err, held.names.sink)
+	w.line("%s.n += int64(n)", held.names.sink)
+	w.line("return n, %s", held.names.err)
 	w.line("}")
 	w.blank()
 }
@@ -181,40 +181,45 @@ func (w *writer) writeTo(held stack) {
 		"One pass over the elements and one record buffer for the whole document, so what "+
 			"it costs to write a container is what it costs to write its rows and nothing "+
 			"besides.")
-	w.line("func (%s %s) %s(w io.Writer) (int64, error) {", receiverVar, held.receiver(), writeMethod)
-	w.line("counted := %s{to: w}", held.writing())
+	names := held.names
+
+	w.line("func (%s %s) %s(%s io.Writer) (int64, error) {",
+		names.receiver, held.receiver(), writeMethod, names.sink)
+	w.line("%s := %s{to: %s}", names.counted, held.writing(), names.sink)
 	w.blank()
-	w.line("out := csv.NewWriter(&counted)")
-	w.line("out.Comma = %s", held.comma)
+	w.line("%s := csv.NewWriter(&%s)", names.out, names.counted)
+	w.line("%s.Comma = %s", names.out, held.comma)
 	w.blank()
-	w.line("record := make([]string, 0, %d)", held.columns)
-	w.line("var err error")
+	w.line("%s := make([]string, 0, %d)", names.record, held.columns)
+	w.line("var %s error", names.err)
 	w.blank()
 
 	if held.header {
-		w.line("if err = out.Write(%s.%s()); err != nil {", receiverVar, headerMethod)
-		w.line("return counted.n, err")
+		w.line("if %s = %s.Write(%s.%s()); %s != nil {",
+			names.err, names.out, names.receiver, headerMethod, names.err)
+		w.line("return %s.n, %s", names.counted, names.err)
 		w.line("}")
 	}
 
-	w.line("for %s := range %s.%s() {", valueVar, receiverVar, walkMethod)
-	w.line("if record, err = %s(record, %s); err != nil {", held.encode, valueVar)
-	w.line("return counted.n, err")
+	w.line("for %s := range %s.%s() {", names.value, names.receiver, walkMethod)
+	w.line("if %s, %s = %s(%s, %s); %s != nil {",
+		names.record, names.err, held.encode, names.record, names.value, names.err)
+	w.line("return %s.n, %s", names.counted, names.err)
 	w.line("}")
 
 	w.blankLine(held)
 
-	w.line("if err = out.Write(record); err != nil {")
-	w.line("return counted.n, err")
+	w.line("if %s = %s.Write(%s); %s != nil {", names.err, names.out, names.record, names.err)
+	w.line("return %s.n, %s", names.counted, names.err)
 	w.line("}")
 	w.line("}")
 	w.blank()
 
 	w.note("Flushed here rather than by the caller, because the caller was handed a count " +
 		"and a count of buffered bytes is not one.")
-	w.line("out.Flush()")
+	w.line("%s.Flush()", names.out)
 	w.blank()
-	w.line("return counted.n, out.Error()")
+	w.line("return %s.n, %s.Error()", names.counted, names.out)
 	w.line("}")
 	w.blank()
 }
@@ -238,8 +243,8 @@ func (w *writer) blankLine(held stack) {
 	w.note("A record of one empty cell is a blank line, and a reader discards a blank " +
 		"line before it counts fields — so this row would be written and never read " +
 		"back. Refused here rather than lost there.")
-	w.line("if record[0] == \"\" {")
-	w.line("return counted.n, errors.New(%s)", strconv.Quote(held.declared+
+	w.line("if %s[0] == \"\" {", held.names.record)
+	w.line("return %s.n, errors.New(%s)", held.names.counted, strconv.Quote(held.declared+
 		" cannot write an empty "+held.blank+": it is the only column, so the record "+
 		"would be a blank line and a reader would skip it"))
 	w.line("}")
@@ -262,10 +267,10 @@ func (w *writer) readCounter(held stack) {
 	w.blank()
 
 	w.doc("Read passes the bytes on and counts them.")
-	w.line("func (r *%s) Read(p []byte) (int, error) {", name)
-	w.line("n, err := r.from.Read(p)")
-	w.line("r.n += int64(n)")
-	w.line("return n, err")
+	w.line("func (%[1]s *%[2]s) Read(p []byte) (int, error) {", held.names.source, name)
+	w.line("n, %[1]s := %[2]s.from.Read(p)", held.names.err, held.names.source)
+	w.line("%s.n += int64(n)", held.names.source)
+	w.line("return n, %s", held.names.err)
 	w.line("}")
 	w.blank()
 }
@@ -293,19 +298,22 @@ func (w *writer) readFrom(held stack) {
 			"So this cannot pull one document out of a stream holding several — give it a " +
 			"reader over the one document.",
 	}, w.silences(held)...)...)
-	w.line("func (%s *%s) %s(r io.Reader) (int64, error) {", receiverVar, held.declared, readMethod)
+	names := held.names
+
+	w.line("func (%s *%s) %s(%s io.Reader) (int64, error) {",
+		names.receiver, held.declared, readMethod, names.source)
 
 	w.room(held)
 
-	w.line("counted := %s{from: r}", held.reading())
+	w.line("%s := %s{from: %s}", names.counted, held.reading(), names.source)
 	w.blank()
-	w.line("in := csv.NewReader(&counted)")
-	w.line("in.Comma = %s", held.comma)
-	w.line("in.FieldsPerRecord = %d", held.columns)
+	w.line("%s := csv.NewReader(&%s)", names.in, names.counted)
+	w.line("%s.Comma = %s", names.in, held.comma)
+	w.line("%s.FieldsPerRecord = %d", names.in, held.columns)
 
 	w.note("The record is read into again on every call, which the row codec is written for: " +
 		"it copies every cell out into the element before the next call arrives.")
-	w.line("in.ReuseRecord = true")
+	w.line("%s.ReuseRecord = true", names.in)
 	w.blank()
 
 	w.opening(held)
@@ -361,7 +369,7 @@ func (w *writer) room(held stack) {
 		return
 	}
 
-	w.line("if %s.%s() == 0 {", receiverVar, capMethod)
+	w.line("if %s.%s() == 0 {", held.names.receiver, capMethod)
 	w.line("return 0, errors.New(%s)", strconv.Quote(held.declared+
 		" holds nothing until it is constructed, so nothing can be read into it"))
 	w.line("}")
@@ -385,18 +393,22 @@ func (w *writer) opening(held stack) {
 	w.note("The header before anything else, and compared rather than skipped: a document " +
 		"whose columns arrived in another order would otherwise fill every element from " +
 		"the wrong fields and report nothing.")
-	w.line("header, err := in.Read()")
-	w.line("if errors.Is(err, io.EOF) {")
-	w.line("%s.%s()", receiverVar, resetMethod)
-	w.line("return counted.n, nil")
+	names := held.names
+
+	w.line("%s, %s := %s.Read()", names.header, names.err, names.in)
+	w.line("if errors.Is(%s, io.EOF) {", names.err)
+	w.line("%s.%s()", names.receiver, resetMethod)
+	w.line("return %s.n, nil", names.counted)
 	w.line("}")
-	w.line("if err != nil {")
-	w.line("return counted.n, err")
+	w.line("if %s != nil {", names.err)
+	w.line("return %s.n, %s", names.counted, names.err)
 	w.line("}")
-	w.line("if want := %s.%s(); !slices.Equal(header, want) {", receiverVar, headerMethod)
-	w.line("return counted.n, fmt.Errorf(")
-	w.line("%s, header, want)",
-		strconv.Quote("cannot read "+held.declared+": the document is headed %q, not %q"))
+	w.line("if %s := %s.%s(); !slices.Equal(%s, %s) {",
+		names.want, names.receiver, headerMethod, names.header, names.want)
+	w.line("return %s.n, fmt.Errorf(", names.counted)
+	w.line("%s, %s, %s)",
+		strconv.Quote("cannot read "+held.declared+": the document is headed %q, not %q"),
+		names.header, names.want)
 	w.line("}")
 	w.blank()
 }
@@ -410,27 +422,30 @@ func (w *writer) opening(held stack) {
 func (w *writer) rows(held stack) {
 	w.note("What went wrong inside the walk, which a sequence has no way to answer with. " +
 		"The container is handed elements one at a time and the failure is carried out here.")
-	w.line("var failed error")
+	names := held.names
+
+	w.line("var %s error", names.failed)
 	w.blank()
 
-	w.line("%s.%s()", receiverVar, resetMethod)
-	w.line("%s%s.%s(func(yield func(%s) bool) {", held.binding(), receiverVar, appendMethod, held.elem)
+	w.line("%s.%s()", names.receiver, resetMethod)
+	w.line("%s%s.%s(func(yield func(%s) bool) {",
+		held.binding(names), names.receiver, appendMethod, held.elem)
 	w.line("for {")
-	w.line("record, err := in.Read()")
-	w.line("if errors.Is(err, io.EOF) {")
+	w.line("%s, %s := %s.Read()", names.record, names.err, names.in)
+	w.line("if errors.Is(%s, io.EOF) {", names.err)
 	w.line("return")
 	w.line("}")
-	w.line("if err != nil {")
-	w.line("failed = err")
+	w.line("if %s != nil {", names.err)
+	w.line("%s = %s", names.failed, names.err)
 	w.line("return")
 	w.line("}")
 	w.blank()
-	w.line("held, err := %s(record)", held.decode)
-	w.line("if err != nil {")
-	w.line("failed = err")
+	w.line("%s, %s := %s(%s)", names.held, names.err, held.decode, names.record)
+	w.line("if %s != nil {", names.err)
+	w.line("%s = %s", names.failed, names.err)
 	w.line("return")
 	w.line("}")
-	w.line("if !yield(held) {")
+	w.line("if !yield(%s) {", names.held)
 	w.line("return")
 	w.line("}")
 	w.line("}")
@@ -444,15 +459,17 @@ func (w *writer) rows(held stack) {
 // because the element arrived, and the reason it arrived wrongly is the one
 // worth reporting.
 func (w *writer) ending(held stack) {
+	names := held.names
+
 	if !held.refuses {
-		w.line("return counted.n, failed")
+		w.line("return %s.n, %s", names.counted, names.failed)
 
 		return
 	}
 
-	w.line("if failed != nil {")
-	w.line("return counted.n, failed")
+	w.line("if %s != nil {", names.failed)
+	w.line("return %s.n, %s", names.counted, names.failed)
 	w.line("}")
 	w.blank()
-	w.line("return counted.n, refused")
+	w.line("return %s.n, %s", names.counted, names.refused)
 }
