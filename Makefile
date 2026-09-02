@@ -219,6 +219,18 @@ fresh: ## Run forge check over the worked example under examples/.
 race-matrix: ## Regenerate the race matrix under internal/racetest/matrix.
 	$(GO) test ./internal/racetest -update
 
+# The index of diagnostics, which is a hundred lines of table generated from the
+# registry rather than maintained by hand.
+#
+# Regenerated here and gated by the test that writes it, so a code added without
+# a line in the document is a red build rather than a number nobody can look up.
+# It runs from internal/cli because registration is a side effect of linking:
+# the set is only complete where the whole tree is imported, and the command
+# line is what imports it.
+.PHONY: diagnostics
+diagnostics: ## Regenerate the diagnostics index under docs/.
+	$(GO) test ./internal/cli -run TestTheDiagnosticsIndexIsTheRegistry -update
+
 .PHONY: check
 check: fmt-check vet lint cover size ## Run every gate CI runs.
 

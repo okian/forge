@@ -48,6 +48,120 @@ Or run it straight out of the module, which is the form to prefer in a
 go run github.com/okian/forge/cmd/forge generate ./...
 ```
 
+## Five minutes
+
+Start with a struct you already have:
+
+```go
+package model
+
+// Person is an ordinary struct, written without regard for forge.
+type Person struct {
+	ID   int
+	Name string
+	Age  int
+}
+```
+
+Add one declaration beside it, in an ordinary file:
+
+```go
+package model
+
+import "github.com/okian/forge"
+
+//forge:collection sort=Name,Age index=ID
+type Persons forge.Collection[Person]
+```
+
+Run the generator:
+
+```
+go run github.com/okian/forge/cmd/forge generate ./model
+```
+
+Two files appear. `model/zz_forge_persons.go` is this declaration's, and
+`model/zz_forge_shared.go` holds what the whole package's declarations reach
+into — one copy of it however many ask. `Persons` now has a query surface named
+after the fields it was built from:
+
+```go
+held := model.NewPersons(one, two, three)
+
+held.Len()             // 3
+held.Names()           // []string
+held.SortedByAge()     // []Person
+held.ByID()            // map[int]Person
+
+for _, name := range held.Seq().
+	Filter(func(p model.Person) bool { return p.Age >= 18 }).
+	Map(func(p model.Person) string { return p.Name }).
+	Collect() {
+	// one pass, nothing materialised in between
+}
+```
+
+No helper package, no `func(Person) string` at every call site, and no
+reflection. Commit both files — the declaration's own file calls into the shared
+one, so a package holding one without the other does not build — and builds and
+editors then work with nothing installed.
+
+The declaration went in an ordinary file because its underlying type really is
+`[]Person` — anything in the package may index it and range over it. Ask what
+you got:
+
+```
+go run github.com/okian/forge/cmd/forge explain ./model -t Persons
+```
+
+## Spec form
+
+Not every stack has an underlying type an author may write to. A ring buffer's
+head index, a set's deduplication and a lock's exclusion are invariants a raw
+write would quietly break, so a declaration holding one goes in a **spec file**:
+an ordinary Go file under the `forgespec` build tag.
+
+```go
+//go:build forgespec
+
+package model
+
+import "github.com/okian/forge"
+
+// Recent is the last thousand people, encoded as JSON in one pass.
+//
+//forge:ring cap=1000
+type Recent forge.Ring[forge.Json[Person]]
+```
+
+One directive, and nothing here needs it. A layer generates because the
+declaration names it; a `//forge:` comment is how an *option* reaches one. This
+declaration says where the capacity is decided: written here, `NewRecent()` takes
+nothing and the size is a fact about the type; left out, the constructor takes it
+and the caller decides. Neither is more correct, which is why it is an option.
+
+The build tag is what lets one name mean two things. Under the tag, `Recent` is
+the marker instantiation, which is what `gopls` resolves while you are looking
+at the declaration. In the ordinary build the spec file is out of the build
+entirely and forge's own output declares `Recent` — the ring struct and its
+methods — so the name resolves either way and the compiler checks the spec.
+
+`forge generate` writes both halves:
+
+- `zz_forge_recent.go`, under `//go:build !forgespec`: the type, the ring's
+  methods, the JSON codec over them, and the interface assertions they earn.
+- `zz_forge_stubs.go`, under `//go:build forgespec`: the same API with panicking
+  bodies, so a caller compiles in the tagged build too.
+
+Nothing calls a stub. It exists so that the two builds agree about what `Recent`
+can do, and `make vet` type-checks both — a stub that has drifted is a file that
+would otherwise fail in somebody else's checkout.
+
+Which form a declaration needs is not a judgement call: `forge` refuses an
+inline declaration whose stack cannot survive a raw write, and the diagnostic
+says to move it. `forge list` prints the answer per layer in its **Declare**
+column.
+
 ## Usage
 
 ```
@@ -65,29 +179,24 @@ a spec-form declaration gets a second, `forge_stubs.gen.go`, which stands in for
 the first under the build tag the spec is written behind — exactly one of the
 two is in any build.
 
+A refusal names the declaration, says what is wrong and says what to do about
+it, under a code you can look up:
+[`docs/diagnostics.md`](docs/diagnostics.md) lists every one.
+
 ## Example
 
-[`examples/people`](examples/people) is the whole arrangement in one package:
-three subjects, five declarations over them, and the files `forge` wrote
-from them, committed beside the source the way they are meant to be. The one to
-read first is
+[`examples/people`](examples/people) is a whole arrangement in one package:
+three subjects, five declarations over them, and the files `forge` wrote from
+them, committed beside the source the way they are meant to be.
 
-```go
-//forge:collection sort=Name,Age index=ID
-type Persons forge.Collection[Person]
-```
-
-and what it buys is a container that walks, projects, sorts and indexes its
-elements with the subject's own field names in the method names — `Names()`,
-`SortedByAge()`, `ByID()` — rather than a package of helpers taking a
-`func(Person) string` at every call site. The tests beside it read as usage.
-
-The other four go further: a bounded ring under eight layers, a smaller ring
+Its `Persons` is the declaration shown above, unchanged. The other four go
+further than anything here: a bounded ring under *eight* layers, a smaller ring
 behind a mutex, a closed set over a named integer, and a directory whose
 elements encode in full and log with their secret masked. The package
-documentation walks them in that order. It also names the one place this
-package comes out other than a reader would guess, and says where it is written
-up — an example is worth reading for what a tool really does.
+documentation walks them in that order. It also names the one place this package
+comes out other than a reader would guess, and says where it is written up — an
+example is worth reading for what a tool really does. The tests beside it read
+as usage.
 
 ## Layers of your own
 
@@ -117,6 +226,7 @@ built-in layers. The interface is
 [`plugin`](https://pkg.go.dev/github.com/okian/forge/plugin), which documents
 what a layer is asked and in what order, where a method goes, and which of
 forge's own machinery is deliberately not published.
+[`docs/writing-a-layer.md`](docs/writing-a-layer.md) walks through a whole one.
 
 [`x/csv`](x/csv) is that arrangement, built and held to every gate in this
 repository. It is a CSV transport — `WriteCSVTo`, `ReadCSVFrom` and `CSVHeader`
@@ -139,6 +249,19 @@ from the placeholder, so nothing in the declaration changes when the layer
 arrives. Every marker `forge list` calls *staged* is open to be claimed that
 way.
 
+## Documentation
+
+| Where                                                    | What it is                                                                    |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| this file                                                | install, the two forms of declaration, the verbs                              |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                     | the pipeline, what each stage is answerable for, and the two facts that shaped it |
+| [`docs/writing-a-layer.md`](docs/writing-a-layer.md)     | a layer start to finish, and what is deliberately not published               |
+| [`docs/diagnostics.md`](docs/diagnostics.md)             | every `FRG` code, one line each, generated from the registry                  |
+| [`plugin`](https://pkg.go.dev/github.com/okian/forge/plugin) | the reference for a layer: what it is asked, in what order, and what it answers with |
+| [`examples/people`](examples/people)                     | five declarations over three subjects, with the generated files committed     |
+| [`x/csv`](x/csv)                                         | a layer in its own module, written against `plugin` and nothing else          |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                     | the gates, the definition of done, and the commit conventions                 |
+
 ## Development
 
 Every gate CI runs is a `make` target, so a green `make check` locally means a
@@ -157,6 +280,7 @@ make tidy-check      # fail if go.mod or go.sum would change under `go mod tidy`
 make build           # build ./cmd/forge into ./bin
 make example         # regenerate the worked example under examples/
 make layers-example  # regenerate the worked example under x/csv/
+make diagnostics     # regenerate docs/diagnostics.md from the registry
 make help            # list every target
 ```
 

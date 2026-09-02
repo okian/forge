@@ -173,7 +173,8 @@
 //	go doc github.com/okian/forge/internal/layer Unit
 //	go doc github.com/okian/forge/internal/layer Layer
 //
-// That works from any module. What it does not do is appear on the web, since a
+// That works from any module whose graph holds forge, which is every module a
+// layer is written in. What it does not do is appear on the web, since a
 // documentation host has no reason to publish a package nobody may import — so
 // the prose here says what a reader of a web page would otherwise have gone
 // looking for.

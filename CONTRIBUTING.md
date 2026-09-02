@@ -15,6 +15,14 @@ For a bug, an issue with the declaration that misbehaved and the output it
 produced is worth more than a patch — the declaration is the reproduction, and
 it needs no design decision to be useful.
 
+Before changing anything in `internal/`, read
+[`ARCHITECTURE.md`](ARCHITECTURE.md). It says what each stage is answerable for
+and what it may not know, which is the part that is expensive to rediscover — and
+it names the two language-level facts the whole shape follows from. If you are
+writing a layer rather than changing forge, you need none of it:
+[`docs/writing-a-layer.md`](docs/writing-a-layer.md) and the `plugin` package
+are the whole surface.
+
 ## The gates
 
 Every gate CI runs is a `make` target, so a green `make check` locally means a
@@ -51,9 +59,16 @@ it — the go command reads a nested module as not part of the one above it — 
 run the `make` target rather than the `go` command.
 
 The targets that are not gates stay with this module: `make build` builds
-`forge`, `make bench` measures this module's own benchmarks, and each worked
-example has a regeneration target of its own (`make example`,
-`make layers-example`) because each is written by a different binary.
+`forge`, and `make bench` measures this module's own benchmarks.
+
+Three more regenerate committed output rather than checking it, and each is run
+when the thing it is written from changes: `make example` and
+`make layers-example` for the two worked examples — one target each, because
+each is written by a different binary — and `make diagnostics` for the index of
+diagnostic codes. None of them is a gate; what gates them is `make check`, whose
+acceptance tests regenerate through the real pipeline and compare. Committed
+output that has gone stale still compiles, so nothing fails until somebody reads
+it and believes it.
 
 ## Definition of done
 
