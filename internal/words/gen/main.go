@@ -1,11 +1,17 @@
 // Command gen builds the dictionary internal/words embeds, from a release of
 // the Automatically Generated Inflection Database.
 //
-// It is run by a maintainer and never by the build or by CI. The asset it
-// writes is committed, so a contributor with no wordlist on disk builds forge
-// fine, and a change to the dictionary is a reviewable line in the pull request
-// that makes it: the provenance the converter records says which upstream
-// release it read, what that release hashed to, and how many entries survived.
+// It is run by a maintainer and never by the build or by CI. What it writes is
+// committed, so a contributor with no wordlist on disk builds forge fine — and
+// it is written as text, so a change to the dictionary is a diff somebody can
+// read: the words that were added, the words that went, and a provenance line
+// saying which upstream release it came from, what that release hashed to, and
+// how many entries survived.
+//
+// The compact form a lookup wants is not committed. internal/words builds it
+// from this file the first time something asks the dictionary a question, which
+// costs a fifth of a millisecond once per process and keeps the repository
+// holding words rather than bytes.
 //
 // There is no network here either. The release is fetched once, by hand, from
 // wordlist.aspell.net, and its path is given on the command line:
@@ -30,7 +36,7 @@ import (
 
 func main() {
 	in := flag.String("in", "", "path to the AGID release archive")
-	out := flag.String("out", "internal/words/english.bin", "path to write the asset to")
+	out := flag.String("out", "internal/words/english.txt", "path to write the dictionary to")
 	version := flag.String("version", "", "upstream version, taken from the archive when empty")
 	flag.Parse()
 
@@ -59,13 +65,8 @@ func run(in, out, version string) error {
 		return err
 	}
 
-	asset, err := encode(built)
-	if err != nil {
-		return err
-	}
-
-	//nolint:gosec // The asset is committed source, read by every build.
-	if err := os.WriteFile(out, asset, 0o644); err != nil {
+	//nolint:gosec // The dictionary is committed source, read by every build.
+	if err := os.WriteFile(out, encode(built), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", out, err)
 	}
 

@@ -1,7 +1,6 @@
 package words_test
 
 import (
-	"compress/flate"
 	"errors"
 	"strings"
 	"testing"
@@ -20,6 +19,9 @@ func TestTheDictionaryTravelsWithTheBinary(t *testing.T) {
 			t.Errorf("the provenance %q does not say %q", held, want)
 		}
 	}
+	if strings.HasPrefix(held, "#") {
+		t.Errorf("the provenance %q still carries the comment marker", held)
+	}
 
 	if _, is := words.English().Plural("person"); !is {
 		t.Error("the embedded dictionary does not know person")
@@ -29,18 +31,104 @@ func TestTheDictionaryTravelsWithTheBinary(t *testing.T) {
 	}
 }
 
+// The file is the form a person edits, so what it costs to be readable is
+// checked here rather than assumed: an asset written the way the converter
+// writes it loads, and every table it carries answers.
+func TestTheTextFormLoads(t *testing.T) {
+	held, err := words.Load([]byte(sample))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+
+	for _, one := range []struct{ word, want string }{
+		{"person", "people"},
+		{"Person", "people"},
+		{"basis", "bases"},
+		{"alumnus", "alumni"},
+	} {
+		if got, is := held.Plural(one.word); !is || got != one.want {
+			t.Errorf("Plural(%q) = %q, %v; want %q", one.word, got, is, one.want)
+		}
+	}
+
+	if got, is := held.Agent("run"); !is || got != "runner" {
+		t.Errorf("Agent(run) = %q, %v; want runner", got, is)
+	}
+	if !held.Known("address") {
+		t.Error("the vocabulary section did not load")
+	}
+	if held.Known("cuju") {
+		t.Error("a word nothing declares is known")
+	}
+}
+
+// There is no singular section in the file, and there is a singular table in
+// the dictionary. This is the derivation, and the tie-break that keeps it from
+// depending on the order anything was built in: base and basis both pluralise
+// to bases, and base is the one that comes back.
+func TestSingularIsDerivedFromPlural(t *testing.T) {
+	held, err := words.Load([]byte(sample))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+
+	for _, one := range []struct{ word, want string }{
+		{"people", "person"},
+		{"People", "person"},
+		{"alumni", "alumnus"},
+		{"bases", "base"},
+	} {
+		if got, is := held.Singular(one.word); !is || got != one.want {
+			t.Errorf("Singular(%q) = %q, %v; want %q", one.word, got, is, one.want)
+		}
+	}
+
+	if _, is := held.Singular("person"); is {
+		t.Error("a singular answered as though it were a plural")
+	}
+}
+
+// The whole point of committing text is that somebody edits it, and the entry
+// they add lands wherever their editor put it. A word out of order is still a
+// word the dictionary finds.
+func TestAWordInsertedOutOfOrderIsStillFound(t *testing.T) {
+	held, err := words.Load([]byte(strings.Join([]string{
+		"# forge words 1",
+		"",
+		"[plural]",
+		"person\tpeople",
+		"alumnus\talumni", // before person, alphabetically
+		"basis\tbases",
+	}, "\n")))
+	if err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+
+	for _, one := range []struct{ word, want string }{
+		{"alumnus", "alumni"},
+		{"basis", "bases"},
+		{"person", "people"},
+	} {
+		if got, is := held.Plural(one.word); !is || got != one.want {
+			t.Errorf("Plural(%q) = %q, %v; want %q", one.word, got, is, one.want)
+		}
+	}
+}
+
 // An asset this package cannot read is a broken build rather than a bad input,
-// and every rule works without one — so it loads as an empty dictionary and the
-// names come out regular.
+// and every rule works without one — so an empty one loads as an empty
+// dictionary and the names come out regular.
 func TestAnAssetThatIsNotOne(t *testing.T) {
 	for _, one := range []struct {
 		what  string
-		asset []byte
+		asset string
 	}{
-		{"nothing at all", nil},
-		{"a provenance line and no body", []byte("forge words 1\n")},
+		{"nothing at all", ""},
+		{"a provenance line and no sections", "# forge words 1\n"},
+		{"comments and blank lines only", "# forge words 1\n\n# and nothing else\n\n"},
+		{"a section with no entries", "# forge words 1\n\n[plural]\n"},
 	} {
-		held, err := words.Load(one.asset)
+		held, err := words.Load([]byte(one.asset))
 		if err != nil {
 			t.Fatalf("%s: Load = %v", one.what, err)
 		}
@@ -60,42 +148,52 @@ func TestAnAssetThatIsNotOne(t *testing.T) {
 
 	for _, one := range []struct {
 		what  string
-		asset []byte
+		asset string
 	}{
-		{"a body that is not deflated", []byte("forge words 1\nnot deflated at all")},
-		{"a body with the wrong magic", append([]byte("forge words 1\n"), deflated(t, "NOPE")...)},
-		{"a body that stops mid-table", append([]byte("forge words 1\n"), deflated(t, "FWD1")...)},
+		{"an entry before any section", "# forge words 1\nperson\tpeople\n"},
+		{"a section nothing reads", "# forge words 1\n\n[plurals]\nperson\tpeople\n"},
+		{"an entry with three fields", "# forge words 1\n\n[plural]\nperson\tpeople\tfolk\n"},
+		{"an entry with an empty field", "# forge words 1\n\n[plural]\nperson\t\n"},
 	} {
-		if _, err := words.Load(one.asset); !errors.Is(err, words.ErrAsset) {
+		if _, err := words.Load([]byte(one.asset)); !errors.Is(err, words.ErrAsset) {
 			t.Errorf("%s: Load = %v, want an asset failure", one.what, err)
 		}
 	}
 }
 
-// deflated returns a body the loader will decompress.
-func deflated(t *testing.T, text string) []byte {
-	t.Helper()
-
-	var out strings.Builder
-	held := flateWriter(t, &out)
-
-	if _, err := held.Write([]byte(text)); err != nil {
-		t.Fatalf("deflating: %v", err)
-	}
-	if err := held.Close(); err != nil {
-		t.Fatalf("deflating: %v", err)
-	}
-	return []byte(out.String())
-}
-
-// flateWriter is the compressor the asset is written with, kept beside the test
-// that needs it rather than imported at the top of a file about words.
-func flateWriter(t *testing.T, into *strings.Builder) *flate.Writer {
-	t.Helper()
-
-	held, err := flate.NewWriter(into, flate.BestCompression)
+// Trailing whitespace is invisible in a diff, and a carriage return is what a
+// checkout on another platform can leave behind. Neither may become part of a
+// word.
+func TestTheEdgesOfALineAreTrimmed(t *testing.T) {
+	held, err := words.Load([]byte("# forge words 1\r\n\r\n[plural]\r\nperson\tpeople  \r\n"))
 	if err != nil {
-		t.Fatalf("deflating: %v", err)
+		t.Fatalf("Load = %v", err)
 	}
-	return held
+
+	if got, is := held.Plural("person"); !is || got != "people" {
+		t.Errorf("Plural(person) = %q, %v; want people", got, is)
+	}
+	if _, is := held.Singular("people"); !is {
+		t.Error("the derived singular carried the whitespace across")
+	}
 }
+
+// sample is the file in miniature: every section, and the shared plural that
+// the derivation has to break a tie over.
+const sample = `# forge words 1 agid=test sha256=none plurals=4 agents=1 vocabulary=2 converter=1
+#
+# A comment, which is most of what the head of the real file is.
+
+[plural]
+alumnus	alumni
+base	bases
+basis	bases
+person	people
+
+[agent]
+run	runner
+
+[vocabulary]
+address
+analysis
+`

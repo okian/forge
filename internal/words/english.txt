@@ -1,0 +1,5143 @@
+# forge words 1 agid=2016.01.19 sha256=15d2d792d309d2dc838bf75d8abcd3feb36708c219dc5158d4fff70b89e601d1 plurals=1300 agents=633 vocabulary=3178 converter=1
+#
+# The dictionary forge inflects names against, in the form it is reviewed in.
+#
+# Sections are [name]; blank lines and lines opening with # are ignored. An
+# entry is a word on its own, or a word and what it maps to separated by a tab.
+# Entries are sorted within a section, which is what lets the loader index the
+# file in one pass and what makes an update to the dictionary read as words
+# added and removed rather than as a wall of moved bytes. A word inserted out of
+# order is still found; the sort is checked when the file is loaded.
+#
+# There is no singular section. The singular of a word is the plural table read
+# backwards, and the loader derives it — where two singulars share a plural,
+# the first in alphabetical order wins, so the answer does not depend on the
+# order anything was built in. Writing it down as well would be one fact in two
+# places, and the two could disagree.
+#
+# Everything here is the exceptions. A pair the regular rules already get right
+# is not carried, because it would be bytes spent reaching the same answer, and
+# a word the dictionary has never heard of falls through to those rules — which
+# is where a domain word belongs, since a domain word is usually regular.
+#
+# This file is written by internal/words/gen, from a release of the
+# Automatically Generated Inflection Database. Edit it by hand to add a word the
+# release does not carry; the converter's overrides.txt is where a correction
+# belongs, so that the next release does not undo it.
+
+[plural]
+aardwolf	aardwolves
+abiogenesis	abiogeneses
+abomasum	abomasa
+acariasis	acariases
+acarus	acari
+acervulus	acervuli
+acidosis	acidoses
+acinus	acini
+actinomycosis	actinomycoses
+aculeus	aculei
+addendum	addenda
+adenohypophysis	adenohypophyses
+adenosis	adenoses
+adiposis	adiposes
+adman	admen
+aecium	aecia
+aerobiosis	aerobioses
+afterlife	afterlives
+agamogenesis	agamogeneses
+agape	agapae
+agenesis	ageneses
+agranulocytosis	agranulocytoses
+aircraft	aircraft
+aircraftman	aircraftmen
+airman	airmen
+airwoman	airwomen
+albedo	albedoes
+alderman	aldermen
+alderwoman	alderwomen
+alewife	alewives
+alga	algae
+alkali	alkalies
+alkalosis	alkaloses
+alligatorfish	alligatorfish
+alnico	alnicoes
+altocumulus	altocumuli
+altostratus	altostrati
+alumna	alumnae
+alumnus	alumni
+alveolus	alveoli
+amanuensis	amanuenses
+amaurosis	amauroses
+amberfish	amberfish
+ambulacrum	ambulacra
+amebiasis	amebiases
+amitosis	amitoses
+amniocentesis	amniocenteses
+amoebiasis	amoebiases
+amphibrach	amphibrachs
+amphimixis	amphimixes
+amphora	amphorae
+ampulla	ampullae
+amyloidosis	amyloidoses
+amylolysis	amylolyses
+anabiosis	anabioses
+anaclisis	anaclises
+anadiplosis	anadiploses
+analysis	analyses
+anamnesis	anamneses
+anamorphosis	anamorphoses
+anaphylaxis	anaphylaxes
+anaplasmosis	anaplasmoses
+anastomosis	anastomoses
+anchorman	anchormen
+anchorperson	anchorpeople
+anchorwoman	anchorwomen
+anchylosis	anchyloses
+androgenesis	androgeneses
+animalculum	animalcula
+ankylosis	ankyloses
+anopheles	anopheles
+anthesis	antheses
+anthracosis	anthracoses
+anthrax	anthraces
+anthropogenesis	anthropogeneses
+anthropophagus	anthropophagi
+antihero	antiheroes
+antiphrasis	antiphrases
+antisepsis	antisepses
+antithesis	antitheses
+anuresis	anureses
+aphaeresis	aphaereses
+aphelion	aphelia
+apheresis	aphereses
+aphesis	apheses
+aponeurosis	aponeuroses
+apophasis	apophases
+apophysis	apophyses
+aposiopesis	aposiopeses
+apothecium	apothecia
+apotheosis	apotheoses
+appalling	appalling
+appendix	appendices
+apsis	apses
+archaebacterium	archaebacteria
+archegonium	archegonia
+archesporium	archesporia
+arteriosclerosis	arterioscleroses
+arthritis	arthritides
+artilleryman	artillerymen
+asbestosis	asbestoses
+ascariasis	ascariases
+ascoma	ascomata
+ascus	asci
+asepsis	asepses
+aspergillosis	aspergilloses
+assemblyman	assemblymen
+assemblywoman	assemblywomen
+atelectasis	atelectases
+atherogenesis	atherogeneses
+atherosclerosis	atheroscleroses
+athetosis	athetoses
+atrium	atria
+auspex	auspices
+austral	australes
+autocatalysis	autocatalyses
+autogenesis	autogeneses
+autolysis	autolyses
+auxesis	auxeses
+avitaminosis	avitaminoses
+axis	axes
+ay	ayes
+bacillus	bacilli
+backwoodsman	backwoodsmen
+bacteriolysis	bacteriolyses
+bacteriostasis	bacteriostases
+bacterium	bacteria
+badman	badmen
+bagman	bagmen
+bailsman	bailsmen
+balloonfish	balloonfish
+ban	bani
+bandeau	bandeaux
+bandsman	bandsmen
+barbasco	barbascoes
+bargeman	bargemen
+barman	barmen
+barrelfish	barrelfish
+baseman	basemen
+basidium	basidia
+basis	bases
+bastinado	bastinadoes
+batman	batmen
+batsman	batsmen
+beadsman	beadsmen
+beef	beeves
+beefalo	beefaloes
+beggarman	beggarmen
+beggarwoman	beggarwomen
+behalf	behalves
+bellman	bellmen
+bijou	bijoux
+bilharziasis	bilharziases
+biogenesis	biogeneses
+biosynthesis	biosyntheses
+biz	bizzes
+blastogenesis	blastogeneses
+blastomycosis	blastomycoses
+blepharitis	blepharitides
+boatman	boatmen
+bogeyman	bogeymen
+bogyman	bogymen
+bondman	bondmen
+bondsman	bondsmen
+bondswoman	bondswomen
+bondwoman	bondwomen
+boogeyman	boogeymen
+bookshelf	bookshelves
+bourgeois	bourgeois
+bowman	bowmen
+brachium	brachia
+brainchild	brainchildren
+brakeman	brakemen
+branchia	branchiae
+bravado	bravadoes
+bregma	bregmata
+bronchus	bronchi
+brucellosis	brucelloses
+bubo	buboes
+bucktooth	buckteeth
+buffalo	buffaloes
+burrfish	burrfish
+bursa	bursae
+bushman	bushmen
+businessman	businessmen
+businessperson	businesspeople
+businesswoman	businesswomen
+busman	busmen
+butterflyfish	butterflyfish
+buttonquail	buttonquail
+by	byes
+cabman	cabmen
+cactus	cacti
+caduceus	caducei
+caecum	caeca
+calcaneus	calcanei
+calculus	calculi
+calf	calves
+calico	calicoes
+calyculus	calyculi
+cameraman	cameramen
+camerawoman	camerawomen
+canaliculus	canaliculi
+candelabrum	candelabra
+candidiasis	candidiases
+canthus	canthi
+capitulum	capitula
+carbonado	carbonadoes
+cardinalfish	cardinalfish
+cargo	cargoes
+carpus	carpi
+caryopsis	caryopses
+castling	castling
+catachresis	catachreses
+catalysis	catalyses
+cataphoresis	cataphoreses
+catechesis	catecheses
+catharsis	catharses
+cathexis	cathexes
+cattalo	cattaloes
+cattleman	cattlemen
+cavalryman	cavalrymen
+caveman	cavemen
+cecum	ceca
+celoma	celomata
+cementum	cementa
+cenogenesis	cenogeneses
+centesis	centeses
+cervix	cervices
+chaeta	chaetae
+chairman	chairmen
+chairwoman	chairwomen
+chamois	chamois
+chapman	chapmen
+charisma	charismata
+charwoman	charwomen
+chassis	chassis
+chateau	chateaux
+chelicera	chelicerae
+chemosynthesis	chemosyntheses
+chemotaxis	chemotaxes
+chessman	chessmen
+child	children
+chili	chilies
+chilli	chillies
+chinchillon	chinchilla
+chlamydia	chlamydiae
+chlorosis	chloroses
+cholecystitis	cholecystitides
+cholelithiasis	cholelithiases
+chon	cha
+churchman	churchmen
+cicatrix	cicatrices
+cicerone	ciceroni
+cigarfish	cigarfish
+cilium	cilia
+cingulum	cingula
+cirrhosis	cirrhoses
+cirrocumulus	cirrocumuli
+cirrostratus	cirrostrati
+cirrus	cirri
+cisco	ciscoes
+cisterna	cisternae
+clansman	clansmen
+clanswoman	clanswomen
+claro	claroes
+claustrum	claustra
+clavus	clavi
+clergyman	clergymen
+clergywoman	clergywomen
+cloaca	cloacae
+clubfoot	clubfeet
+coachman	coachmen
+coalman	coalmen
+coastguardsman	coastguardsmen
+coccidioidomycosis	coccidioidomycoses
+coccidiosis	coccidioses
+coccidium	coccidia
+coccus	cocci
+coccyx	coccyges
+cochlea	cochleae
+codex	codices
+coelenteron	coelentera
+cognoscente	cognoscenti
+colloquy	colloquies
+colossus	colossi
+columbarium	columbaria
+committeeman	committeemen
+committeewoman	committeewomen
+conch	conchs
+conchfish	conchfish
+congius	congii
+congo	congoes
+congressman	congressmen
+congressperson	congresspeople
+congresswoman	congresswomen
+conidium	conidia
+conman	conmen
+consortium	consortia
+contadino	contadini
+continuum	continua
+contretemps	contretemps
+controlling	controlling
+convictfish	convictfish
+cooling	cooling
+corditis	cordites
+cornetfish	cornetfish
+corneum	cornea
+coronach	coronachs
+corps	corps
+corpsman	corpsmen
+corpus	corpora
+corrigendum	corrigenda
+cortex	cortices
+costa	costae
+councilman	councilmen
+councilwoman	councilwomen
+counterman	countermen
+countryman	countrymen
+countrywoman	countrywomen
+cowman	cowmen
+coxa	coxae
+cracksman	cracksmen
+craftsman	craftsmen
+craftswoman	craftswomen
+cragsman	cragsmen
+crewman	crewmen
+crisis	crises
+criterion	criteria
+cromlech	cromlechs
+crossbowman	crossbowmen
+crowfoot	crowfeet
+cryptococcosis	cryptococcoses
+ctenidium	ctenidia
+cumulonimbus	cumulonimbi
+cumulus	cumuli
+curdling	curdling
+curia	curiae
+curriculum	curricula
+cuticula	cuticulae
+cyanosis	cyanoses
+cyclops	cyclops
+cyclosis	cycloses
+cystitis	cystitides
+cytogenesis	cytogeneses
+cytolysis	cytolyses
+dado	dadoes
+dago	dagoes
+dairyman	dairymen
+dairywoman	dairywomen
+dalesman	dalesmen
+dalo	dali
+datum	data
+deaf	deaves
+debris	debris
+deliveryman	deliverymen
+desideratum	desiderata
+deskman	deskmen
+desperado	desperadoes
+detritus	detritus
+diabetes	diabetes
+diaeresis	diaereses
+diagnosis	diagnoses
+diakinesis	diakineses
+dialysis	dialyses
+diaphoresis	diaphoreses
+diaphysis	diaphyses
+diastasis	diastases
+diathesis	diatheses
+dictum	dicta
+dido	didoes
+die	dice
+dieresis	diereses
+differentia	differentiae
+dildo	dildoes
+dingo	dingoes
+diplococcus	diplococci
+dipteron	diptera
+diptych	diptychs
+dis	disses
+distich	distichs
+diverticulosis	diverticuloses
+diverticulum	diverticula
+doctorfish	doctorfish
+dogtooth	dogteeth
+dominatrix	dominatrices
+domino	dominoes
+doorman	doormen
+dormouse	dormice
+draftsman	draftsmen
+draftswoman	draftswomen
+draughtsman	draughtsmen
+drawknife	drawknives
+driftfish	driftfish
+dry	drys
+duodenum	duodena
+dustman	dustmen
+dybbuk	dybbukim
+dysgenesis	dysgeneses
+earthman	earthmen
+ecdysis	ecdyses
+ecesis	eceses
+echinococcosis	echinococcoses
+echinococcus	echinococci
+echo	echoes
+ecphonesis	ecphoneses
+ectozoon	ectozoa
+eddo	eddoes
+effluvium	effluvia
+eggshake	eggshake
+eisegesis	eisegeses
+elasmobranch	elasmobranchs
+elect	elect
+electrolysis	electrolyses
+electrophoresis	electrophoreses
+electrophorus	electrophori
+elephantiasis	elephantiases
+elf	elves
+ellipsis	ellipses
+embargo	embargoes
+emerita	emeritae
+emeritus	emeriti
+emphasis	emphases
+enarthrosis	enarthroses
+encephalitis	encephalitides
+endometriosis	endometrioses
+endothelium	endothelia
+entozoon	entozoa
+enuresis	enureses
+epanalepsis	epanalepses
+epanorthosis	epanorthoses
+epigenesis	epigeneses
+epiphysis	epiphyses
+epistasis	epistases
+epistaxis	epistaxes
+epizoon	epizoa
+epoch	epochs
+eringo	eringoes
+erratum	errata
+eryngo	eryngoes
+esophagus	esophagi
+eubacterium	eubacteria
+eunuch	eunuchs
+euphorbium	euphorbia
+everyman	everymen
+exciseman	excisemen
+executrix	executrices
+exegesis	exegeses
+expelling	expelling
+extremum	extrema
+eyetooth	eyeteeth
+farrago	farragoes
+fatso	fatsoes
+fecula	feculae
+fellowman	fellowmen
+ferryman	ferrymen
+fez	fezzes
+fiasco	fiascoes
+fibrinolysis	fibrinolyses
+fibrosis	fibroses
+fibula	fibulae
+fieldmouse	fieldmice
+fieldsman	fieldsmen
+filaria	filariae
+filariasis	filariases
+filum	fila
+fireman	firemen
+fisherman	fishermen
+fishwife	fishwives
+flagellum	flagella
+flagfish	flagfish
+flagman	flagmen
+flak	flak
+flamefish	flamefish
+florilegium	florilegia
+flyby	flybys
+flyleaf	flyleaves
+foeman	foemen
+foot	feet
+footman	footmen
+forefoot	forefeet
+foreman	foremen
+foreperson	forepeople
+forewoman	forewomen
+freedman	freedmen
+freedwoman	freedwomen
+freeman	freemen
+freewoman	freewomen
+fresco	frescoes
+freshman	freshmen
+frijol	frijoles
+friz	frizzes
+frogman	frogmen
+frontiersman	frontiersmen
+frosh	frosh
+fungus	fungi
+funiculus	funiculi
+gagman	gagmen
+galactosis	galactoses
+gametangium	gametangia
+ganglion	ganglia
+gasman	gasmen
+gastritis	gastritides
+gastrocnemius	gastrocnemii
+gastroenteritis	gastroenteritides
+gemma	gemmae
+genesis	geneses
+gentleman	gentlemen
+gentlewoman	gentlewomen
+genus	genera
+ghostfish	ghostfish
+gingiva	gingivae
+gingko	gingkoes
+ginkgo	ginkgoes
+gladiolus	gladioli
+glans	glandes
+gleba	glebae
+glissando	glissandi
+globigerina	globigerinae
+glomerulonephritis	glomerulonephritides
+glomerulus	glomeruli
+gluteus	glutei
+glycolysis	glycolyses
+gnosis	gnoses
+godchild	godchildren
+gonococcus	gonococci
+goodby	goodbys
+goose	geese
+graffito	graffiti
+grandchild	grandchildren
+groomsman	groomsmen
+grotto	grottoes
+groundsman	groundsmen
+guacharo	guacharoes
+guardsman	guardsmen
+gummosis	gummoses
+gunman	gunmen
+gusto	gustoes
+gynogenesis	gynogeneses
+hadj	hadjes
+haemodialysis	haemodialyses
+haj	hajes
+hajj	hajjes
+half	halves
+halfpenny	halfpence
+halitosis	halitoses
+halobacterium	halobacteria
+handyman	handymen
+hangman	hangmen
+hardwareman	hardwaremen
+harvestfish	harvestfish
+harvestman	harvestmen
+haustorium	haustoria
+headman	headmen
+headscarf	headscarves
+headsman	headsmen
+heathfowl	heathfowl
+helix	helices
+helmsman	helmsmen
+hemodialysis	hemodialyses
+hemolysis	hemolyses
+henchman	henchmen
+hepatitis	hepatitides
+herdsman	herdsmen
+hero	heroes
+heterogenesis	heterogeneses
+hidrosis	hidroses
+hierarch	hierarchs
+highwayman	highwaymen
+hilum	hila
+hilus	hili
+hippocampus	hippocampi
+his	hisses
+hodman	hodmen
+hollo	holloes
+homefolk	homefolk
+homeless	homeless
+homeostasis	homeostases
+hordeolum	hordeola
+horsefish	horsefish
+horseflesh	horseflesh
+horseman	horsemen
+horsepower	horsepower
+horsewoman	horsewomen
+hotelman	hotelmen
+houseman	housemen
+housewife	housewives
+hovercraft	hovercraft
+humerus	humeri
+huntsman	huntsmen
+husbandman	husbandmen
+hydrocephalus	hydrocephali
+hydrolysis	hydrolyses
+hypervitaminosis	hypervitaminoses
+hypha	hyphae
+hypnosis	hypnoses
+hypochondriasis	hypochondriases
+hypophysis	hypophyses
+hypothalamus	hypothalami
+hypothesis	hypotheses
+iceman	icemen
+idling	idling
+ileitis	ileitides
+ileum	ilea
+ilium	ilia
+imago	imagoes
+immunoelectrophoresis	immunoelectrophoreses
+incunabulum	incunabula
+indusium	indusia
+infantryman	infantrymen
+info	info
+insigne	insignia
+installing	installing
+instilling	instilling
+ischium	ischia
+jackknife	jackknives
+jambeau	jambeaux
+jawfish	jawfish
+jazzman	jazzmen
+jejunum	jejuna
+jingo	jingoes
+jobless	jobless
+journeyman	journeymen
+juryman	jurymen
+jurywoman	jurywomen
+katharsis	katharses
+keratitis	keratitides
+keratosis	keratoses
+ketosis	ketoses
+kibbutz	kibbutzim
+kinesis	kineses
+kinesthesis	kinestheses
+kinsman	kinsmen
+kinswoman	kinswomen
+kneeling	kneeling
+knife	knives
+kohlrabi	kohlrabies
+krona	kronur
+krone	kroner
+kumis	kumisses
+kyphosis	kyphoses
+labium	labia
+lactobacillus	lactobacilli
+lacuna	lacunae
+lamellibranch	lamellibranchs
+lamina	laminae
+lancetfish	lancetfish
+landman	landmen
+landsman	landsmen
+larva	larvae
+laryngitis	laryngitides
+larynx	larynges
+latex	latices
+laundryman	laundrymen
+laundrywoman	laundrywomen
+lavabo	lavaboes
+lawman	lawmen
+layman	laymen
+layperson	laypeople
+laywoman	laywomen
+leaf	leaves
+leatherfish	leatherfish
+leatherleaf	leatherleaves
+legman	legmen
+leishmaniasis	leishmaniases
+lemniscus	lemnisci
+lepidopteron	lepidoptera
+lepton	lepta
+leptospirosis	leptospiroses
+less	less
+letterman	lettermen
+leveling	leveling
+liebfraumilch	liebfraumilchs
+lied	lieder
+liegeman	liegemen
+life	lives
+liftman	liftmen
+lighterman	lightermen
+lineman	linemen
+linesman	linesmen
+lingo	lingoes
+linkman	linkmen
+linksman	linksmen
+lira	lire
+lithiasis	lithiases
+liverleaf	liverleaves
+liveryman	liverymen
+loaf	loaves
+lobsterman	lobstermen
+loch	lochs
+lockman	lockmen
+locus	loci
+logomach	logomachs
+longbowman	longbowmen
+longshoreman	longshoremen
+lordosis	lordoses
+lorica	loricae
+louse	lice
+lovechild	lovechildren
+lumberman	lumbermen
+lysis	lyses
+macrocytosis	macrocytoses
+madame	mesdames
+madman	madmen
+madwoman	madwomen
+mafioso	mafiosi
+magus	magi
+mailman	mailmen
+maltman	maltmen
+mamilla	mamillae
+mammilla	mammillae
+man	men
+mango	mangoes
+manservant	menservants
+markka	markkaa
+marksman	marksmen
+marri	marries
+marsupium	marsupia
+marum	mara
+mastitis	mastitides
+mastoiditis	mastoiditides
+matriarch	matriarchs
+matrix	matrices
+matzo	matzoth
+maxilla	maxillae
+mayfish	mayfish
+meatloaf	meatloaves
+meatman	meatmen
+mediastinum	mediastina
+medium	media
+meiosis	meioses
+melanosis	melanoses
+meningitis	meningitides
+meninx	meninges
+meniscus	menisci
+merchantman	merchantmen
+merman	mermen
+mesothelium	mesothelia
+metacarpus	metacarpi
+metadata	metadata
+metagenesis	metageneses
+metalepsis	metalepses
+metamorphosis	metamorphoses
+metastasis	metastases
+metatarsus	metatarsi
+metathesis	metatheses
+metempsychosis	metempsychoses
+metis	metisses
+middleman	middlemen
+midlife	midlives
+midshipman	midshipmen
+midwife	midwives
+militiaman	militiamen
+milium	milia
+milkman	milkmen
+mimesis	mimeses
+miniseries	miniseries
+minuteman	minutemen
+minutia	minutiae
+miro	miri
+mitochondrion	mitochondria
+mitosis	mitoses
+modulus	moduli
+moloch	molochs
+momentum	momenta
+monarch	monarchs
+moneyman	moneymen
+mongo	mongoes
+moniliasis	moniliases
+monogenesis	monogeneses
+mononucleosis	mononucleoses
+monseigneur	messeigneurs
+monsieur	messieurs
+moose	moose
+morphallaxis	morphallaxes
+mosquito	mosquitoes
+motorman	motormen
+motto	mottoes
+mouse	mice
+mulatto	mulattoes
+muscleman	musclemen
+muskox	muskoxen
+my	mys
+mycelium	mycelia
+mycobacterium	mycobacteria
+mycosis	mycoses
+myelitis	myelitides
+myelofibrosis	myelofibroses
+myosis	myoses
+myxobacterium	myxobacteria
+myxomatosis	myxomatoses
+narcosis	narcoses
+naris	nares
+neat	neat
+nebula	nebulae
+necrobiosis	necrobioses
+necrosis	necroses
+needlewoman	needlewomen
+nemesis	nemeses
+neocortex	neocortices
+nephritis	nephritides
+neuritis	neuritides
+neurohypophysis	neurohypophyses
+neurosis	neuroses
+nevus	nevi
+newsman	newsmen
+newspaperman	newspapermen
+newspaperwoman	newspaperwomen
+newsperson	newspeople
+newswoman	newswomen
+nimbus	nimbi
+no	noes
+nobleman	noblemen
+noblewoman	noblewomen
+noumenon	noumena
+nucleolus	nucleoli
+nucleus	nuclei
+nudibranch	nudibranchs
+nurseryman	nurserymen
+oarsman	oarsmen
+oarswoman	oarswomen
+oasis	oases
+obloquy	obloquies
+obolus	oboli
+obsequy	obsequies
+ocellus	ocelli
+oculus	oculi
+oesophagus	oesophagi
+oilfish	oilfish
+oilman	oilmen
+oldwife	oldwives
+oligarch	oligarchs
+omasum	omasa
+ombudsman	ombudsmen
+omphaloskepsis	omphaloskepses
+omphalus	omphali
+onchocerciasis	onchocerciases
+ontogenesis	ontogeneses
+oogenesis	oogeneses
+optimum	optima
+opus	opera
+osmosis	osmoses
+osteitis	osteitides
+osteoarthritis	osteoarthritides
+osteomyelitis	osteomyelitides
+osteoporosis	osteoporoses
+otitis	otitides
+outgo	outgoes
+overemphasis	overemphases
+ovum	ova
+ox	oxen
+oxymoron	oxymora
+oysterfish	oysterfish
+palingenesis	palingeneses
+pancreatitis	pancreatitides
+pantryman	pantrymen
+paperknife	paperknives
+papilla	papillae
+papyrus	papyri
+paracentesis	paracenteses
+paraleipsis	paraleipses
+paralepsis	paralepses
+paralipsis	paralipses
+paralysis	paralyses
+paramecium	paramecia
+paraphrasis	paraphrases
+paraphysis	paraphyses
+parapodium	parapodia
+parcelling	parcelling
+parenthesis	parentheses
+paresis	pareses
+parhelion	parhelia
+parthenogenesis	parthenogeneses
+passerby	passersby
+paterfamilias	patresfamilias
+pathogenesis	pathogeneses
+patois	patois
+patriarch	patriarchs
+patrolling	patrolling
+patrolman	patrolmen
+patrolwoman	patrolwomen
+pealing	pealing
+pearlfish	pearlfish
+peccadillo	peccadilloes
+pediculosis	pediculoses
+pekinese	pekinese
+pekingese	pekingese
+pel	peles
+penknife	penknives
+penman	penmen
+penumbra	penumbrae
+pericarditis	pericarditides
+pericardium	pericardia
+perihelion	perihelia
+perineum	perinea
+periosteum	periostea
+periphrasis	periphrases
+peristalsis	peristalses
+perithecium	perithecia
+person	people
+persona	personae
+phallus	phalli
+pharyngitis	pharyngitides
+pharynx	pharynges
+phlebitis	phlebitides
+photosynthesis	photosyntheses
+phthisis	phthises
+phylogenesis	phylogeneses
+phylum	phyla
+pibroch	pibrochs
+pileus	pilei
+pilus	pili
+pinetum	pineta
+pintado	pintadoes
+pinyin	pinyin
+pirogi	pirogies
+pitchman	pitchmen
+pizzaz	pizzazzes
+pizzicato	pizzicati
+placeman	placemen
+plainclothesman	plainclothesmen
+plainsman	plainsmen
+plasmapheresis	plasmaphereses
+platy	platys
+plectrum	plectra
+pleura	pleurae
+plica	plicae
+ploughman	ploughmen
+plowman	plowmen
+pneumococcus	pneumococci
+pneumoconiosis	pneumoconioses
+pneumonitis	pneumonitides
+pocketknife	pocketknives
+podetium	podetia
+pointsman	pointsmen
+police	police
+policeman	policemen
+policewoman	policewomen
+poliomyelitis	poliomyelitides
+pollex	pollices
+pollinosis	pollinoses
+pollyfish	pollyfish
+polyneuritis	polyneuritides
+porkfish	porkfish
+portico	porticoes
+postcava	postcavae
+postman	postmen
+potato	potatoes
+potman	potmen
+poultryman	poultrymen
+precava	precavae
+presidium	presidia
+pressman	pressmen
+privateersman	privateersmen
+prognosis	prognoses
+prolepsis	prolepses
+pronunciamento	pronunciamentoes
+prophylaxis	prophylaxes
+propman	propmen
+propositus	propositi
+prosciutto	prosciutti
+prosthesis	prostheses
+proteolysis	proteolyses
+protozoon	protozoa
+psalterium	psalteria
+pseudopodium	pseudopodia
+psittacosis	psittacoses
+psoriasis	psoriases
+psychoanalysis	psychoanalyses
+psychokinesis	psychokineses
+psychoneurosis	psychoneuroses
+psychosis	psychoses
+ptosis	ptoses
+pubes	pubes
+pubis	pubes
+pudendum	pudenda
+pulling	pulling
+pupa	pupae
+pycnosis	pycnoses
+pyelonephritis	pyelonephritides
+pyknosis	pyknoses
+pylorus	pylori
+pyrosis	pyroses
+pyxis	pyxes
+quadrivium	quadrivia
+quantum	quanta
+quarryman	quarrymen
+quarterstaff	quarterstaves
+queenfish	queenfish
+quiz	quizzes
+qwerty	qwertys
+rabbitfish	rabbitfish
+rabies	rabies
+rachitis	rachitides
+radioman	radiomen
+radius	radii
+raftman	raftmen
+raftsman	raftsmen
+railwayman	railwaymen
+raj	rajes
+razorfish	razorfish
+reanalysis	reanalyses
+rebato	rebatoes
+rectus	recti
+religious	religious
+repairman	repairmen
+repelling	repelling
+residuum	residua
+retinitis	retinitides
+rhinitis	rhinitides
+rhonchus	rhonchi
+rifleman	riflemen
+roadman	roadmen
+rondeau	rondeaux
+roundsman	roundsmen
+sacculus	sacculi
+sacrum	sacra
+salesman	salesmen
+salesperson	salespeople
+saleswoman	saleswomen
+salmonella	salmonellae
+salmonellosis	salmonelloses
+sandman	sandmen
+sarcoidosis	sarcoidoses
+sarcophagus	sarcophagi
+sartorius	sartorii
+satyriasis	satyriases
+sawtooth	sawteeth
+scalenus	scaleni
+scampo	scampi
+scapula	scapulae
+scarf	scarves
+schistosomiasis	schistosomiases
+schmo	schmoes
+schoolchild	schoolchildren
+schoolman	schoolmen
+sclerosis	scleroses
+sclerotium	sclerotia
+scolion	scolia
+scoliosis	scolioses
+scoria	scoriae
+scrotum	scrota
+scyphus	scyphi
+seaman	seamen
+seedman	seedmen
+seedsman	seedsmen
+selectman	selectmen
+selectwoman	selectwomen
+self	selves
+selling	selling
+sepsis	sepses
+septum	septa
+sequela	sequelae
+sericterium	sericteria
+series	series
+serviceman	servicemen
+servicewoman	servicewomen
+seta	setae
+sgraffito	sgraffiti
+shako	shakoes
+sheaf	sheaves
+sheep	sheep
+sheepman	sheepmen
+shelf	shelves
+shigellosis	shigelloses
+shinleaf	shinleaves
+showbiz	showbizzes
+showman	showmen
+shrewmouse	shrewmice
+shrimpfish	shrimpfish
+sideman	sidemen
+siderosis	sideroses
+sidesman	sidesmen
+signalman	signalmen
+signore	signori
+silicosis	silicoses
+siriasis	siriases
+siris	sires
+skilletfish	skilletfish
+smartypants	smartypants
+snailfish	snailfish
+snowman	snowmen
+soapfish	soapfish
+solarium	solaria
+soldierfish	soldierfish
+solidus	solidi
+soliloquy	soliloquies
+sordino	sordini
+sorus	sori
+soundman	soundmen
+spaceman	spacemen
+spacewoman	spacewomen
+spadix	spadices
+spectrum	spectra
+spermatogenesis	spermatogeneses
+spermatozoon	spermatozoa
+spiculum	spicula
+spirillum	spirilla
+splayfoot	splayfeet
+spokesman	spokesmen
+spokesperson	spokespeople
+spokeswoman	spokeswomen
+sporangium	sporangia
+sporotrichosis	sporotrichoses
+sportsman	sportsmen
+sportswoman	sportswomen
+sputum	sputa
+squama	squamae
+stableman	stablemen
+standby	standbys
+staphylococcus	staphylococci
+stasis	stases
+statesman	statesmen
+stateswoman	stateswomen
+steelman	steelmen
+steersman	steersmen
+stelis	steles
+stenosis	stenoses
+stepchild	stepchildren
+stimulus	stimuli
+stockman	stockmen
+stomach	stomachs
+strangling	strangling
+stratum	strata
+stratus	strati
+streptobacillus	streptobacilli
+streptococcus	streptococci
+stria	striae
+strobilus	strobili
+stroma	stromata
+strongman	strongmen
+stucco	stuccoes
+subgenus	subgenera
+submaxilla	submaxillae
+subphylum	subphyla
+subspecies	subspecies
+substratum	substrata
+succus	succusses
+sugarloaf	sugarloaves
+sulcus	sulci
+sumach	sumachs
+supercargo	supercargoes
+superhero	superheroes
+superman	supermen
+superwoman	superwomen
+swine	swine
+switchman	switchmen
+swiz	swizzes
+swordsman	swordsmen
+syllepsis	syllepses
+symbiosis	symbioses
+symphysis	symphyses
+synaeresis	synaereses
+synapsis	synapses
+synch	synchs
+synechia	synechiae
+syneresis	synereses
+synizesis	synizeses
+synopsis	synopses
+synovium	synovia
+synthesis	syntheses
+tabis	tabes
+tableau	tableaux
+tallyman	tallymen
+talus	tali
+tarsus	tarsi
+taximan	taximen
+taxis	taxes
+taxman	taxmen
+tech	techs
+telekinesis	telekineses
+terminus	termini
+testatrix	testatrices
+testis	testes
+tetrasporangium	tetrasporangia
+thalamus	thalami
+theca	thecae
+thesis	theses
+thief	thieves
+threadfish	threadfish
+thrombophlebitis	thrombophlebitides
+thrombosis	thromboses
+thrombus	thrombi
+thyrotoxicosis	thyrotoxicoses
+tibia	tibiae
+timberman	timbermen
+timpani	timpani
+tingling	tingling
+titmouse	titmice
+tollman	tollmen
+tomatillo	tomatilloes
+tomato	tomatoes
+tomentum	tomenta
+tonguefish	tonguefish
+tooth	teeth
+tornado	tornadoes
+torpedo	torpedoes
+torus	tori
+townsfolk	townsfolk
+townsman	townsmen
+townswoman	townswomen
+trachea	tracheae
+trad	trades
+tradesman	tradesmen
+tradeswoman	tradeswomen
+trainman	trainmen
+trencherman	trenchermen
+tribesman	tribesmen
+tribeswoman	tribeswomen
+trichina	trichinae
+trichinosis	trichinoses
+trichomoniasis	trichomoniases
+triptych	triptychs
+trivia	trivia
+trivium	trivia
+trombiculiasis	trombiculiases
+trousseau	trousseaux
+trumpetfish	trumpetfish
+tuba	tubae
+tubeless	tubeless
+tuberculosis	tuberculoses
+tunica	tunicae
+tympani	tympani
+ulna	ulnae
+umbilicus	umbilici
+underclassman	underclassmen
+unguis	ungues
+unperson	unpeople
+upperclassman	upperclassmen
+urethra	urethrae
+urinalysis	urinalyses
+uterus	uteri
+utriculus	utriculi
+vagina	vaginae
+vaginitis	vaginitides
+vagus	vagi
+vasculitis	vasculitides
+veg	veges
+velum	vela
+vena	venae
+venireman	veniremen
+ventriculus	ventriculi
+ventriloquy	ventriloquies
+vermin	vermin
+verruca	verrucae
+vertebra	vertebrae
+vertigo	vertigoes
+vesica	vesicae
+vestryman	vestrymen
+veto	vetoes
+vibrissa	vibrissae
+villus	villi
+virago	viragoes
+viscus	viscera
+vita	vitae
+volcano	volcanoes
+vulva	vulvae
+waitperson	waitpeople
+warehouseman	warehousemen
+washerman	washermen
+washerwoman	washerwomen
+washwoman	washwomen
+watchman	watchmen
+watercannon	watercannon
+watercraft	watercraft
+waterman	watermen
+weatherman	weathermen
+webfoot	webfeet
+werewolf	werewolves
+werwolf	werwolves
+wharf	wharves
+whereabouts	whereabouts
+whiz	whizzes
+why	whys
+wife	wives
+wingman	wingmen
+wiz	wizzes
+wolf	wolves
+woman	women
+won	won
+woodman	woodmen
+woodsman	woodsmen
+workingman	workingmen
+workingwoman	workingwomen
+workman	workmen
+wormfish	wormfish
+wreckfish	wreckfish
+xenogenesis	xenogeneses
+yachtsman	yachtsmen
+yachtswoman	yachtswomen
+yardman	yardmen
+yeoman	yeomen
+yobbo	yobboes
+yodeling	yodeling
+young	young
+yourself	yourselves
+yuan	yuan
+zoonosis	zoonoses
+zymolysis	zymolyses
+zymosis	zymoses
+
+[agent]
+abet	abetter
+abhor	abhorrer
+abut	abutter
+acquit	acquitter
+admit	admitter
+airdrop	airdropper
+allot	allotter
+anagram	anagrammer
+aver	averrer
+babysit	babysitter
+backdrop	backdropper
+backlog	backlogger
+backslap	backslapper
+backstop	backstopper
+bag	bagger
+ballyrag	ballyragger
+ban	banner
+bar	barrer
+barhop	barhopper
+bat	batter
+bed	bedder
+bedim	bedimmer
+befit	befitter
+befog	befogger
+beg	begger
+beget	begetter
+begin	beginner
+begum	begummer
+beset	besetter
+besot	besotter
+bestir	bestirrer
+bet	better
+bib	bibber
+bid	bidder
+big	bigger
+bin	binner
+bit	bitter
+blab	blabber
+blackleg	blacklegger
+blacktop	blacktopper
+blat	blatter
+blip	blipper
+blob	blobber
+blot	blotter
+blur	blurrer
+bob	bobber
+bobsled	bobsledder
+bog	bogger
+bootleg	bootlegger
+bootstrap	bootstrapper
+bop	bopper
+brad	bradder
+brag	bragger
+bran	branner
+brevet	brevetter
+brim	brimmer
+briquet	briquetter
+bud	budder
+bug	bugger
+bulldog	bulldogger
+bullshit	bullshitter
+bullyrag	bullyragger
+bum	bummer
+bur	burrer
+cab	cabber
+cam	cammer
+can	canner
+cap	capper
+carburet	carburetter
+carhop	carhopper
+carpetbag	carpetbagger
+cat	catter
+catnap	catnapper
+chap	chapper
+char	charrer
+chat	chatter
+chin	chinner
+chip	chipper
+chitchat	chitchatter
+chop	chopper
+chug	chugger
+chum	chummer
+clad	cladder
+clam	clammer
+clap	clapper
+clip	clipper
+clog	clogger
+clop	clopper
+clot	clotter
+club	clubber
+cobweb	cobwebber
+cod	codder
+cog	cogger
+coif	coiffer
+commit	committer
+complot	complotter
+con	conner
+concur	concurrer
+confab	confabber
+confer	conferrer
+cooccur	cooccurrer
+cop	copper
+copycat	copycatter
+coquet	coquetter
+costar	costarrer
+counterplot	counterplotter
+crab	crabber
+cram	crammer
+crap	crapper
+crib	cribber
+crop	cropper
+crosscut	crosscutter
+crowbar	crowbarrer
+crud	crudder
+cub	cubber
+cup	cupper
+curvet	curvetter
+cut	cutter
+dab	dabber
+dam	dammer
+deadpan	deadpanner
+debar	debarrer
+debug	debugger
+defer	deferrer
+defog	defogger
+degas	degasser
+demob	demobber
+demur	demurrer
+den	denner
+deprogram	deprogrammer
+deter	deterrer
+diagram	diagrammer
+dig	digger
+dim	dimmer
+din	dinner
+dip	dipper
+dis	disser
+disbar	disbarrer
+disbud	disbudder
+disinter	disinterrer
+dog	dogger
+dogleg	doglegger
+dogtrot	dogtrotter
+don	donner
+dot	dotter
+drab	drabber
+drag	dragger
+dram	drammer
+drat	dratter
+drip	dripper
+drop	dropper
+drub	drubber
+drug	drugger
+drum	drummer
+dub	dubber
+duet	duetter
+dun	dunner
+earwig	earwigger
+eavesdrop	eavesdropper
+embed	embedder
+emit	emitter
+englut	englutter
+entrap	entrapper
+enwrap	enwrapper
+equip	equipper
+fag	fagger
+fan	fanner
+fat	fatter
+featherbed	featherbedder
+fellowship	fellowshipper
+fib	fibber
+fin	finner
+fit	fitter
+flag	flagger
+flap	flapper
+flat	flatter
+flimflam	flimflammer
+flip	flipper
+flit	flitter
+flog	flogger
+flop	flopper
+flub	flubber
+fob	fobber
+fog	fogger
+footslog	footslogger
+forbid	forbidder
+forget	forgetter
+format	formatter
+foxtrot	foxtrotter
+frap	frapper
+fret	fretter
+frig	frigger
+friz	frizzer
+frog	frogger
+fun	funner
+fur	furrer
+gab	gabber
+gad	gadder
+gag	gagger
+gap	gapper
+gar	garrer
+gas	gasser
+gem	gemmer
+get	getter
+gig	gigger
+gin	ginner
+glad	gladder
+glom	glommer
+glug	glugger
+glut	glutter
+gob	gobber
+god	godder
+grab	grabber
+grin	grinner
+grip	gripper
+grit	gritter
+grub	grubber
+gum	gummer
+gun	gunner
+gut	gutter
+gyp	gypper
+ham	hammer
+handicap	handicapper
+handset	handsetter
+hap	happer
+hat	hatter
+hedgehop	hedgehopper
+hem	hemmer
+hilltop	hilltopper
+hip	hipper
+hit	hitter
+hob	hobber
+hobnob	hobnobber
+hog	hogger
+hop	hopper
+horsewhip	horsewhipper
+hot	hotter
+hotdog	hotdogger
+hub	hubber
+hug	hugger
+hum	hummer
+humbug	humbugger
+hut	hutter
+imbed	imbedder
+incur	incurrer
+infer	inferrer
+inlet	inletter
+input	inputter
+inset	insetter
+inspan	inspanner
+inter	interrer
+intermit	intermitter
+jab	jabber
+jag	jagger
+jam	jammer
+japan	japanner
+jar	jarrer
+jet	jetter
+jib	jibber
+jig	jigger
+jitterbug	jitterbugger
+job	jobber
+jog	jogger
+jot	jotter
+jug	jugger
+jut	jutter
+ken	kenner
+kid	kidder
+kidnap	kidnapper
+kip	kipper
+kit	kitter
+knap	knapper
+kneecap	kneecapper
+knit	knitter
+knot	knotter
+lag	lagger
+lallygag	lallygagger
+lam	lammer
+lap	lapper
+leapfrog	leapfrogger
+leg	legger
+let	letter
+lid	lidder
+lip	lipper
+lob	lobber
+log	logger
+lollygag	lollygagger
+lop	lopper
+lot	lotter
+lug	lugger
+mad	madder
+mag	magger
+man	manner
+manumit	manumitter
+map	mapper
+mar	marrer
+mat	matter
+misfit	misfitter
+mob	mobber
+monogram	monogrammer
+mop	mopper
+mousetrap	mousetrapper
+mud	mudder
+mug	mugger
+mum	mummer
+nab	nabber
+nag	nagger
+namedrop	namedropper
+nap	napper
+net	netter
+nightclub	nightclubber
+nip	nipper
+nod	nodder
+nonplus	nonplusser
+nut	nutter
+occur	occurrer
+offset	offsetter
+omit	omitter
+outbid	outbidder
+outcrop	outcropper
+outfit	outfitter
+outhit	outhitter
+output	outputter
+outrun	outrunner
+outspan	outspanner
+outstrip	outstripper
+outwit	outwitter
+overbid	overbidder
+overcrop	overcropper
+overdub	overdubber
+overlap	overlapper
+overrun	overrunner
+overstep	overstepper
+overtop	overtopper
+pad	padder
+pan	panner
+par	parrer
+parget	pargetter
+pat	patter
+peg	pegger
+pen	penner
+pep	pepper
+permit	permitter
+pet	petter
+pettifog	pettifogger
+photostat	photostatter
+pig	pigger
+pin	pinner
+pip	pipper
+pit	pitter
+pitapat	pitapatter
+plan	planner
+plat	platter
+plod	plodder
+plop	plopper
+plot	plotter
+plug	plugger
+pod	podder
+pop	popper
+pot	potter
+prefab	prefabber
+prefer	preferrer
+prep	prepper
+preset	presetter
+prig	prigger
+prim	primmer
+prod	prodder
+program	programmer
+prop	propper
+pug	pugger
+pun	punner
+pup	pupper
+put	putter
+quad	quadder
+quip	quipper
+quit	quitter
+quiz	quizzer
+rag	ragger
+ram	rammer
+ramrod	ramrodder
+rap	rapper
+rat	ratter
+readmit	readmitter
+rebid	rebidder
+rebut	rebutter
+recap	recapper
+recommit	recommitter
+recur	recurrer
+red	redder
+reequip	reequipper
+ref	reffer
+refer	referrer
+refit	refitter
+regret	regretter
+rehab	rehabber
+rejig	rejigger
+remap	remapper
+remit	remitter
+reoccur	reoccurrer
+repot	repotter
+reprogram	reprogrammer
+rerun	rerunner
+reset	resetter
+reship	reshipper
+resubmit	resubmitter
+ret	retter
+retransmit	retransmitter
+retrofit	retrofitter
+rev	revver
+rewed	rewedder
+rib	ribber
+rid	ridder
+rig	rigger
+rim	rimmer
+rip	ripper
+rob	robber
+rod	rodder
+rot	rotter
+rub	rubber
+run	runner
+rut	rutter
+sag	sagger
+sandbag	sandbagger
+sap	sapper
+scab	scabber
+scam	scammer
+scan	scanner
+scar	scarrer
+scat	scatter
+schlep	schlepper
+scrag	scragger
+scram	scrammer
+scrap	scrapper
+scrub	scrubber
+scud	scudder
+scum	scummer
+set	setter
+shag	shagger
+sham	shammer
+sharecrop	sharecropper
+shed	shedder
+shim	shimmer
+shin	shinner
+ship	shipper
+shit	shitter
+shlep	shlepper
+shop	shopper
+shot	shotter
+shotgun	shotgunner
+shred	shredder
+shrinkwrap	shrinkwrapper
+shrug	shrugger
+shun	shunner
+shut	shutter
+sidestep	sidestepper
+sin	sinner
+sip	sipper
+sit	sitter
+skid	skidder
+skim	skimmer
+skin	skinner
+skip	skipper
+slab	slabber
+slag	slagger
+slam	slammer
+slap	slapper
+slat	slatter
+sled	sledder
+slim	slimmer
+slip	slipper
+slit	slitter
+slog	slogger
+slop	slopper
+slot	slotter
+slug	slugger
+slum	slummer
+slur	slurrer
+smut	smutter
+snag	snagger
+snap	snapper
+snapshot	snapshotter
+snip	snipper
+snog	snogger
+snub	snubber
+snug	snugger
+sob	sobber
+sod	sodder
+somerset	somersetter
+sop	sopper
+span	spanner
+spar	sparrer
+spat	spatter
+spiderweb	spiderwebber
+spin	spinner
+spit	spitter
+splat	splatter
+split	splitter
+spot	spotter
+sprig	sprigger
+spud	spudder
+spur	spurrer
+squat	squatter
+squib	squibber
+stab	stabber
+stag	stagger
+star	starrer
+stem	stemmer
+step	stepper
+stet	stetter
+stir	stirrer
+stop	stopper
+strap	strapper
+strip	stripper
+strop	stropper
+strum	strummer
+strut	strutter
+stub	stubber
+stud	studder
+stun	stunner
+sub	subber
+sublet	subletter
+submit	submitter
+sum	summer
+sun	sunner
+suntan	suntanner
+sup	supper
+surplus	surplusser
+swab	swabber
+swag	swagger
+swan	swanner
+swap	swapper
+swat	swatter
+swig	swigger
+swim	swimmer
+swob	swobber
+swop	swopper
+swot	swotter
+tab	tabber
+tag	tagger
+tan	tanner
+tap	tapper
+tar	tarrer
+tat	tatter
+teargas	teargasser
+telegram	telegrammer
+thermostat	thermostatter
+thin	thinner
+throb	throbber
+thrum	thrummer
+thud	thudder
+tin	tinner
+tip	tipper
+tog	togger
+tom	tommer
+tomcat	tomcatter
+top	topper
+tot	totter
+tram	trammer
+transfer	transferrer
+transmit	transmitter
+transship	transshipper
+trap	trapper
+trek	trekker
+trepan	trepanner
+trig	trigger
+trim	trimmer
+trip	tripper
+trot	trotter
+tub	tubber
+tug	tugger
+tun	tunner
+tut	tutter
+twig	twigger
+twin	twinner
+twit	twitter
+typeset	typesetter
+unbar	unbarrer
+uncap	uncapper
+unclip	unclipper
+unclog	unclogger
+underbid	underbidder
+undercut	undercutter
+underpin	underpinner
+unfit	unfitter
+unknot	unknotter
+unman	unmanner
+unpin	unpinner
+unplug	unplugger
+unsnap	unsnapper
+unstop	unstopper
+unstrap	unstrapper
+unwrap	unwrapper
+unzip	unzipper
+up	upper
+uppercut	uppercutter
+upset	upsetter
+van	vanner
+vat	vatter
+veg	vegger
+vet	vetter
+wad	wadder
+wag	wagger
+wan	wanner
+war	warrer
+watchdog	watchdogger
+weatherstrip	weatherstripper
+web	webber
+wed	wedder
+wet	wetter
+wham	whammer
+whap	whapper
+whet	whetter
+whip	whipper
+whir	whirrer
+whiz	whizzer
+whop	whopper
+wig	wigger
+wigwag	wigwagger
+wildcat	wildcatter
+win	winner
+wiretap	wiretapper
+won	wonner
+woodshed	woodshedder
+wrap	wrapper
+yak	yakker
+yap	yapper
+yen	yenner
+yes	yesser
+yip	yipper
+yuk	yukker
+zap	zapper
+zigzag	zigzagger
+zip	zipper
+
+[vocabulary]
+abacus
+abatis
+abattis
+abbess
+abiogenesis
+abjectness
+abortus
+abrasiveness
+abruptness
+abscess
+absentmindedness
+absoluteness
+abstemiousness
+abstractedness
+abstractness
+abstruseness
+absurdness
+abusiveness
+abyss
+acanthus
+acariasis
+acarus
+acceptableness
+access
+accurateness
+accursedness
+acervulus
+acidosis
+acinus
+acquisitiveness
+acridness
+acrimoniousness
+acropolis
+actinomycosis
+activeness
+actress
+aculeus
+acuteness
+address
+adenitis
+adenohypophysis
+adenosis
+adenovirus
+adeptness
+adequateness
+adhesiveness
+adiposeness
+adiposis
+admass
+admirableness
+adonis
+adorableness
+adroitness
+adulteress
+advantageousness
+adventuress
+adventurousness
+adverseness
+aegis
+aepyornis
+aerobiosis
+affectedness
+affectionateness
+afflatus
+agamogenesis
+agapanthus
+agedness
+agelessness
+agenesis
+aggressiveness
+agranulocytosis
+agreeableness
+agribusiness
+ailanthus
+aimlessness
+airbus
+airiness
+airlessness
+airsickness
+airworthiness
+alertness
+alias
+alikeness
+aliveness
+alkalosis
+allantois
+allis
+allosaurus
+allusiveness
+aloneness
+aloofness
+altocumulus
+altostratus
+alumnus
+alveolus
+amanuensis
+amaryllis
+amateurishness
+amativeness
+amaurosis
+ambassadress
+ambergris
+ambitiousness
+amebiasis
+amenableness
+amiableness
+amicableness
+amitosis
+amniocentesis
+amoebiasis
+amorousness
+amorphousness
+amphimixis
+amphioxus
+ampleness
+amyloidosis
+amylolysis
+anabiosis
+anaclisis
+anadiplosis
+analogousness
+analysis
+anamnesis
+anamorphosis
+ananas
+anaphylaxis
+anaplasmosis
+anastomosis
+ancestress
+anchylosis
+ancientness
+androgenesis
+anestrus
+angelus
+angriness
+animateness
+animus
+ankylosaurus
+ankylosis
+annulus
+anoestrus
+anomalousness
+anopheles
+answerableness
+anthesis
+anthracosis
+anthropogenesis
+anthropophagus
+antiphrasis
+antisepsis
+antithesis
+anuresis
+anus
+anxiousness
+apatosaurus
+aphaeresis
+apheresis
+aphesis
+apomixis
+aponeurosis
+apophasis
+apophysis
+aposiopesis
+apotheosis
+apparatus
+apparentness
+appendicitis
+appositeness
+appreciativeness
+apprehensiveness
+appropriateness
+apsis
+aptness
+arbitrariness
+arbutus
+archduchess
+archness
+arcus
+arduousness
+argumentativeness
+argus
+aridness
+arquebus
+arras
+arteriosclerosis
+arteritis
+artfulness
+arthritis
+articulateness
+artiness
+artlessness
+asbestos
+asbestosis
+ascariasis
+ascus
+asepsis
+asparagus
+aspergillosis
+ass
+assertiveness
+assiduousness
+assuredness
+astragalus
+astuteness
+atelectasis
+atherogenesis
+atherosclerosis
+athetosis
+atlas
+atrociousness
+attainableness
+attentiveness
+attractiveness
+audaciousness
+audibleness
+augustness
+aurochs
+auspiciousness
+austereness
+authoress
+authoritativeness
+autobus
+autocatalysis
+autogenesis
+autolysis
+auxesis
+availableness
+avariciousness
+avens
+averageness
+aviatress
+avidness
+avitaminosis
+avoirdupois
+awareness
+awayness
+awesomeness
+awfulness
+awkwardness
+axis
+baas
+bacillus
+backwardness
+bacteriolysis
+bacteriostasis
+badness
+bagginess
+balas
+baldness
+balefulness
+balkiness
+balminess
+barbarousness
+bareness
+baroness
+barrenness
+baseness
+bashfulness
+basis
+bass
+bathos
+bawdiness
+bearishness
+beastliness
+beauteousness
+becomingness
+beefiness
+benefactress
+bentgrass
+benthos
+bias
+bigheartedness
+bigness
+bilharziasis
+biliousness
+biogenesis
+biomass
+biosynthesis
+bitchiness
+bitterness
+bizarreness
+blackness
+blamelessness
+blameworthiness
+blandness
+blankness
+blastogenesis
+blastomycosis
+bleakness
+bleariness
+blepharitis
+blessedness
+blewits
+blindness
+blinks
+bliss
+blissfulness
+blitheness
+blondness
+bloodiness
+bloodlessness
+bloodthirstiness
+bluegrass
+blueness
+bluffness
+blunderbuss
+bluntness
+blurriness
+boastfulness
+boisterousness
+boldness
+bolus
+boniness
+bonus
+bookishness
+boorishness
+boringness
+boss
+bossiness
+bottomlessness
+botulinus
+bounciness
+boundedness
+boundlessness
+bounteousness
+bountifulness
+bourgeois
+boyishness
+brackishness
+braininess
+brashness
+brass
+brassiness
+braveness
+brawniness
+brazenness
+breakableness
+breathlessness
+breeziness
+briefness
+brightness
+brininess
+briskness
+brittleness
+broadness
+brokenheartedness
+brokenness
+bromegrass
+bronchitis
+bronchus
+brontosaurus
+brotherliness
+brownness
+brucellosis
+brusqueness
+brutishness
+bubbliness
+bugginess
+bugloss
+bulginess
+bulkiness
+bullheadedness
+bullishness
+bumpiness
+bumptiousness
+bunchgrass
+burgess
+burliness
+burnous
+bursitis
+bus
+bushiness
+business
+buss
+busyness
+buttress
+buxomness
+bypass
+byssus
+cactus
+caddishness
+caduceus
+caginess
+calamus
+calcaneus
+calculus
+calliopsis
+callousness
+callowness
+callus
+calmness
+calyculus
+camas
+camass
+campus
+canaliculus
+candidiasis
+candidness
+candyfloss
+cannabis
+canniness
+cantankerousness
+canthus
+canvas
+canvass
+capableness
+capaciousness
+capriciousness
+captiousness
+carcass
+carditis
+carefulness
+carelessness
+caress
+carnivorousness
+carpus
+carsickness
+caryopsis
+casualness
+catachresis
+catalysis
+cataphoresis
+catechesis
+catharsis
+cathexis
+cattiness
+caucus
+cautiousness
+ceaselessness
+cellulitis
+cenogenesis
+censoriousness
+census
+centesis
+ceratodus
+ceremoniousness
+cervicitis
+chalkiness
+challis
+chamois
+chanciness
+changeableness
+changefulness
+changelessness
+chaos
+chariness
+charitableness
+chassis
+chasteness
+chattiness
+cheapness
+cheekiness
+cheerfulness
+cheeriness
+cheerlessness
+cheesiness
+chemosynthesis
+chemotaxis
+chess
+chewiness
+chiasmus
+chicness
+childishness
+childlessness
+chilliness
+chillness
+chirpiness
+chivalrousness
+chlorosis
+choiceness
+cholecystitis
+cholelithiasis
+choosiness
+choppiness
+choragus
+chorus
+chrysalis
+chubbiness
+chumminess
+chunkiness
+churlishness
+circuitousness
+circus
+cirrhosis
+cirrocumulus
+cirrostratus
+cirrus
+citrus
+clamminess
+clannishness
+class
+classiness
+clavus
+cleanliness
+cleanness
+clearness
+clematis
+cleverness
+clevis
+clianthus
+cliquishness
+clitoris
+clonus
+closeness
+clothespress
+cloudiness
+cloudlessness
+clownishness
+clumsiness
+clypeus
+coarseness
+coatdress
+coccidioidomycosis
+coccidiosis
+coccus
+cockiness
+cocksureness
+cohesiveness
+coitus
+coldheartedness
+coldness
+coleus
+colitis
+collins
+colobus
+colorblindness
+colorfastness
+colorfulness
+colorlessness
+colossus
+colpitis
+combativeness
+comeliness
+comfortableness
+commensurateness
+commodiousness
+commonness
+commonplaceness
+communicativeness
+compactness
+companionableness
+compass
+compassionateness
+competitiveness
+completeness
+complexness
+complicatedness
+comprehensiveness
+compress
+compulsiveness
+comradeliness
+concaveness
+conceitedness
+conceivableness
+conceptus
+conciseness
+conclusiveness
+concreteness
+conductress
+congenialness
+congius
+congress
+congruousness
+conjunctivitis
+connectedness
+conscientiousness
+consciousness
+consensus
+considerateness
+conspectus
+conspicuousness
+constructiveness
+contagiousness
+contemplativeness
+contemporaneousness
+contemptuousness
+contentedness
+contentiousness
+contiguousness
+continuousness
+contrabass
+contradictoriness
+contrariness
+contretemps
+contriteness
+convincingness
+convolvulus
+coolness
+cooperativeness
+copiousness
+cordgrass
+corditis
+coreopsis
+corniness
+corps
+corpus
+correctness
+corruptness
+corydalis
+cos
+cosiness
+cosmos
+coss
+costliness
+countess
+courageousness
+courteousness
+courtliness
+couscous
+covertness
+covetousness
+cowardliness
+coxsackievirus
+coyness
+coziness
+crabbedness
+crabbiness
+crabgrass
+craftiness
+cragginess
+crankiness
+crassness
+cravenness
+craziness
+creakiness
+creaminess
+creativeness
+credibleness
+creditworthiness
+credulousness
+creepiness
+cress
+crisis
+crispiness
+crispness
+crisscross
+criticalness
+crocus
+crookedness
+cross
+crossness
+crotchetiness
+crudeness
+cruelness
+crumbliness
+crumminess
+crunchiness
+crus
+crustiness
+cryptococcosis
+cubitus
+cuirass
+cullis
+culpableness
+cumbersomeness
+cumulonimbus
+cumulus
+cunnilinctus
+cunnilingus
+curableness
+curiousness
+curliness
+currentness
+cursoriness
+curtness
+curvaceousness
+cuscus
+cuss
+cussedness
+cuteness
+cutis
+cutlas
+cutlass
+cyanosis
+cyclops
+cyclosis
+cypress
+cystitis
+cytogenesis
+cytolysis
+cytomegalovirus
+daffiness
+daftness
+dailiness
+daintiness
+dais
+dampness
+dangerousness
+dankness
+dapperness
+darkness
+dastardliness
+dauntlessness
+deaconess
+deadliness
+deadness
+deafness
+dearness
+debonairness
+debris
+deceitfulness
+deceptiveness
+decisiveness
+decorativeness
+decorousness
+deepness
+defectiveness
+defenselessness
+defensiveness
+definiteness
+deftness
+defunctness
+deinonychus
+deixis
+deliberateness
+delicateness
+deliciousness
+deliriousness
+dementedness
+demonstrativeness
+demureness
+denseness
+dependableness
+derisiveness
+dermatitis
+dermis
+derris
+descriptiveness
+deservingness
+desirableness
+desolateness
+desperateness
+despicableness
+destructiveness
+determinateness
+detritus
+devilishness
+deviousness
+devotedness
+devoutness
+dewiness
+dexterousness
+diabetes
+diaeresis
+diagnosis
+diakinesis
+dialysis
+diaphoresis
+diaphysis
+diastasis
+diathesis
+dickens
+dieresis
+diestrus
+diffuseness
+digitalis
+dilatoriness
+diminutiveness
+dimness
+dinginess
+dingus
+diplococcus
+diplodocus
+directness
+dirtiness
+dis
+disagreeableness
+disconnectedness
+disconsolateness
+discontentedness
+discreetness
+discreteness
+discursiveness
+discus
+disdainfulness
+disgracefulness
+dishonorableness
+disingenuousness
+disinterestedness
+disjointedness
+disorderliness
+disparateness
+dispassionateness
+dispensableness
+dispiritedness
+disreputableness
+dissoluteness
+distastefulness
+distinctiveness
+distinctness
+distress
+distressfulness
+distrustfulness
+diverseness
+diverticulitis
+diverticulosis
+divisiveness
+dizziness
+doggedness
+dolefulness
+doltishness
+domineeringness
+doofus
+dopiness
+doubtfulness
+dourness
+dovishness
+dowdiness
+downheartedness
+downiness
+downrightness
+drabness
+draftiness
+dreadfulness
+dreaminess
+dreariness
+dress
+dressiness
+drollness
+droopiness
+dross
+drowsiness
+drunkenness
+dryness
+dubiousness
+duchess
+dullness
+dulness
+dumbness
+dumpiness
+duress
+duskiness
+dustiness
+dutifulness
+dwarfishness
+dysgenesis
+eagerness
+earliness
+earnestness
+earthiness
+easiness
+easygoingness
+ecdysis
+ecesis
+echinococcosis
+echinococcus
+echovirus
+eclipsis
+ecphonesis
+edelweiss
+edginess
+edibleness
+eelgrass
+eeriness
+effectiveness
+effectualness
+effeminateness
+effeteness
+efficaciousness
+effortfulness
+effortlessness
+effusiveness
+egis
+egregiousness
+egress
+eisegesis
+elaborateness
+electrolysis
+electrophoresis
+electrophorus
+elephantiasis
+ellipsis
+elusiveness
+embolus
+emeritus
+emotionlessness
+emphasis
+empress
+emptiness
+enarthrosis
+encephalitis
+enchantress
+endlessness
+endocarditis
+endometriosis
+endometritis
+enduringness
+enjoyableness
+enormousness
+entellus
+enteritis
+enterovirus
+entireness
+enuresis
+enviousness
+eohippus
+epacris
+epanalepsis
+epanorthosis
+ephemeralness
+epidermis
+epigenesis
+epiglottis
+epiphysis
+epistasis
+epistaxis
+epos
+equivocalness
+erectness
+erroneousness
+eruditeness
+erysipelas
+esophagus
+essentialness
+estrus
+eternalness
+ethnos
+ethos
+eucalyptus
+evasiveness
+evenness
+eventfulness
+everlastingness
+everydayness
+evilness
+exactness
+excess
+excessiveness
+excitableness
+exclusiveness
+excursiveness
+excursus
+exegesis
+exhaustiveness
+exodus
+exophthalmos
+exoticness
+expansiveness
+expectedness
+expeditiousness
+expensiveness
+expertness
+explicitness
+explosiveness
+express
+expressiveness
+exquisiteness
+extemporaneousness
+extensiveness
+extrados
+extraneousness
+extraordinariness
+extremeness
+eyas
+eyedness
+eyeglass
+eyewitness
+facetiousness
+factualness
+faintheartedness
+faintness
+fairness
+faithfulness
+faithlessness
+fallaciousness
+fallibleness
+falseness
+famulus
+fancifulness
+fanciness
+farness
+farsightedness
+fastidiousness
+fastness
+fatefulness
+fatherliness
+fatness
+fattiness
+fatuousness
+faultiness
+faultlessness
+favorableness
+fearfulness
+fearlessness
+feasibleness
+featheriness
+fecklessness
+feeblemindedness
+feebleness
+felicitousness
+femaleness
+feminineness
+ferociousness
+fervidness
+fess
+festiveness
+fetidness
+fetus
+feverishness
+fewness
+fiberglass
+fibreglass
+fibrinolysis
+fibrosis
+fibrositis
+fickleness
+fidgetiness
+fierceness
+fieriness
+filariasis
+filminess
+fils
+filthiness
+fineness
+finickiness
+finis
+finiteness
+firmness
+fishiness
+fitfulness
+fitness
+fittingness
+fixedness
+flabbiness
+flakiness
+flashiness
+flatness
+flatus
+flawlessness
+fleeciness
+fleetingness
+fleetness
+fleshiness
+flexibleness
+flightiness
+flimsiness
+flirtatiousness
+floppiness
+floridness
+floss
+floweriness
+fluffiness
+fluidness
+foaminess
+focus
+foetus
+fogginess
+folksiness
+fondness
+foolhardiness
+foolishness
+foppishness
+forcefulness
+foreignness
+foresightedness
+forgetfulness
+forgiveness
+forgivingness
+forlornness
+formalness
+formlessness
+fornicatress
+forthrightness
+fortress
+fortuitousness
+forwardness
+foulness
+foundress
+foxiness
+fracas
+fractiousness
+frailness
+frankness
+freakishness
+freshness
+fretfulness
+friendlessness
+friendliness
+frightfulness
+frigidness
+friskiness
+frivolousness
+frostiness
+frothiness
+frowardness
+frowziness
+frugalness
+fruitfulness
+fruitiness
+fruitlessness
+fucus
+fugaciousness
+fullness
+fulness
+fulsomeness
+fungus
+funiculus
+funkiness
+funniness
+furiousness
+furriness
+furtiveness
+fuss
+fussiness
+fustiness
+fuzziness
+gabbiness
+galactosis
+gallus
+gameness
+gaminess
+garishness
+garrulousness
+gas
+gaseousness
+gastritis
+gastrocnemius
+gastroenteritis
+gaucheness
+gaudiness
+gauntness
+gauss
+gauziness
+gawkiness
+gayness
+gelatinousness
+generousness
+genesis
+genius
+genteelness
+gentleness
+genuineness
+genus
+germaneness
+ghastliness
+ghostliness
+ghoulishness
+giantess
+gibbousness
+giddiness
+gingivitis
+ginglymus
+girlishness
+gladiolus
+gladness
+gladsomeness
+glans
+glass
+glassiness
+gleefulness
+glibness
+globularness
+glomerulonephritis
+glomerulus
+gloominess
+gloss
+glossiness
+glossitis
+glottis
+glueyness
+gluiness
+glumness
+gluteus
+glutinousness
+glycolysis
+gneiss
+gnosis
+goddess
+godlessness
+godliness
+gonococcus
+goodness
+goofiness
+gorgeousness
+goriness
+governess
+gracefulness
+gracelessness
+graciousness
+gradualness
+graininess
+grampus
+grandness
+grass
+gratefulness
+gratuitousness
+graveness
+gravidness
+grayness
+greasiness
+greatness
+greediness
+greenishness
+greenness
+greensickness
+gregariousness
+greyness
+grievousness
+griminess
+grimness
+grisliness
+grittiness
+grogginess
+grossness
+grotesqueness
+grouchiness
+groundmass
+grubbiness
+gruesomeness
+gruffness
+grumpiness
+gubbins
+guess
+guilelessness
+guiltiness
+guiltlessness
+gumminess
+gummosis
+gutlessness
+guts
+gutsiness
+gynogenesis
+gyrocompass
+gyrus
+habitualness
+haemodialysis
+haggardness
+haggis
+hairiness
+hairlessness
+haleness
+halfheartedness
+halitosis
+handedness
+handiness
+handsomeness
+haphazardness
+haplessness
+happiness
+hardheadedness
+hardheartedness
+hardiness
+hardinggrass
+hardness
+harmfulness
+harmlessness
+harmoniousness
+harness
+harquebus
+harshness
+hastiness
+hatefulness
+haughtiness
+hawkishness
+hazardousness
+haziness
+headdress
+headiness
+headmistress
+healthfulness
+healthiness
+heartiness
+heartlessness
+heartsickness
+heaviness
+heavyheartedness
+heedfulness
+heedlessness
+heftiness
+heinousness
+heiress
+helianthus
+hellishness
+helpfulness
+helplessness
+hemodialysis
+hemolysis
+hendiadys
+hepatitis
+herpes
+heterogeneousness
+heterogenesis
+hiatus
+hibiscus
+hideousness
+hidrosis
+highhandedness
+highness
+hilariousness
+hilliness
+hilus
+hipness
+hippocampus
+hippopotamus
+hirsuteness
+his
+hiss
+historicalness
+hoariness
+hoarseness
+hoggishness
+holiness
+hollowness
+homeless
+homelessness
+homeliness
+homeostasis
+homesickness
+homeyness
+hominess
+homogeneousness
+honestness
+honorableness
+hopefulness
+hopelessness
+hornfels
+horniness
+horribleness
+horridness
+hospitableness
+hostess
+hotheadedness
+hotness
+hourglass
+hubris
+huffiness
+huffishness
+hugeness
+humaneness
+humanness
+humbleness
+humerus
+humidness
+hummus
+humorlessness
+humorousness
+humus
+hungriness
+huntress
+hurriedness
+hurtfulness
+huskiness
+hydrocephalus
+hydrolysis
+hypersensitiveness
+hypervitaminosis
+hypnosis
+hypochondriasis
+hypodermis
+hypophysis
+hypostasis
+hypothalamus
+hypothesis
+iambus
+ichthyosaurus
+iciness
+icterus
+ictus
+identicalness
+idleness
+idolatress
+iffiness
+ignobleness
+ignominiousness
+ignoramus
+ignorantness
+ileitis
+illicitness
+illness
+illogicalness
+illustriousness
+imaginativeness
+imitativeness
+immaculateness
+immaterialness
+immatureness
+immediateness
+immenseness
+immoderateness
+immovableness
+immunoelectrophoresis
+immutableness
+impassiveness
+impecuniousness
+impenetrableness
+imperativeness
+imperfectness
+imperiousness
+impermeableness
+imperturbableness
+imperviousness
+impetuousness
+impetus
+impiousness
+impishness
+implausibleness
+implicitness
+impoliteness
+impossibleness
+impracticableness
+impreciseness
+impress
+impressiveness
+improbableness
+improperness
+impulsiveness
+impureness
+inactiveness
+inadequateness
+inanimateness
+inappositeness
+inappropriateness
+inaptness
+inarticulateness
+inattentiveness
+inauspiciousness
+incapableness
+incautiousness
+incessantness
+incestuousness
+incisiveness
+inclusiveness
+incommodiousness
+incompleteness
+inconceivableness
+inconclusiveness
+incongruousness
+inconsiderateness
+inconspicuousness
+incontrovertibleness
+incorrectness
+incorruptness
+incredibleness
+incubus
+inculpableness
+incurableness
+incus
+indebtedness
+indecisiveness
+indecorousness
+indefatigableness
+indefiniteness
+indeterminateness
+indigenousness
+indigestibleness
+indirectness
+indiscreetness
+indispensableness
+indistinctness
+indris
+industriousness
+ineffectiveness
+ineffectualness
+inefficaciousness
+ineptness
+inertness
+inevitableness
+inexactness
+inexorableness
+inexpensiveness
+inexplicitness
+infectiousness
+infiniteness
+inflexibleness
+informativeness
+ingeniousness
+ingenuousness
+ingress
+inharmoniousness
+inheritress
+inhospitableness
+injudiciousness
+injuriousness
+inkiness
+innateness
+innocuousness
+innovativeness
+innumerableness
+inoffensiveness
+inopportuneness
+inordinateness
+inquisitiveness
+insaneness
+inscrutableness
+insecureness
+insensitiveness
+insidiousness
+insightfulness
+insipidness
+instantaneousness
+instructress
+intactness
+intangibleness
+intemperateness
+intensiveness
+intentness
+interchangeableness
+interconnectedness
+interestedness
+interestingness
+interrelatedness
+intractableness
+intrados
+intransitiveness
+intravenous
+introspectiveness
+intrusiveness
+intuitiveness
+invaluableness
+invariableness
+inventiveness
+invidiousness
+invisibleness
+involuntariness
+inwardness
+irateness
+iris
+irksomeness
+irreligiousness
+irreplaceableness
+irresoluteness
+irresponsibleness
+isinglass
+isthmus
+itchiness
+jackanapes
+jackass
+jadedness
+jaggedness
+jakes
+jauntiness
+jejuneness
+jerkiness
+jitteriness
+jobless
+joblessness
+jocoseness
+jolliness
+joss
+joyfulness
+joylessness
+joyousness
+judiciousness
+juiciness
+jumpiness
+justness
+katharsis
+keenness
+keratitis
+keratosis
+ketosis
+kindheartedness
+kindliness
+kindness
+kinesis
+kinesthesis
+kinkiness
+kiss
+klutziness
+knightliness
+knotgrass
+knottiness
+knowingness
+kookiness
+kos
+koumiss
+kumis
+kvass
+kyphosis
+laboriousness
+labyrinthitis
+lactobacillus
+ladylikeness
+lameness
+laminitis
+landmass
+languidness
+lankiness
+lankness
+largeness
+largess
+laryngitis
+lasciviousness
+lass
+lastingness
+lateness
+laundress
+lavishness
+lawfulness
+lawlessness
+laxness
+laziness
+leakiness
+leanness
+learnedness
+lecherousness
+leeriness
+legginess
+leishmaniasis
+leisureliness
+lemniscus
+lengthiness
+lens
+leopardess
+leptocephalus
+leptospirosis
+less
+letterpress
+levelheadedness
+levelness
+lewdness
+lexis
+liberalness
+licentiousness
+licitness
+lifelessness
+lightheadedness
+lightheartedness
+lightness
+lightsomeness
+likableness
+likeliness
+likeness
+limberness
+limbus
+limitlessness
+limpidness
+limpness
+lioness
+liquidness
+lissomeness
+listlessness
+literalness
+literariness
+litheness
+lithiasis
+lithops
+litigiousness
+litmus
+littleness
+liveliness
+liveness
+lividness
+loathsomeness
+locus
+loess
+loftiness
+logicalness
+loginess
+loneliness
+lonesomeness
+longness
+longsightedness
+looseness
+lopsidedness
+loquaciousness
+lordliness
+lordosis
+loris
+loss
+lotus
+loudness
+lousiness
+lovableness
+loveliness
+lovesickness
+lovingness
+lowliness
+lowness
+lucidness
+luckiness
+lucrativeness
+ludicrousness
+lugubriousness
+lukewarmness
+luminousness
+lumpiness
+lupus
+luridness
+lusciousness
+lushness
+lustfulness
+lustiness
+luxuriousness
+lychnis
+lysis
+macrocytosis
+madness
+madras
+magnanimousness
+magus
+maidenliness
+maladroitness
+maleness
+maliciousness
+malleus
+malodorousness
+manageableness
+manageress
+mandamus
+manfulness
+manginess
+manliness
+mannishness
+mantis
+manus
+marasmus
+marchioness
+marquess
+marquis
+mass
+massiveness
+mastitis
+mastoiditis
+mattress
+matureness
+mavis
+mawkishness
+mayoress
+meagerness
+mealiness
+meaningfulness
+meaninglessness
+meanness
+meatiness
+meatus
+meddlesomeness
+mediateness
+meditativeness
+meekness
+megalopolis
+megalosaurus
+meiosis
+melanosis
+mellifluousness
+mellowness
+melodiousness
+meningitis
+meniscus
+mercifulness
+mercilessness
+meretriciousness
+meritoriousness
+merriness
+mess
+messiness
+metacarpus
+metagenesis
+metalepsis
+metamorphosis
+metastasis
+metatarsus
+metathesis
+metempsychosis
+methodicalness
+meticulousness
+metis
+metritis
+metropolis
+mews
+mightiness
+mildness
+milkiness
+millionairess
+mimesis
+mindfulness
+mindlessness
+minibus
+miniseries
+minus
+minuteness
+mirthfulness
+mischievousness
+miserableness
+miserliness
+miss
+misshapenness
+missis
+missus
+mistiness
+mistress
+mitosis
+moderateness
+modernness
+modishness
+modulus
+moistness
+molasses
+moldiness
+momentariness
+momentousness
+monas
+moniliasis
+monogenesis
+mononucleosis
+monotonousness
+moodiness
+morass
+morbidness
+moroseness
+morphallaxis
+moss
+motherliness
+motionlessness
+motocross
+motorbus
+mournfulness
+mousiness
+mouthiness
+movableness
+muchness
+mucus
+muddiness
+mugginess
+muggins
+mulishness
+multifariousness
+multitudinousness
+murderess
+murderousness
+murkiness
+mushiness
+musicalness
+muskiness
+muss
+mussiness
+mustiness
+mutableness
+muteness
+mycosis
+myelitis
+myelofibrosis
+myocarditis
+myosis
+mysteriousness
+myxomatosis
+myxovirus
+naiveness
+nakedness
+namelessness
+narcosis
+naris
+narrowness
+nastiness
+nativeness
+nattiness
+naturalness
+naughtiness
+nauseousness
+nautilus
+nearness
+nearsightedness
+neatness
+nebulousness
+necrobiosis
+necropolis
+necrosis
+neediness
+needlessness
+nefariousness
+negativeness
+neglectfulness
+negotiatress
+negus
+neighborliness
+nemesis
+nephritis
+nervelessness
+nerviness
+nervousness
+ness
+neuritis
+neurohypophysis
+neurosis
+nevus
+newness
+news
+newsworthiness
+nexus
+niceness
+nidus
+niggardliness
+nightdress
+nimbleness
+nimbus
+nippiness
+nisus
+nobleness
+noiselessness
+noisiness
+noisomeness
+nonplus
+northernness
+nosiness
+noteworthiness
+nothingness
+notornis
+nous
+nowness
+noxiousness
+nubbiness
+nucellus
+nucleolus
+nucleus
+nudeness
+numbers
+numbness
+numerousness
+nutgrass
+nutritiousness
+nuttiness
+oafishness
+oasis
+obdurateness
+objectionableness
+objectiveness
+oblateness
+obligingness
+obliqueness
+obliviousness
+obnoxiousness
+obolus
+obscureness
+obsequiousness
+obsessiveness
+obsoleteness
+obstreperousness
+obstructiveness
+obtrusiveness
+obtuseness
+obviousness
+ocellus
+octopus
+oculus
+oddness
+odiousness
+oesophagus
+oestrus
+offensiveness
+offhandedness
+officiousness
+ogress
+oiliness
+oldness
+oleaginousness
+ominousness
+omnibus
+omnivorousness
+omphalos
+omphaloskepsis
+omphalus
+onchocerciasis
+oneness
+onerousness
+ontogenesis
+onus
+oogenesis
+opaqueness
+openhandedness
+openness
+operoseness
+ophthalmitis
+opportuneness
+oppositeness
+oppressiveness
+opus
+orchis
+orchitis
+orderliness
+ordinariness
+ornateness
+orneriness
+orris
+orthomyxovirus
+os
+osmosis
+osteitis
+ostentatiousness
+osteoarthritis
+osteomyelitis
+osteoporosis
+otherness
+otherworldliness
+otitis
+outlandishness
+outrageousness
+outspokenness
+outwardness
+overbearingness
+overdress
+overemphasis
+overpass
+overplus
+oversensitiveness
+oxalis
+painfulness
+painlessness
+palas
+palatableness
+paleness
+palingenesis
+pallidness
+paltriness
+pancreas
+pancreatitis
+pandanus
+papovavirus
+pappus
+papyrus
+paracentesis
+paraleipsis
+paralepsis
+paralipsis
+paralysis
+paramyxovirus
+paraphrasis
+paraphysis
+parenthesis
+paresis
+parotitis
+parsimoniousness
+parthenogenesis
+partialness
+parvis
+parvovirus
+pass
+passionateness
+passiveness
+pastiness
+pastis
+pastness
+patchiness
+paterfamilias
+pathogenesis
+pathos
+patness
+patois
+patroness
+paunchiness
+pavis
+peaceableness
+peacefulness
+pediculosis
+peeress
+peevishness
+pellucidness
+pelvis
+pemphigus
+penis
+pennilessness
+pennycress
+pensiveness
+penuriousness
+pepperiness
+peppiness
+perceptiveness
+perfectness
+perfidiousness
+pericarditis
+perilousness
+periodontitis
+peripatus
+periphrasis
+peristalsis
+peritonitis
+perkiness
+permissiveness
+perniciousness
+personableness
+perspicaciousness
+perspicuousness
+persuasiveness
+pertness
+pertussis
+pervasiveness
+perverseness
+perviousness
+peskiness
+petiteness
+pettiness
+pettishness
+phallus
+pharos
+pharyngitis
+philadelphus
+phlebitis
+phoniness
+phosphorus
+photosynthesis
+phthisis
+phylogenesis
+physicalness
+picornavirus
+picturesqueness
+piggishness
+pigheadedness
+pileus
+pilus
+pinkness
+piousness
+piss
+piteousness
+pithiness
+pitilessness
+placidness
+plainness
+plaintiveness
+planeness
+plasmapheresis
+platypus
+plausibleness
+playfulness
+pleasantness
+pleasingness
+plenteousness
+plentifulness
+plexiglass
+plexus
+pliantness
+pluckiness
+plumpness
+plus
+plushness
+pneumococcus
+pneumoconiosis
+pneumonitis
+poetess
+pointedness
+pointlessness
+poliomyelitis
+poliovirus
+politeness
+pollinosis
+polyanthus
+polyneuritis
+polypus
+pompousness
+ponderousness
+poorness
+populousness
+porousness
+portcullis
+portliness
+positiveness
+possessiveness
+postmistress
+pothos
+powerfulness
+powerlessness
+poxvirus
+practicableness
+praiseworthiness
+prankishness
+precariousness
+precious
+preciousness
+precipitateness
+precipitousness
+preciseness
+precociousness
+prematureness
+premiss
+preparedness
+presentness
+press
+prestigiousness
+presumptuousness
+pretentiousness
+prettiness
+pricelessness
+prickliness
+pridefulness
+priestess
+priestliness
+priggishness
+primitiveness
+primness
+primus
+princeliness
+princess
+prioress
+prissiness
+privateness
+proboscis
+process
+proctitis
+procuress
+productiveness
+profaneness
+profitableness
+profoundness
+profuseness
+prognosis
+progress
+progressiveness
+prolapsus
+prolepsis
+promiscuousness
+promptness
+proneness
+properness
+prophetess
+prophylaxis
+propitiousness
+proportionateness
+propositus
+proprietress
+prosaicness
+prosiness
+prospectus
+prostatitis
+prosthesis
+protectiveness
+proteolysis
+provocativeness
+prowess
+prudishness
+pruritus
+psittacosis
+psoriasis
+psychoanalysis
+psychokinesis
+psychoneurosis
+psychosis
+ptosis
+pubes
+pubis
+puckishness
+pudginess
+puffiness
+pugnaciousness
+pulpiness
+punctiliousness
+puniness
+pureness
+purpleness
+purposefulness
+purposelessness
+pus
+pushiness
+puss
+putridness
+pycnosis
+pyelonephritis
+pyknosis
+pylorus
+pyrosis
+pythoness
+pyxis
+quadriceps
+quaintness
+quarrelsomeness
+queasiness
+queerness
+querulousness
+quickness
+quietness
+quietus
+quirkiness
+rabidness
+rabies
+rachis
+rachitis
+raciness
+radius
+raffishness
+raggedness
+rakishness
+rambunctiousness
+rancidness
+randiness
+randomness
+ranginess
+rankness
+rapaciousness
+rapidness
+raptness
+rareness
+rashness
+rationalness
+raucousness
+raunchiness
+ravenousness
+rawness
+readiness
+realness
+reanalysis
+reasonableness
+rebelliousness
+rebus
+recentness
+receptiveness
+recess
+recklessness
+reclusiveness
+reconditeness
+rectus
+redness
+redress
+reediness
+reflexiveness
+refractiveness
+refractoriness
+regress
+relatedness
+relentlessness
+reliableness
+religious
+religiousness
+remarkableness
+remissness
+remorselessness
+remoteness
+reovirus
+repetitiousness
+repetitiveness
+repleteness
+repulsiveness
+requisiteness
+reredos
+resentfulness
+reservedness
+resoluteness
+resourcefulness
+respectfulness
+responsibleness
+responsiveness
+restfulness
+restiveness
+restlessness
+restrictiveness
+retentiveness
+retinitis
+retrovirus
+rhabdovirus
+rhesus
+rhinitis
+rhinoceros
+rhizopus
+rhombus
+rhonchus
+ribgrass
+richness
+ricketiness
+rictus
+ridiculousness
+righteousness
+rightfulness
+rightness
+rigidness
+rigorousness
+ringhals
+rinkhals
+ripeness
+riskiness
+roadworthiness
+robustness
+rockcress
+rockiness
+roguishness
+roominess
+ropiness
+rosiness
+rotavirus
+rottenness
+rotundness
+roughness
+roundedness
+roundness
+rowdiness
+ruckus
+ruddiness
+rudeness
+ruefulness
+ruggedness
+rumpus
+runtiness
+rustiness
+ruthfulness
+ruthlessness
+ryegrass
+sacculus
+sacredness
+sacrilegiousness
+sacrosanctness
+sadness
+safeness
+sagaciousness
+saintliness
+salaciousness
+saleratus
+sallowness
+salmonellosis
+salpiglossis
+salpingitis
+saltiness
+salubriousness
+sameness
+sanctimoniousness
+sandglass
+sandiness
+saneness
+sanguineness
+sanitariness
+sapidness
+sappiness
+sarcoidosis
+sarcophagus
+sardius
+sartorius
+sass
+sassafras
+satisfactoriness
+satyriasis
+sauciness
+savageness
+savoriness
+scabbiness
+scabious
+scalenus
+scaliness
+scandalousness
+scantiness
+scantness
+scarabaeus
+scarceness
+scariness
+schistosomiasis
+schoolmistress
+schuss
+scleritis
+sclerosis
+scoliosis
+scrappiness
+scratchiness
+scrawniness
+screwiness
+scruffiness
+scrupulousness
+sculptress
+scurrilousness
+scyphus
+seamstress
+seasickness
+seasonableness
+seaworthiness
+secretiveness
+secureness
+sedateness
+seductiveness
+seductress
+sedulousness
+seediness
+seemliness
+selectness
+selfishness
+selflessness
+selfsameness
+semiconsciousness
+semidarkness
+semigloss
+sempstress
+sens
+senselessness
+sensibleness
+sensitiveness
+sensualness
+sensuousness
+separateness
+sepsis
+sereneness
+series
+seriousness
+serviceableness
+severeness
+sexiness
+sexlessness
+shabbiness
+shadiness
+shadowiness
+shagginess
+shakiness
+shallowness
+shamefacedness
+shamefulness
+shamelessness
+shapelessness
+shapeliness
+sharpness
+sheepishness
+sheerness
+shepherdess
+shiftiness
+shiftlessness
+shigellosis
+shininess
+shirtdress
+shoddiness
+shortgrass
+shortness
+shortsightedness
+showiness
+shrewdness
+shrewishness
+shrillness
+shucks
+shyness
+sickness
+siderosis
+sightedness
+sightlessness
+silenus
+silicosis
+silkiness
+silliness
+simpleness
+simultaneousness
+sinfulness
+singleness
+sinlessness
+sinuousness
+sinus
+sinusitis
+siriasis
+siris
+sis
+sissiness
+sisterliness
+sketchiness
+skewness
+skillfulness
+skimpiness
+skinniness
+skittishness
+slackness
+slanginess
+slatternliness
+slavishness
+sleaziness
+sleekness
+sleepiness
+sleeplessness
+slenderness
+slickness
+slightness
+sliminess
+slimness
+slipperiness
+sloppiness
+slothfulness
+slovenliness
+slowness
+sluggishness
+slushiness
+sluttishness
+slyness
+smallness
+smarminess
+smartness
+smartypants
+smelliness
+smokiness
+smoothness
+smugness
+smuttiness
+snappiness
+snappishness
+sneakiness
+snobbishness
+snootiness
+snottiness
+snowiness
+snugness
+soapiness
+soberness
+sociableness
+softheartedness
+softness
+sogginess
+solemness
+solemnness
+soleus
+solicitousness
+solidness
+solidus
+solitariness
+solubleness
+somberness
+songfulness
+songstress
+sonorousness
+sootiness
+sorceress
+sordidness
+soreness
+sorriness
+sorrowfulness
+sorus
+sottishness
+soulfulness
+soundlessness
+soundness
+sourness
+sourpuss
+southernness
+spaciness
+spaciousness
+spareness
+sparseness
+specialness
+speciousness
+speculativeness
+speechlessness
+speediness
+spermatogenesis
+sphericalness
+spiciness
+spikiness
+spinelessness
+spiritedness
+spiritlessness
+spitefulness
+splashiness
+spondylitis
+sponginess
+spontaneousness
+spookiness
+sporotrichosis
+sportiness
+sportiveness
+spotlessness
+spottiness
+sprightliness
+springiness
+spruceness
+spryness
+spuriousness
+spyglass
+squalidness
+squareness
+squatness
+squeakiness
+squeamishness
+stableness
+staginess
+staidness
+stainless
+staleness
+stalwartness
+standoffishness
+stapes
+staphylococcus
+starchiness
+starets
+starkness
+stasis
+statelessness
+stateliness
+status
+staunchness
+steadfastness
+steadiness
+stealthiness
+steaminess
+steeliness
+steepness
+stegosaurus
+stelis
+stenosis
+stephanotis
+sterileness
+sternness
+stewardess
+stickiness
+stiffness
+stillness
+stimulus
+stinginess
+stockiness
+stodginess
+stolidness
+stomatitis
+stoniness
+storminess
+stoutheartedness
+stoutness
+strabismus
+straightforwardness
+straightness
+strangeness
+strapless
+stratus
+strenuousness
+streptobacillus
+streptocarpus
+streptococcus
+stress
+stretchiness
+strictness
+strikingness
+stringiness
+strobilus
+strophanthus
+stubbiness
+stubbornness
+studiousness
+stuffiness
+stuntedness
+sturdiness
+stylishness
+stylus
+stypsis
+suaveness
+subclass
+subconscious
+subconsciousness
+subgenus
+subjectiveness
+submissiveness
+subordinateness
+subspecies
+substantialness
+subversiveness
+success
+successfulness
+successiveness
+succinctness
+succubus
+succus
+suddenness
+suds
+sugariness
+suggestiveness
+suitableness
+sulcus
+sulkiness
+sullenness
+sultriness
+summons
+sumptuousness
+sunniness
+superciliousness
+superclass
+superfluousness
+supernaturalness
+suppleness
+sureness
+surliness
+surplus
+surreptitiousness
+susceptibleness
+suspiciousness
+swankiness
+swarthiness
+sweetness
+swiftness
+syllabus
+syllepsis
+symbiosis
+symmetricalness
+symphysis
+synaeresis
+synapsis
+syneresis
+synizesis
+synonymousness
+synopsis
+synovitis
+synthesis
+syphilis
+tabis
+tacitness
+tackiness
+tactfulness
+tactlessness
+talkativeness
+tallness
+talus
+tameness
+tangibleness
+tanginess
+tapis
+tardiness
+tarsus
+tartness
+taskmistress
+tastefulness
+tastelessness
+tastiness
+tautness
+tawdriness
+tawniness
+taxis
+tearfulness
+teargas
+tediousness
+teemingness
+telekinesis
+temperateness
+tempestuousness
+temporariness
+temptingness
+temptress
+tenableness
+tenaciousness
+tendentiousness
+tenderheartedness
+tenderness
+tendinitis
+tendonitis
+tennis
+tenosynovitis
+tenseness
+tentativeness
+tenuousness
+tepidness
+terminus
+terribleness
+terseness
+testiness
+testis
+tetanus
+tetchiness
+thalamus
+thallus
+thankfulness
+thanklessness
+thermos
+thesaurus
+thesis
+thickness
+thievishness
+thinness
+thirstiness
+thorniness
+thoroughness
+thoughtfulness
+thoughtlessness
+thriftiness
+thriftlessness
+thrips
+throatiness
+thrombophlebitis
+thrombosis
+thrombus
+thymus
+thyrotoxicosis
+ticklishness
+tidiness
+tightfistedness
+tightness
+tigress
+timelessness
+timeliness
+timidness
+timorousness
+tininess
+tinniness
+tinnitus
+tipsiness
+tiredness
+tirelessness
+tiresomeness
+toastmistress
+togetherness
+toilsomeness
+tomboyishness
+tonsillitis
+tonus
+toothsomeness
+torpidness
+torridness
+torticollis
+tortuousness
+torus
+toss
+touchiness
+toughness
+tracheitis
+tractableness
+traitorousness
+traitress
+transitiveness
+transitoriness
+transparentness
+trashiness
+treacherousness
+trellis
+tremulousness
+trendiness
+trespass
+tress
+trichinosis
+trichomoniasis
+trickiness
+trimness
+tripos
+triteness
+trolleybus
+trombiculiasis
+troublesomeness
+trueness
+truss
+trustfulness
+trustiness
+trustingness
+trustworthiness
+truthfulness
+tubbiness
+tubeless
+tuberculosis
+tumidness
+tumultuousness
+tumulus
+tunefulness
+turbidness
+turgidness
+tweediness
+typhus
+tyrannosaurus
+ubiquitousness
+ugliness
+ultimateness
+umbilicus
+unaffectedness
+unassertiveness
+unassumingness
+unattainableness
+unattractiveness
+unawareness
+unbecomingness
+unboundedness
+unbreakableness
+unceremoniousness
+uncertainness
+unchangeableness
+unchangingness
+uncleanliness
+uncleanness
+uncomfortableness
+uncommonness
+uncommunicativeness
+unconnectedness
+unconscious
+unconsciousness
+uncouthness
+unctuousness
+underclass
+underhandedness
+underpass
+undress
+undutifulness
+unearthliness
+uneasiness
+unevenness
+unexpectedness
+unfairness
+unfaithfulness
+unfavorableness
+unfeelingness
+unfitness
+unfriendliness
+ungainliness
+ungodliness
+ungracefulness
+ungraciousness
+ungratefulness
+unguis
+unhappiness
+unhealthiness
+unholiness
+uniformness
+uniqueness
+unjustness
+unkemptness
+unkindness
+unlawfulness
+unlikeliness
+unlikeness
+unluckiness
+unmanliness
+unmercifulness
+unmindfulness
+unnaturalness
+unobtrusiveness
+unpleasantness
+unpreparedness
+unpretentiousness
+unproductiveness
+unprofitableness
+unquestionableness
+unreasonableness
+unreliableness
+unresponsiveness
+unrighteousness
+unruliness
+unsatisfactoriness
+unsavoriness
+unscrupulousness
+unseasonableness
+unseemliness
+unselfconsciousness
+unselfishness
+unsightliness
+unskillfulness
+unsociableness
+unsoundness
+unstableness
+unsteadiness
+unsuitableness
+untidiness
+untimeliness
+untruthfulness
+unusualness
+unwariness
+unwholesomeness
+unwieldiness
+unwillingness
+unworldliness
+unworthiness
+unyieldingness
+uppishness
+uppityness
+uprightness
+urethritis
+urinalysis
+urus
+us
+usableness
+usefulness
+uselessness
+usualness
+uterus
+utriculus
+uveitis
+uvulitis
+uxoriousness
+vacuousness
+vaginitis
+vagueness
+vagus
+validness
+valorousness
+valuableness
+valuelessness
+valvulitis
+vapidness
+variableness
+variedness
+vas
+vasculitis
+vastness
+vengefulness
+ventriculus
+venturesomeness
+venturousness
+verboseness
+verdigris
+verticalness
+vicariousness
+viciousness
+vileness
+villainess
+villainousness
+villus
+vindictiveness
+virtuousness
+virus
+viscidness
+viscountess
+viscousness
+viscus
+visibleness
+vitalness
+vivaciousness
+vividness
+vociferousness
+voicelessness
+voluminousness
+voluptuousness
+vomitus
+voraciousness
+vulvitis
+wackiness
+waggishness
+waitress
+wakefulness
+walrus
+wanness
+wantonness
+wardress
+wariness
+warmheartedness
+warmness
+waspishness
+wastefulness
+watchfulness
+watercress
+wateriness
+waterlessness
+waviness
+waxiness
+waywardness
+weakness
+wealthiness
+weariness
+weatherglass
+weeds
+weepiness
+weightiness
+weightlessness
+weirdness
+wellness
+wetness
+whatsis
+wheeziness
+whereabouts
+whereas
+whiteness
+wholeheartedness
+wholeness
+wholesomeness
+wickedness
+wideness
+wilderness
+wildness
+wilfulness
+wiliness
+willfulness
+willingness
+windiness
+windlass
+windlessness
+wineglass
+winepress
+winsomeness
+wireless
+wiriness
+wiseness
+wishfulness
+wistfulness
+witchgrass
+withdrawnness
+witlessness
+witness
+wittiness
+wobbliness
+woefulness
+womanishness
+womanliness
+wonderfulness
+woodenness
+woodiness
+woodsiness
+woolliness
+wooziness
+wordiness
+worldliness
+worthiness
+worthlessness
+worthwhileness
+wretchedness
+wrongfulness
+wrongheadedness
+wrongness
+wryness
+wuss
+xenogenesis
+yellowness
+yes
+youngness
+youthfulness
+zaniness
+zealousness
+zestfulness
+zoonosis
+zymolysis
+zymosis

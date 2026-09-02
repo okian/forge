@@ -9,9 +9,22 @@
 # `go install` should not quietly grow by a megabyte the day somebody upgrades
 # a wordlist. What the converter keeps is the exceptions, the vocabulary that
 # answers whether a word ending in s is one, and the verbs whose final consonant
-# doubles — tens of kilobytes, deflated. The budget is roughly twice what it
-# holds today, which is room for the dictionary to gain a few thousand entries
-# and not room for it to gain a hundred thousand.
+# doubles — seventy-odd kilobytes, as text.
+#
+# Text, and so a bigger number than the deflated asset this replaced: 72kB
+# against 34kB. The budget is roughly twice what it holds today, which is the
+# same rule the old one used — room for the dictionary to gain a few thousand
+# entries and not room for it to gain a hundred thousand.
+#
+# The file being text is what the budget is really protecting now. A dictionary
+# nobody can read in a diff is a dictionary nobody reviews, so the answer to it
+# growing is to look at the words that were added, which is only possible while
+# it stays in this form. Compressing it again would buy back 38kB of repository
+# and cost that.
+#
+# It costs the binary nothing, which is worth writing down because it is not
+# obvious: the asset is 37kB bigger and the binary is 18kB smaller, because
+# nothing links compress/flate any more.
 #
 # The command is the whole binary, and it is here for the same reason read the
 # other way: the dictionary is not the only thing that can grow, and a budget on
@@ -24,5 +37,5 @@
 # typing `go install` gets. Not stripped: -ldflags=-w would report a smaller
 # number than anybody actually downloads.
 
-internal/words/english.bin   65536
+internal/words/english.txt   147456
 cmd/forge                 12582912

@@ -138,22 +138,6 @@ func verb(into map[string]string, held line) {
 // bytes spent making Anser into Anseres.
 func capitalised(word string) bool { return word != "" && word[0] >= 'A' && word[0] <= 'Z' }
 
-// singulars returns the plural table read backwards.
-//
-// Where two singulars share a plural — bases is the plural of both base and
-// basis — the first in alphabetical order wins, so that the asset is the same
-// on every run rather than the same as whichever map iteration produced it.
-func (b built) singulars() map[string]string {
-	out := map[string]string{}
-
-	for _, one := range slices.Sorted(maps.Keys(b.plurals)) {
-		if held := b.plurals[one]; out[held] == "" {
-			out[held] = one
-		}
-	}
-	return out
-}
-
 // provenance returns the line the asset opens with.
 func (b built) provenance() string {
 	return fmt.Sprintf(

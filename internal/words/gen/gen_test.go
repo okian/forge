@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/okian/forge/internal/words"
 )
@@ -65,7 +66,7 @@ func archive(t *testing.T, text string) string {
 }
 
 func TestWhatSurvivesTheConversion(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "english.bin")
+	out := filepath.Join(t.TempDir(), "english.txt")
 	if err := run(archive(t, inflections), out, ""); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -78,6 +79,24 @@ func TestWhatSurvivesTheConversion(t *testing.T) {
 	line, _, _ := bytes.Cut(asset, []byte{'\n'})
 	if !strings.Contains(string(line), "agid=2016.01.19") {
 		t.Errorf("the provenance %q does not name the release", line)
+	}
+	if !bytes.HasPrefix(line, []byte("# ")) {
+		t.Errorf("the provenance %q is not a comment, so the file does not load", line)
+	}
+
+	// The point of the file is that somebody can read it. Checking that it is
+	// text, and that the words are in it as words, is checking the thing the
+	// format exists for — a compressed blob would pass every test below it.
+	if !utf8.Valid(asset) {
+		t.Error("the dictionary is not valid UTF-8")
+	}
+	for _, want := range []string{"\n[plural]\n", "\n[agent]\n", "\n[vocabulary]\n", "person\tpeople\n"} {
+		if !bytes.Contains(asset, []byte(want)) {
+			t.Errorf("the dictionary does not contain %q", want)
+		}
+	}
+	if bytes.Contains(asset, []byte("\n[singular]\n")) {
+		t.Error("the dictionary writes a singular section, which the loader derives")
 	}
 
 	held, err := words.Load(asset)
@@ -192,7 +211,7 @@ func TestAnArchiveWithNoInflections(t *testing.T) {
 // The version on the command line wins, which is how a release that unpacks
 // into a differently named directory is still recorded correctly.
 func TestTheVersionACallerNames(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "english.bin")
+	out := filepath.Join(t.TempDir(), "english.txt")
 	if err := run(archive(t, "person N: people\n"), out, "2020.01.01"); err != nil {
 		t.Fatalf("run: %v", err)
 	}

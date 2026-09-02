@@ -1,4 +1,4 @@
-The dictionary at internal/words/english.bin is built from the Automatically
+The dictionary at internal/words/english.txt is built from the Automatically
 Generated Inflection Database (AGID), version 2016.01.19, obtained from
 https://wordlist.aspell.net. Nothing of it appears in code forge generates: it
 is read by the generator and never shipped to a user's program.
