@@ -525,9 +525,12 @@ func building(t *testing.T, root string) {
 	}
 }
 
-// theBound are the names the generated bodies bind, which is the set a
-// subject's own package must be allowed to collide with.
-var theBound = []string{"record", "counted", "held", "out", "in", "header", "failed", "want"}
+// theBound are names the generated bodies bind, which is the set a subject's
+// own package must be allowed to collide with. Not all of them — a body also
+// binds the element, the receiver and one variable per column — but every one
+// of these is bound somewhere a type is also spelled, which is what makes a
+// collision a compile failure rather than a curiosity.
+var theBound = []string{"record", "counted", "err", "held", "out", "in", "header", "failed", "want"}
 
 // A subject from a package named after something the bodies bind still
 // generates code that compiles.
@@ -542,11 +545,12 @@ var theBound = []string{"record", "counted", "held", "out", "in", "header", "fai
 // moves is this layer's. One case per bound name, because what is under test is
 // the allocation rather than any one collision.
 //
-// Five of them are live today: record, counted, in, header and failed are each
-// bound in a scope that also spells the element. The other three are insurance
-// — want closes with its if statement, held is bound after the closure's own
-// signature has resolved, and out lives in a body that names no element — and
-// they become live the moment somebody hoists one of those out of its scope.
+// Six of them are live today: record, counted, err, in, header and failed are
+// each bound in a scope that also spells the element. The other three are
+// insurance — want closes with its if statement, held is bound after the
+// closure's own signature has resolved, and out lives in a body that names no
+// element — and they become live the moment somebody hoists one of those out of
+// its scope.
 func TestASubjectFromAPackageTheBodiesBind(t *testing.T) {
 	for _, one := range theBound {
 		t.Run(one, func(t *testing.T) {

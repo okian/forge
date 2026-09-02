@@ -21,10 +21,12 @@ import (
 // rather than chosen. See [naming] for what the set is seeded with, which is
 // the half that decides whether this works.
 //
-// Only the names bound in a body that also spells a type need this. A parameter
-// of the counting streams, or the yield a sequence is handed, is bound too and
-// is not allocated: those bodies name no type, and a parameter's scope excludes
-// its own signature, so `func(yield func(yield.Person) bool)` is legal Go.
+// Not every name a body binds is allocated. The counting streams bind p and n,
+// which nothing here asks for, and the only type those bodies name is
+// predeclared — [plugin.Locals] refuses to hand out a predeclared identifier,
+// so int64 cannot be shadowed by anything allocated here. The yield a sequence
+// is handed is safe for a different reason: a parameter's scope excludes its
+// own signature, so `func(yield func(yield.Person) bool)` is legal Go.
 //
 // One set for the whole unit rather than one per function body, which is what
 // [plugin.Locals] describes. It over-constrains slightly — a name taken in one
@@ -39,10 +41,11 @@ type locals struct {
 	// record is the slice of cells one row goes through.
 	record string
 
-	// cells are the per-column variables a cell's text is read into, keyed by
-	// the field each belongs to. Allocated like the rest rather than built from
-	// the field name, because two fields whose camel forms are one word — ID
-	// and Id are both id — would otherwise be declared twice in one scope.
+	// cells are the per-column variables a cell's text is read into and written
+	// out of, keyed by the field each belongs to. Allocated like the rest rather
+	// than built from the field name, because two fields whose camel forms are
+	// one word — ID and Id are both id — would otherwise be declared twice in
+	// one scope.
 	cells map[string]string
 
 	// err is the error a checked call binds, and failed what the walk could not
@@ -69,15 +72,24 @@ type locals struct {
 	held    string
 }
 
-// naming allocates the identifiers a unit's bodies bind, out of the way of
-// every name those bodies also have to spell.
+// naming allocates the identifiers a unit's bodies bind, out of the way of the
+// names those bodies also have to spell.
 //
-// Seeded with two sets, and the second is the one that is easy to forget. The
-// packages the file imports cover a subject declared somewhere else. A subject
-// declared in the package being generated into imports nothing, so its name
-// arrives only through the spellings — which is why every identifier in the
-// element's spelling and in each column's type is taken as well, type arguments
-// included: `Box[record]` needs record reserved as much as a bare record does.
+// Seeded with three sets, and the last is the one that is easy to forget. The
+// packages the file imports cover a subject declared somewhere else. The two
+// row helpers are named because a body calls them. And a subject declared in
+// the package being generated into imports nothing, so its name arrives only
+// through the spellings — which is why every identifier in the element's
+// spelling and in each column's type is taken as well, type arguments included:
+// `Box[record]` needs record reserved as much as a bare record does.
+//
+// Two names a body spells are not in the seed: the counting stream types, which
+// hang off the stack rather than the table and so are out of reach here. They
+// cannot collide, and that is a property rather than a hope — every name
+// allocated below is one of the fourteen words, or a field's camel form with
+// Cell on the end, optionally numbered; the stream types end in CSVWritten and
+// CSVRead, which no such name can. Add them to the seed if that ever stops
+// being true.
 //
 // Split on everything that cannot be part of an identifier, so a qualified
 // spelling contributes both halves. Reserving the package half of other.Kind
@@ -112,9 +124,10 @@ func naming(bound []plugin.Import, of table) locals {
 	// In column order, so that the same table allocates the same names on every
 	// run. A map walked here would write a different file each time.
 	//
-	// After the field, so that a reader of the generated code can see which
-	// column went wrong without counting them. Suffixed, so that a field named
-	// Range or Type does not produce a variable named after a keyword.
+	// Named after the field, so that a reader of the generated code can see
+	// which column went wrong without counting them. The suffix is for reading
+	// rather than for safety: a field called Range would be refused as a
+	// keyword by the block anyway, and would come back range2.
 	for _, one := range of.columns {
 		held.cells[one.field] = block.Declare(plugin.Camel(one.field) + "Cell")
 	}

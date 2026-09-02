@@ -263,24 +263,27 @@ func TestWhichColumnsConvert(t *testing.T) {
 // a keyword, and so that a reader of the generated code can see which column
 // went wrong without counting them.
 func TestWhatACellsLocalIsCalled(t *testing.T) {
-	want := map[string]string{
-		"ID":       "idCell",
-		"Payee":    "payeeCell",
-		"JSONBlob": "jsonBlobCell",
-		"Range":    "rangeCell",
-		"Record":   "recordCell",
+	// A slice rather than a map, because the allocation runs in column order:
+	// walking a map here would decide in a different order each run, and the
+	// first of two fields that wanted one name would be whichever came up.
+	want := []struct{ field, local string }{
+		{"ID", "idCell"},
+		{"Payee", "payeeCell"},
+		{"JSONBlob", "jsonBlobCell"},
+		{"Range", "rangeCell"},
+		{"Record", "recordCell"},
 	}
 
 	of := table{}
-	for field := range want {
-		of.columns = append(of.columns, column{field: field})
+	for _, one := range want {
+		of.columns = append(of.columns, column{field: one.field})
 	}
 
 	names := naming(nil, of)
 
-	for field, want := range want {
-		if got := (column{field: field}).local(names); got != want {
-			t.Errorf("%s reads into %s, want %s", field, got, want)
+	for _, one := range want {
+		if got := (column{field: one.field}).local(names); got != one.local {
+			t.Errorf("%s reads into %s, want %s", one.field, got, one.local)
 		}
 	}
 }
@@ -342,6 +345,21 @@ func TestALocalMovesRatherThanThePackage(t *testing.T) {
 	}
 	if held.err != "err" {
 		t.Errorf("the error is called %q with nothing in its way", held.err)
+	}
+}
+
+// A cell's local moves out of the way of a package of the same name.
+//
+// The per-column names are allocated from the same block as the rest, so a file
+// binding a package called idCell gets idCell2 for the column and keeps the
+// package. Without that they were built from the field and could not move.
+func TestACellsLocalMovesForAPackage(t *testing.T) {
+	of := table{columns: []column{{field: "ID"}}}
+	bound := []plugin.Import{{Path: "example.com/idCell", Name: "idCell"}}
+
+	got := (column{field: "ID"}).local(naming(bound, of))
+	if got != "idCell2" {
+		t.Errorf("the column reads into %q, want idCell2", got)
 	}
 }
 
