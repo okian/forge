@@ -142,3 +142,133 @@ func emitted(t *testing.T) []string {
 	slices.Sort(out)
 	return out
 }
+
+// A generated local must not shadow a package the file imports.
+//
+// It does not fail to compile. It fails on the next line that meant the
+// package, in a file the author cannot edit, about a collision they caused by
+// naming a field slices — which is why the rule is asserted here rather than
+// left to the compiler like the one above it.
+//
+// Every name a body binds is asked, not only the ones a layer called a local:
+// a parameter and a receiver shadow exactly as hard as a variable does, and a
+// range key hardest of all, since it is the one a walk over a map of packages
+// would reach for.
+func TestNoGeneratedLocalShadowsAnImport(t *testing.T) {
+	for _, at := range emitted(t) {
+		file, err := parser.ParseFile(token.NewFileSet(), at, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("reading %s: %v", at, err)
+		}
+
+		imports := bound(file)
+		if len(imports) == 0 {
+			continue
+		}
+
+		for _, name := range binds(file) {
+			if slices.Contains(imports, name) {
+				t.Errorf("%s binds %s, which is a package the file imports", at, name)
+			}
+		}
+	}
+}
+
+// bound returns the name each of a file's imports is known by.
+func bound(file *ast.File) []string {
+	var out []string
+
+	for _, one := range file.Imports {
+		switch {
+		case one.Name != nil:
+			out = append(out, one.Name.Name)
+		default:
+			path := strings.Trim(one.Path.Value, `"`)
+			out = append(out, path[strings.LastIndexByte(path, '/')+1:])
+		}
+	}
+	return out
+}
+
+// binds returns every name a function in the file binds inside itself: the
+// receiver, the parameters, the results, and everything a body declares.
+func binds(file *ast.File) []string {
+	var out []string
+
+	for _, decl := range file.Decls {
+		held, is := decl.(*ast.FuncDecl)
+		if !is {
+			continue
+		}
+
+		out = append(out, named(held.Recv)...)
+		out = append(out, named(held.Type.Params)...)
+		out = append(out, named(held.Type.Results)...)
+
+		ast.Inspect(held, func(node ast.Node) bool {
+			out = append(out, declaring(node)...)
+			return true
+		})
+	}
+	return out
+}
+
+// declaring returns the names one statement binds.
+func declaring(node ast.Node) []string {
+	switch held := node.(type) {
+	case *ast.AssignStmt:
+		if held.Tok != token.DEFINE {
+			return nil
+		}
+		return identifiers(held.Lhs)
+
+	case *ast.RangeStmt:
+		if held.Tok != token.DEFINE {
+			return nil
+		}
+		return identifiers([]ast.Expr{held.Key, held.Value})
+
+	case *ast.ValueSpec:
+		var out []string
+		for _, name := range held.Names {
+			out = append(out, name.Name)
+		}
+		return out
+
+	case *ast.FuncLit:
+		return append(named(held.Type.Params), named(held.Type.Results)...)
+
+	default:
+		return nil
+	}
+}
+
+// named returns the names a field list gives, skipping the ones it leaves out.
+func named(list *ast.FieldList) []string {
+	if list == nil {
+		return nil
+	}
+
+	var out []string
+	for _, field := range list.List {
+		for _, name := range field.Names {
+			if name.Name != "_" {
+				out = append(out, name.Name)
+			}
+		}
+	}
+	return out
+}
+
+// identifiers returns the plain names among these expressions, dropping the
+// blank and anything that is not a bare identifier.
+func identifiers(held []ast.Expr) []string {
+	var out []string
+
+	for _, one := range held {
+		if name, is := one.(*ast.Ident); is && name.Name != "_" {
+			out = append(out, name.Name)
+		}
+	}
+	return out
+}
