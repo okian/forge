@@ -43,6 +43,7 @@ var surface = []string{
 	"Import", "Spelling", "Spell",
 	"Camel", "Lower", "Upper", "Join", "Export", "Words", "Around",
 	"Block", "Locals", "Exported",
+	"Receiver", "TypeParam", "Question", "Agent",
 	"Plural", "Singular", "IsPlural",
 	"Through", "Unattachable", "Uncopyable", "Unnameable",
 	"MarkerPkg", "LayerRef", "Form", "FormInvalid", "FormInline", "FormSpec",

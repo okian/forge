@@ -221,6 +221,37 @@ func Around(exported bool, before, held string, after ...string) string {
 	return words.Around(exported, before, held, after...)
 }
 
+// Receiver names the receiver every method of a type is written with: the
+// initials of the type's own words, at most two of them, in lower case. Persons
+// is p and HomeAddress is ha.
+//
+// Derived rather than chosen so that every method of one type is written the
+// same way, which is the part a reader notices when it is not true and the part
+// no layer generating one method at a time can hold on its own. Never self,
+// this or me, and never the word value spelled out.
+func Receiver(parts ...string) string { return words.Receiver(parts...) }
+
+// TypeParam names a type parameter, which Go writes as a single capital: a
+// layer calling its parameter Element gets E and one calling it T gets T.
+func TypeParam(parts ...string) string { return words.TypeParam(parts...) }
+
+// Question returns the method name a boolean answer is read under: Active is
+// IsActive, and a name that already asks something is left alone.
+//
+// Chosen by what the method returns rather than by how the field it reads is
+// spelled, which also keeps it out of the way of a projection — a bool field
+// called Active would already have taken Active.
+func Question(parts ...string) string { return words.Question(parts...) }
+
+// Agent names a one-method interface after the method it holds: Validate is
+// Validator, Notify is Notifier, Marshal is Marshaller.
+//
+// The -er ending is not a suffix anybody can append, which is why it is here:
+// it is the same kind of question the plural is, answered from the same
+// dictionary, and getting it wrong produces a name a reader trips over in a
+// file they cannot edit.
+func Agent(parts ...string) string { return words.Agent(parts...) }
+
 // Block is the names visible inside one generated function body.
 //
 // What it is for beyond uniqueness is shadowing. A local named slices in a file
