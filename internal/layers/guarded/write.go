@@ -5,8 +5,6 @@ import (
 	"go/parser"
 	"go/token"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/okian/forge/internal/view"
 	"github.com/okian/forge/plugin"
@@ -42,7 +40,7 @@ func (l Layer) Generate(ctx *plugin.Context, below plugin.Shape) (plugin.Unit, e
 	// packages over is one forge can generate for and is not one this file can
 	// write down bare, and a check that asked the looser question would pass it
 	// through and emit a scope forwarding a name nothing here declares.
-	if !ctx.Model.Subject.Attachable(local(ctx)) {
+	if !ctx.Model.Subject.Attachable(into(ctx)) {
 		return plugin.Unit{}, fmt.Errorf(
 			"%s: %s holds a subject the package being generated into cannot name, and the "+
 				"methods a scope forwards are written with the name the stack below uses",
@@ -293,8 +291,7 @@ func (p plan) made() string {
 // the visibility of that type: a constructor for an unexported container has no
 // business being reachable from outside the package it is unexported in.
 func constructorFor(declared string) string {
-	first, _ := utf8.DecodeRuneInString(declared)
-	return plugin.Around(unicode.IsUpper(first), "new", declared)
+	return plugin.Around(plugin.Exported(declared), "new", declared)
 }
 
 // ready says what the zero value of the declared type is good for, which is

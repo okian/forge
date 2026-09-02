@@ -200,6 +200,10 @@ func Join(parts ...string) string { return words.Join(parts...) }
 // case a layer asks for most: userId is UserID, and http_server is HTTPServer.
 func Export(name string) string { return words.Export(name) }
 
+// Exported reports whether a name is one a package publishes, which is what
+// decides the visibility of every name built around it.
+func Exported(name string) bool { return words.Exported(name) }
+
 // Around returns a name built around one that is already spelled: New around
 // Persons is NewPersons, and Err around persons with Full after it is
 // errPersonsFull.

@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/okian/forge/internal/templates"
 	"github.com/okian/forge/plugin"
@@ -690,16 +688,9 @@ func imported(spelled plugin.Spelling) []plugin.Import {
 // name comes through exactly as its author wrote it and the seam is spelled the
 // way every other seam forge writes is.
 func constructorFor(declared string) string {
-	return plugin.Around(exported(declared), "new", declared)
+	return plugin.Around(plugin.Exported(declared), "new", declared)
 }
 
 func errorFor(declared string) string {
-	return plugin.Around(exported(declared), "err", declared, "full")
-}
-
-// exported reports whether a declaration is, which is what decides the
-// visibility of everything named after it.
-func exported(declared string) bool {
-	first, _ := utf8.DecodeRuneInString(declared)
-	return unicode.IsUpper(first)
+	return plugin.Around(plugin.Exported(declared), "err", declared, "full")
 }

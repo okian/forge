@@ -36,11 +36,11 @@ func elem(ctx *plugin.Context) string {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		return ""
 	}
-	return plugin.Spell(ctx.Model.Subject.Type(), local(ctx), nil).Text
+	return plugin.Spell(ctx.Model.Subject.Type(), into(ctx), nil).Text
 }
 
-// local returns the import path of the package being generated into.
-func local(ctx *plugin.Context) string {
+// into returns the import path of the package being generated into.
+func into(ctx *plugin.Context) string {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Pkg == nil {
 		return ""
 	}

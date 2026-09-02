@@ -108,6 +108,22 @@ func visible(name string, exported bool) string {
 // commonest case and is spelled shorter because it is asked for so often.
 func Export(name string) string { return Join(name) }
 
+// Exported reports whether a name is one a package publishes.
+//
+// The question every name built around a declaration has to ask first, because
+// what it decides is the visibility of the answer: a constructor for an
+// unexported container has no business being reachable from outside the package
+// the container is unexported in. Three layers each decoded the first rune for
+// themselves before this was here.
+//
+// By rune rather than by byte, since a name may begin with one that is not one
+// byte long. A name with nothing in it is not exported, which is the safe half
+// of the answer: a name a caller cannot reach beats one they can.
+func Exported(name string) bool {
+	first, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsUpper(first)
+}
+
 // Around returns a name built around one that is already spelled: New around
 // Persons is NewPersons, and Err around persons with Full after it is
 // errPersonsFull.

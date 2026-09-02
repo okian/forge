@@ -9,8 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/okian/forge/internal/templates"
 	"github.com/okian/forge/plugin"
@@ -352,6 +350,5 @@ func declares(decl ast.Decl, name string) bool {
 // author wrote it and the seam is the same seam the layer beside this one
 // writes.
 func constructorFor(declared string) string {
-	first, _ := utf8.DecodeRuneInString(declared)
-	return plugin.Around(unicode.IsUpper(first), constructorInTemplate, declared)
+	return plugin.Around(plugin.Exported(declared), constructorInTemplate, declared)
 }
