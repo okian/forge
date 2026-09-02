@@ -1,5 +1,5 @@
-# Development entry points. CI runs these same targets, so a green
-# `make check` locally means a green pipeline.
+# Development entry points. CI runs these same targets, so a green `make ci`
+# locally means a green pipeline; `make check` is the fast subset of it.
 
 GO ?= go
 COVER_MIN ?= 90
@@ -231,8 +231,27 @@ race-matrix: ## Regenerate the race matrix under internal/racetest/matrix.
 diagnostics: ## Regenerate the diagnostics index under docs/.
 	$(GO) test ./internal/cli -run TestTheDiagnosticsIndexIsTheRegistry -update
 
+# The gates worth running before every commit: fast enough to run without
+# thinking about it, and between them they catch most of what CI would.
+#
+# Not all of it — see ci below. The two are kept apart deliberately, because a
+# pre-commit gate that takes as long as CI is one people stop running, and the
+# gate nobody runs catches nothing.
 .PHONY: check
-check: fmt-check vet lint cover size ## Run every gate CI runs.
+check: fmt-check vet lint cover size ## Run the fast gates: formatting, vet, lint, coverage, size.
+
+# Every gate the CI pipeline runs, in one target.
+#
+# The list is exactly the gates .github/workflows/ci.yml invokes, so that a
+# green run here means a green run there. Somebody about to push something they
+# are unsure of should be able to find out locally rather than from a red build.
+#
+# Two things CI does are not here. Its build job cross-compiles over a matrix of
+# GOOS/GOARCH pairs rather than calling a target, so there is no target to name.
+# And `size` runs in `check` but nowhere in the pipeline, which means it is not
+# one of the gates this claims to cover — `make check` is where that one lives.
+.PHONY: ci
+ci: fmt-check lint vet test cover race bench bench-against fuzz tidy-check vuln ## Run every gate the CI pipeline runs.
 
 # What the tool weighs, which is a gate rather than a benchmark: the dictionary
 # forge embeds is data somebody may upgrade, and an upgrade that brings a

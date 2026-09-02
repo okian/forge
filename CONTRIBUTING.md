@@ -25,12 +25,15 @@ are the whole surface.
 
 ## The gates
 
-Every gate CI runs is a `make` target, so a green `make check` locally means a
-green pipeline:
+Every gate CI runs is a `make` target. Run `make check` before every commit —
+it is the fast subset. Run `make ci` before pushing something you are unsure
+of; it is the whole pipeline, and a green run of it locally means a green run
+there:
 
 ```
 make tools     # install the pinned golangci-lint and govulncheck
-make check     # formatting, go vet, golangci-lint, tests with the coverage floor
+make check     # the fast gates: formatting, go vet, golangci-lint, coverage, size
+make ci        # every gate the pipeline runs, which takes considerably longer
 ```
 
 The individual targets are worth knowing when something fails:
@@ -39,27 +42,35 @@ The individual targets are worth knowing when something fails:
 | ----------------- | ---------------------------------------------------------- |
 | `make fmt`        | rewrites sources with gofumpt and gci                       |
 | `make fmt-check`  | fails with a diff when a file is not formatted              |
-| `make vet`        | `go vet ./...`                                              |
+| `make vet`        | `go vet` over both modules, in both builds a spec is written for |
 | `make lint`       | golangci-lint, including the complexity budgets below       |
 | `make test`       | the suite                                                   |
 | `make race`       | the suite under the race detector                           |
 | `make cover`      | the suite plus the coverage floor (90% of statements)       |
+| `make bench`      | the benchmarks, each against `scripts/budget.txt`           |
+| `make bench-against` | the generated code against the libraries it replaces     |
+| `make fuzz`       | every codec target against the standard library             |
 | `make size`       | the dictionary and the binary, against their size budgets   |
 | `make tidy-check` | fails if `go.mod` or `go.sum` would change under `go mod tidy` |
 | `make vuln`       | govulncheck over reachable code                             |
 
 `make help` lists them all.
 
-Every gate above covers two modules: this one, and the layer under
-[`x/csv`](x/csv) that is written against the published `plugin` surface. The
-layer is a module of its own so that it cannot reach past that surface without
-the go command noticing, and it is held to the same gates so that the surface is
-a promise rather than a paragraph. `go test ./...` at the root does not reach
-it — the go command reads a nested module as not part of the one above it — so
-run the `make` target rather than the `go` command.
+`make fmt`, `make fmt-check`, `make vet`, `make lint`, `make test`,
+`make race`, `make cover`, `make tidy-check` and `make vuln` each cover two
+modules: this one, and the layer under [`x/csv`](x/csv) that is written against
+the published `plugin` surface. The layer is a module of its own so that it
+cannot reach past that surface without the go command noticing, and it is held
+to the same gates so that the surface is a promise rather than a paragraph.
+`go test ./...` at the root does not reach it — the go command reads a nested
+module as not part of the one above it — so run the `make` target rather than
+the `go` command.
 
-The targets that are not gates stay with this module: `make build` builds
-`forge`, and `make bench` measures this module's own benchmarks.
+The rest are narrower. `make bench`, `make fuzz` and `make size` are gates over
+this module alone. `make bench-against` runs in a third module,
+`benchmarks/validator`, which is nested for the same reason and holds the
+comparisons that need somebody else's library. `make build` is not a gate at
+all.
 
 Three more regenerate committed output rather than checking it, and each is run
 when the thing it is written from changes: `make example` and

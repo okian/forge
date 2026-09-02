@@ -28,7 +28,7 @@ func BenchmarkValidate(b *testing.B) {
 // measuring against.
 //
 // Not a reflective validator — that comparison lives in its own module, so that
-// the module everybody builds keeps the two dependencies it has. This is the
+// the module everybody builds keeps its one direct dependency. This is the
 // other question, and the more demanding one: a generated check should cost
 // what somebody would have written themselves, because if it costs more there
 // is no reason to generate it.

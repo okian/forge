@@ -264,15 +264,19 @@ way.
 
 ## Development
 
-Every gate CI runs is a `make` target, so a green `make check` locally means a
-green pipeline:
+Every gate CI runs is a `make` target. `make check` is the fast subset worth
+running before every commit; `make ci` is the whole pipeline, so a green run of
+it locally means a green run there:
 
 ```
-make check           # formatting, go vet, golangci-lint, tests with the coverage floor
+make check           # the fast gates: formatting, go vet, golangci-lint, coverage, size
+make ci              # every gate the pipeline runs, which takes considerably longer
 make test            # tests only
 make race            # tests under the race detector
 make cover           # tests plus the coverage floor (90% of statements)
 make bench           # benchmarks, each held to its budget in scripts/budget.txt
+make fuzz            # fuzz every codec target against the standard library
+make size            # hold the dictionary and the binary to their size budgets
 make fmt             # rewrite sources with gofumpt and gci
 make lint            # golangci-lint on its own
 make vuln            # govulncheck over reachable code
@@ -284,12 +288,13 @@ make diagnostics     # regenerate docs/diagnostics.md from the registry
 make help            # list every target
 ```
 
-The gates among those — `check`, `fmt`, `lint`, `vet`, `test`, `race`, `cover`,
-`tidy-check`, `vuln` — cover `x/csv` as well as this module, because a layer
-written against the published surface is only a promise if the same gates hold
-it. The rest are about this module alone: `build` builds `forge`, `bench` runs
-this module's benchmarks, and each worked example has its own regeneration
-target because each is written by a different binary.
+The gates among those — `check`, `ci`, `fmt`, `lint`, `vet`, `test`, `race`,
+`cover`, `tidy-check`, `vuln` — cover `x/csv` as well as this module, because a
+layer written against the published surface is only a promise if the same gates
+hold it. The rest are narrower: `bench`, `fuzz` and `size` are gates over this
+module alone, `build` builds `forge` and is not a gate at all, and each worked
+example has its own regeneration target because each is written by a different
+binary.
 
 `make bench` is a gate rather than a report. Every benchmark declares what it
 may spend in [`scripts/budget.txt`](scripts/budget.txt) and the run fails if one

@@ -55,12 +55,13 @@ binary wrote would look like the work of different tooling.
    is checked by a test, so a heading that does not read as a version fails the
    build rather than the release.
 
-2. **Run every gate, including the ones `make check` leaves out.** `make check`
-   is `fmt-check vet lint cover` over both modules. CI runs six more, and a tag
-   is the one moment their cost is obviously worth paying: `make race`,
-   `make bench`, `make bench-against`, `make fuzz`, `make tidy-check` and
-   `make vuln`. `tidy-check` is the one step 2 of the publishing order below
-   leans on.
+2. **Run `make ci`, not `make check`.** `make check` is the fast subset:
+   `fmt-check vet lint cover` over both modules, plus `size` over this one. It
+   leaves out the race detector, both benchmark suites, the fuzz targets,
+   `tidy-check` and `govulncheck`, and cutting a tag is the one moment their
+   cost is obviously worth paying. `make ci` runs the lot, which is every gate
+   the pipeline runs. `tidy-check` is the gate behind the `make tidy` that
+   step 2 of the publishing order below calls for.
 
 3. **Regenerate the committed output and commit any diff.** `make example`,
    `make layers-example` and `make diagnostics`. A release whose examples were

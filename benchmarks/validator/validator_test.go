@@ -10,10 +10,22 @@ import (
 
 // twin is the example's subject with the same rules written the other way.
 //
-// The same fields, the same rules, the same order — because a comparison
-// between two checks that check different things measures nothing. Written as a
-// type of its own rather than by adding a second tag to the subject, so that
-// the example stays an example and this stays a measurement.
+// The same fields in the same order, and the same rules with one exception,
+// because a comparison between two checks that check different things measures
+// nothing. Written as a type of its own rather than by adding a second tag to
+// the subject, so that the example stays an example and this stays a
+// measurement.
+//
+// The exception is Email, and it is not one that can be removed. The subject
+// asks for a pattern, which forge compiles to a match against it.
+// go-playground has no pattern rule in its tag vocabulary, so the nearest
+// thing it offers is `email`, and that parses the address to RFC 5322 with
+// net/mail instead. Those are different amounts of work, and five of the six
+// allocations the reflective check makes are inside that one rule.
+//
+// So read the figures as two checks over the rules each side can express,
+// which is the comparison somebody choosing between them actually faces —
+// not as the same work done twice.
 type twin struct {
 	ID    int    `validate:"min=1"`
 	Name  string `validate:"required,max=64"`

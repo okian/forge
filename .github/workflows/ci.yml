@@ -167,8 +167,8 @@ jobs:
         run: make bench
 
       # The comparisons against other people's libraries, which live in a module
-      # of their own so that the module everybody builds keeps its two
-      # dependencies. Run here rather than in the step above because they fetch
+      # of their own so that the module everybody builds keeps its one direct
+      # dependency. Run here rather than in the step above because they fetch
       # a dependency tree that has nothing to do with building forge.
       - name: the comparisons are within budget
         run: make bench-against

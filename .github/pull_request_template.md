@@ -10,7 +10,7 @@
 
 ## Checklist
 
-- [ ] `make check` is green (formatting, `go vet`, golangci-lint, tests, coverage floor).
+- [ ] `make check` is green (formatting, `go vet`, golangci-lint, tests with the coverage floor, size).
 - [ ] Tests cover the new behaviour, and the golden suite is updated where output changed.
 - [ ] Godoc on every exported identifier the change adds.
 - [ ] No complexity budget in `.golangci.yml` was raised — or it was, and this PR says why.
