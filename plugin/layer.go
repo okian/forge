@@ -55,7 +55,19 @@ type Assertion = layer.Assertion
 // holding one layer can generate for a declaration naming one layer and
 // nothing else — and the storage a refining layer needs beneath it is one of
 // forge's. [github.com/okian/forge/driver.Builtins] is where one comes from.
+//
+// The zero value is not one: a registry holds a map, and registering into an
+// empty struct panics. Use NewRegistry or the driver's Builtins.
 type Registry = layer.Registry
+
+// NewRegistry returns an empty registry.
+//
+// Not what a run is given — a stack composes across every layer the run knows,
+// so a catalog with one layer in it can generate only for a declaration naming
+// one layer and nothing else. What it is for is a layer's own tests:
+// registering into an empty registry says whether the layer registers at all,
+// without pulling in forge's whole catalog to find out.
+func NewRegistry() *Registry { return layer.New() }
 
 // Stage says how far along a layer is.
 //
@@ -76,13 +88,19 @@ const (
 // start as its zero value.
 type Constructor = layer.Constructor
 
-// Described is implemented by a layer that says what it is in one line, which
-// is what the list command prints and what an explanation puts beside each
-// step.
+// Described is implemented by a layer that says how far along it is and what it
+// is in one line, which is what the list command prints and what an explanation
+// puts beside each step.
 //
-// Optional, and worth implementing: a layer that says nothing about itself
-// appears in a report as a row with an empty cell, which reads as a layer that
-// does nothing.
+// Two methods, and the pair is why they are together: a report that knows what
+// a layer does also wants to know whether it does it yet. A layer outside forge
+// has one answer to the second — StageReady — and forge's own use the rest to
+// describe a marker published before its generator was written.
+//
+// Optional, and worth implementing. A layer that says nothing about itself is
+// reported as pending, which is what forge says about a marker whose work is
+// not written — so a layer that is written and silent is described as one that
+// is not.
 type Described = layer.Described
 
 // Transparent is implemented by a storage layer whose invariants the raw

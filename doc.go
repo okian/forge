@@ -45,6 +45,18 @@
 // type-checks and so that generation can report it as not yet implemented,
 // which is a better answer than an undefined identifier.
 //
+// # Layers of your own
+//
+// The markers here are the ones forge ships, and they are not the only ones a
+// stack may name. A layer is written against
+// [github.com/okian/forge/plugin]: implement its Layer interface, declare your
+// marker in your own package, and a declaration naming it composes with these
+// as though it had always been there.
+//
+// Reaching it takes a binary of your own, because a layer is code and has to be
+// linked in. [github.com/okian/forge/driver] is the dozen lines that gives you
+// forge's own commands over a catalog holding both.
+//
 // # Declaration forms
 //
 // A marker's own underlying type is a placeholder chosen so that declarations

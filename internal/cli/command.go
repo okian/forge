@@ -117,11 +117,12 @@ func builtins() *plugin.Registry { return layers.Builtins() }
 
 // layers returns the catalog this run knows about.
 //
-// Forge's own where nothing was passed, which is what a test building part of
-// an environment gets: a verb asked about layers has to have some, and the ones
-// forge ships are the answer to a question nobody narrowed. [Run] always
-// passes one, so the fallback is reached from tests and from nowhere else —
-// [TestARunKnowsTheCatalogItWasGiven] is what holds that true.
+// Forge's own where there is none, which happens two ways. A test builds part
+// of an environment and asks a verb about layers, and the ones forge ships are
+// the answer to a question nobody narrowed. And a caller of the published
+// driver passes nothing at all — which is a caller who has not said which
+// layers they mean, so the ones forge ships are the answer there too, and a
+// verb that panicked on it would be answering a mistake with a stack trace.
 func (env *environment) layers() *plugin.Registry {
 	if env.catalog == nil {
 		return builtins()

@@ -8,6 +8,17 @@ import (
 	"github.com/okian/forge/plugin"
 )
 
+// The codes these tests report under, registered at package scope.
+//
+// Where the documentation says to put them, and the only place they work: a
+// code is claimed once per process, so registering inside a test function
+// panics the second time the test runs — which `go test -count=2` does, and
+// which a test demonstrating the documented way should not do.
+var (
+	documented = plugin.Register(6001, "the example in the documentation")
+	collected  = plugin.Register(6003, "two things wrong with one declaration")
+)
+
 // The documented example works: a code above forge's own registers, builds a
 // diagnostic, and renders under its own number.
 //
@@ -15,13 +26,11 @@ import (
 // end the process: forge's own ranges stopped at 5999 and everything above was
 // refused, so following the instruction panicked at package initialisation.
 func TestALayersOwnCode(t *testing.T) {
-	code := plugin.Register(6001, "the example in the documentation")
-
-	if got := code.String(); got != "FRG6001" {
+	if got := documented.String(); got != "FRG6001" {
 		t.Errorf("the code prints as %s, want FRG6001", got)
 	}
 
-	held := plugin.New(code, token.Position{Filename: "spec.go", Line: 8, Column: 6},
+	held := plugin.New(documented, token.Position{Filename: "spec.go", Line: 8, Column: 6},
 		"%s is not something this layer can generate for", "Persons").
 		WithHint("write %s instead", "by=Field")
 
@@ -45,7 +54,7 @@ func TestALayersOwnCode(t *testing.T) {
 	// And it comes back out of an error, which is how a layer returns one from
 	// Generate.
 	back, is := plugin.From(held)
-	if !is || back.Code != code {
+	if !is || back.Code != documented {
 		t.Errorf("the diagnostic did not survive being returned as an error: %v, %v", back.Code, is)
 	}
 }
@@ -53,27 +62,27 @@ func TestALayersOwnCode(t *testing.T) {
 // A code says whether it is forge's own, which is what tells a reader whose
 // index to look in.
 func TestWhoseCodeItIs(t *testing.T) {
-	if !plugin.Register(5998, "forge's own").Ours() {
-		t.Error("a code inside forge's ranges says it is not forge's")
-	}
-	if plugin.Register(6002, "a layer's own").Ours() {
-		t.Error("a code above forge's ranges says it is forge's")
+	for code, ours := range map[plugin.Code]bool{
+		1000: true, 5999: true,
+		6000: false, 9999: false,
+	} {
+		if got := code.Ours(); got != ours {
+			t.Errorf("Code(%d).Ours() = %v, want %v", int(code), got, ours)
+		}
 	}
 }
 
 // Diagnostics collect, so a layer reports everything wrong with a declaration
 // rather than the first thing.
 func TestDiagnosticsCollect(t *testing.T) {
-	code := plugin.Register(6003, "collected")
-
 	var held plugin.Diagnostics
 	if !held.Empty() {
 		t.Error("a set with nothing in it says it holds something")
 	}
 
 	at := token.Position{Filename: "spec.go", Line: 3}
-	held.Add(plugin.New(code, at, "the first thing"))
-	held.Add(plugin.New(code, at, "the second thing"))
+	held.Add(plugin.New(collected, at, "the first thing"))
+	held.Add(plugin.New(collected, at, "the second thing"))
 
 	if got := len(held.All()); got != 2 {
 		t.Errorf("the set holds %d, want both", got)
@@ -134,11 +143,12 @@ func TestCapabilities(t *testing.T) {
 
 // A comment wraps at the width generated files use, counted in runes.
 //
-// Runes rather than bytes, which is what a sentence with an em dash in it
-// shows: counting bytes wraps such a line two columns early and a reader sees
-// a file whose comments are ragged for no reason they can find.
+// Runes rather than bytes, which is what the em dashes are for: a line of them
+// is three bytes to the rune, so a wrapper counting bytes would break it at a
+// third of the width and a reader would see comments ragged for no reason they
+// could find.
 func TestWrapping(t *testing.T) {
-	held := plugin.Wrapped(strings.Repeat("word ", 40), plugin.CommentWidth)
+	held := plugin.Wrapped(strings.Repeat("word — ", 30), plugin.CommentWidth)
 
 	if len(held) < 2 {
 		t.Fatalf("a long line wrapped into %d", len(held))

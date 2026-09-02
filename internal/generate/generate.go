@@ -266,6 +266,18 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 	// declarations over one subject would otherwise each contribute a copy.
 	gather(about, earned(requests, putting, path, known, cfg, &diags))
 
+	// And one method written twice across two declarations' files, which
+	// neither file can see and which the compiler sees first.
+	//
+	// A method on the declared type cannot collide this way: two declarations
+	// are two types. A method on the *subject* can, and does the moment a layer
+	// writes one into its own unit rather than into the section a subject
+	// shares — two declarations over one subject then produce two files each
+	// holding it, each internally consistent, and a package that does not
+	// build. Which is a report forge owes rather than a fault the author can
+	// see: the files are generated and the duplicate is between them.
+	claimed(written, policing{at: at(requests)}, &diags)
+
 	if file, wrote := standIn(standing, imported, requests, name, cfg, &diags); wrote {
 		out = append(out, file)
 	}

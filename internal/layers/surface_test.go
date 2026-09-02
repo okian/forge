@@ -11,8 +11,12 @@ import (
 	"testing"
 )
 
-// The layers written against nothing but the published surface, and the reason
-// each of the others is not.
+// The layer packages written against nothing but the published surface, and the
+// reason each of the others is not.
+//
+// Fourteen directories, of which twelve claim a marker: embedded and failures
+// are helpers the others share rather than layers of their own, and they are
+// held to the same rule because they are written the same way.
 //
 // A layer here imports no package of forge's that a third party could not
 // import, so it is the proof that [github.com/okian/forge/plugin] is enough to

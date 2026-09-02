@@ -35,8 +35,8 @@ var (
 // The same type a spelling asks for, rather than a second one of the same
 // shape. What a layer is told a type needs is what the file has to bind, and
 // two types spelled alike meant every layer copying one into the other field by
-// field — six of them did, and a seventh would have had to work out that it
-// should.
+// field — a dozen packages did, in twenty-odd places, and one of the copies was
+// a function whose whole body was the conversion.
 type Import = model.Import
 
 // compare orders imports by path, then by the name they are bound to, and last

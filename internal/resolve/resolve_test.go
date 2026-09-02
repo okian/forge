@@ -278,20 +278,6 @@ func TestMarkerWithTwoTypeArgumentsIsReported(t *testing.T) {
 	}
 }
 
-// Resolving against the shipped markers explicitly and resolving against them
-// by default are the same walk, which is what keeps the seam the tests use from
-// being a second code path.
-func TestTheDefaultIsTheShippedMarkerPackage(t *testing.T) {
-	found := candidates(t)
-
-	implicit, _ := resolve.Declarations(found, forges)
-	explicit, _ := resolve.Declarations(found, forges)
-
-	if !slices.Equal(names(implicit), names(explicit)) {
-		t.Fatalf("resolving against %s gave %v, want %v", model.MarkerPkg, names(explicit), names(implicit))
-	}
-}
-
 // A type from the marker package that is not generic was never applied to
 // anything, so it is where a stack ends and not a layer written wrong.
 func TestANonGenericMarkerTypeIsASubject(t *testing.T) {

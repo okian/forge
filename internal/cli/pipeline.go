@@ -77,6 +77,14 @@ func stages(catalog *layer.Registry) pipeline {
 
 // claiming turns a registry into the question resolution asks of it.
 func claiming(catalog *layer.Registry) resolve.Claims {
+	if catalog == nil {
+		// Forge's own where there is none, for the reason environment.layers
+		// gives: a caller who named no catalog has not said which layers they
+		// mean, and the ones forge ships are a better answer than a stack
+		// trace from inside a closure.
+		catalog = builtins()
+	}
+
 	return func(ref model.TypeRef) bool {
 		_, claims := catalog.Lookup(ref)
 		return claims

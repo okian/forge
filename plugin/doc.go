@@ -46,6 +46,14 @@
 //
 // # The order things are asked in
 //
+// This is the order a run that generates asks them in. A verb that only
+// describes asks a narrower set in its own order — the list command asks every
+// layer to accept a shape with no declaration behind it at all, and an
+// explanation asks a step to accept and expose more than once. So nothing here
+// may be answered by counting how many times it was asked, and nothing may be
+// left until a later question: Accepts and Shape have to answer from what they
+// are handed, as cheaply as Origin and Kind do.
+//
 // Layer.Binds and Layer.Writes first, before anything is generated and
 // before any of the questions below. Neither is asked about a particular
 // declaration — a layer three of them name is asked three times and has to
@@ -55,8 +63,8 @@
 // what you may do rather than what you will turn out to do.
 //
 // Layer.Origin and Layer.Kind whenever anything needs to know which marker
-// you claim and where it may sit. Both are asked freely and often, so both have
-// to be cheap and neither may depend on anything.
+// you claim and where it may sit. Both are asked freely and often, from every
+// verb, so both have to be cheap and neither may depend on anything.
 //
 // Layer.OptionSchema next, so that what was written on the declaration can be
 // checked against it and an option naming a field can be resolved against the
@@ -80,6 +88,28 @@
 // beneath. Return a [Unit]: declarations, the imports they need, and the
 // compile-time claims they earn. This is the one place a diagnostic of yours
 // reaches an author as yours — see below.
+//
+// # Where a method goes
+//
+// A method on the declared type goes in the unit's own declarations. There is
+// one declared type per declaration, so one file, and nothing to reconcile.
+//
+// A method on the *subject* does not. Two declarations over one subject each
+// ask you to generate, and a subject method put in the unit's declarations is
+// then written into two files — each of them consistent, neither able to see
+// the other, and the package does not build. Put it in Unit.Provides instead,
+// under a key naming what it is about: forge writes each key once, into the
+// file the package's declarations share, and the second declaration to ask for
+// it gets nothing rather than a copy.
+//
+// Forge reports the mistake rather than writing it, so a layer that gets this
+// wrong learns from a diagnostic and not from the compiler. It is still worth
+// knowing which is which before writing either.
+//
+// A storage layer owes one thing more: the declared type itself. Forge writes
+// the methods a stack asks for and does not invent the type they are on, so a
+// storage layer's declarations include the type declaration — a defined slice,
+// a struct holding a buffer — or the package names a type nothing declares.
 //
 // # Diagnostics are the product
 //
@@ -140,10 +170,11 @@
 // into the package being generated and reads back by name. A layer needing one
 // would be depending on forge's output rather than on its API.
 //
-// Forge's own layers also reuse each other — a failure type, a walk over
-// embedded fields, a check one layer runs on another's behalf. Those are not
-// gaps and are not going to be published: they are forge reusing itself, and a
-// layer outside it writes its own or does without.
+// Forge's own layers also reuse each other and reuse forge — a failure type, a
+// walk over embedded fields, a check one layer runs on another's behalf, the
+// helpers that write what a display tag earns. Those are not gaps and are not
+// going to be published: they are forge reusing itself, and a layer outside it
+// writes its own or does without.
 //
 // The template rewriter and the shared views are gaps rather than decisions
 // against. What closes them is the same change: composition settling a shape in

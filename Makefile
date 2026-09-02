@@ -170,7 +170,7 @@ example: ## Regenerate the worked example under examples/.
 # people on different patch releases cannot both see this pass, and the only
 # byte that differs between them is the fingerprint itself.
 #
-# What does gate it is the acceptance test in cmd/forge, which regenerates
+# What does gate it is the acceptance test in internal/cli, which regenerates
 # through the real pipeline and compares every file, so it catches the generator
 # changing as well as the declarations. This target is for running the verb by
 # hand against real committed output.

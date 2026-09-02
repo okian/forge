@@ -89,7 +89,13 @@ type Class = model.Class
 // Published with the type, because a type whose values cannot be named is one
 // a layer can print and not branch on.
 const (
-	ClassInvalid   = model.ClassInvalid
+	ClassInvalid = model.ClassInvalid
+
+	// ClassNamed is a defined type, whatever it is defined over, and is the
+	// class most fields of a real subject carry. A struct somebody declared is
+	// named; ClassStruct is the unnamed kind, written inline in the field.
+	ClassNamed = model.ClassNamed
+
 	ClassBasic     = model.ClassBasic
 	ClassStruct    = model.ClassStruct
 	ClassPointer   = model.ClassPointer

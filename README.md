@@ -86,6 +86,35 @@ documentation walks them in that order. It also names the one place this
 package comes out other than a reader would guess, and says where it is written
 up — an example is worth reading for what a tool really does.
 
+## Layers of your own
+
+The layers above are the ones forge ships. A layer is a plugin claiming one
+marker type, and writing one takes no change to forge:
+
+```go
+package main
+
+import (
+	"github.com/okian/forge/driver"
+
+	"example.com/mylayers/csv"
+)
+
+func main() {
+	catalog := driver.Builtins()
+	catalog.MustRegister(csv.New())
+
+	driver.Main(catalog)
+}
+```
+
+That binary takes the same command line as `forge`, walks the same packages and
+writes the same files — and a declaration naming your marker composes with the
+built-in layers. The interface is
+[`plugin`](https://pkg.go.dev/github.com/okian/forge/plugin), which documents
+what a layer is asked and in what order, where a method goes, and which of
+forge's own machinery is deliberately not published.
+
 ## Development
 
 Every gate CI runs is a `make` target, so a green `make check` locally means a

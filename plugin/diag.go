@@ -23,8 +23,8 @@ type Code = diag.Code
 // diagnostics claiming one number as a panic at start-up rather than as two
 // reports an author cannot tell apart.
 //
-// Take codes above 6000. Everything below is forge's, and the ranges are in the
-// package documentation.
+// Take codes from 6000 to 9999. Everything below 6000 is forge's, and the
+// ranges are in the package documentation.
 func Register(code Code, summary string) Code { return diag.Register(code, summary) }
 
 // Diagnostic is one thing wrong, with the position of the declaration it is
