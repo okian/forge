@@ -6,8 +6,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // Diagnostics this layer reports.
@@ -19,11 +18,11 @@ import (
 // wrong thing — a member missing from an object is not something a round-trip
 // test through the same codec would ever notice.
 var (
-	codeOpaqueField  = diag.Register(2007, "field type cannot be encoded without reflection")
-	codeTagOption    = diag.Register(2008, "json tag option is not supported")
-	codeNameCollides = diag.Register(2009, "two fields claim one name on the wire")
-	codeCannotOmit   = diag.Register(2010, "a member cannot be tested for the value it would be omitted at")
-	codeHalfCodec    = diag.Register(2011, "a type declares one half of a codec")
+	codeOpaqueField  = plugin.Register(2007, "field type cannot be encoded without reflection")
+	codeTagOption    = plugin.Register(2008, "json tag option is not supported")
+	codeNameCollides = plugin.Register(2009, "two fields claim one name on the wire")
+	codeCannotOmit   = plugin.Register(2010, "a member cannot be tested for the value it would be omitted at")
+	codeHalfCodec    = plugin.Register(2011, "a type declares one half of a codec")
 )
 
 // halfHint says what to do about a type carrying one half of a codec.
@@ -97,7 +96,7 @@ type form struct {
 	// typ is the type itself, and spelled is how it is written in the file
 	// being generated for.
 	typ     types.Type
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// how says which form the value takes.
 	how written
@@ -147,7 +146,7 @@ type guard struct {
 	// spelling binds: the allocation names the type, and a file that names a
 	// package it does not import does not compile.
 	elem    string
-	imports []model.Import
+	imports []plugin.Import
 }
 
 // member is one field as it appears on the wire.
@@ -177,7 +176,7 @@ type member struct {
 	tagged bool
 
 	// field is the field this came from, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 }
 
 // planner decides what a subject's codec is made of.
@@ -194,7 +193,7 @@ type planner struct {
 	// bound is what the file will bind, which every spelling is written
 	// against so that a type from a package called json is not written under
 	// the name this layer's own import has.
-	bound []model.Import
+	bound []plugin.Import
 
 	// willWrite reports whether the run will put a method on a type, and
 	// authored whether the author already declared one. Between them they are
@@ -206,7 +205,7 @@ type planner struct {
 
 	// known holds every struct the subject reaches, by the spelling that
 	// identifies it.
-	known map[string]*model.Struct
+	known map[string]*plugin.Struct
 
 	// style is what an untagged field's name is written in, and omitZero says
 	// whether every member is left out when it holds its zero value. Both are
@@ -234,12 +233,12 @@ type planner struct {
 	// the order their codecs are written.
 	order []string
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // spellingOf writes a type as the generated file must spell it.
-func (p *planner) spellingOf(t types.Type) model.Spelling {
-	return model.Spell(t, p.into, p.bound)
+func (p *planner) spellingOf(t types.Type) plugin.Spelling {
+	return plugin.Spell(t, p.into, p.bound)
 }
 
 // key identifies a type across the whole plan.
@@ -247,11 +246,11 @@ func (p *planner) spellingOf(t types.Type) model.Spelling {
 // The fully qualified spelling rather than the one the file uses: two types
 // from two packages of the same name are one string under the second and two
 // under this, and merging them would write one codec for two types.
-func key(t types.Type) string { return model.TypeIdentity(t) }
+func key(t types.Type) string { return plugin.TypeIdentity(t) }
 
 // plan decides the codec for a subject and everything it reaches.
-func (p *planner) plan(held *model.Struct) *form {
-	p.known = make(map[string]*model.Struct)
+func (p *planner) plan(held *plugin.Struct) *form {
+	p.known = make(map[string]*plugin.Struct)
 	p.forms = make(map[string]*form)
 	p.filling = make(map[string]bool)
 
@@ -264,7 +263,7 @@ func (p *planner) plan(held *model.Struct) *form {
 }
 
 // remember records a struct under the spelling its type is identified by.
-func (p *planner) remember(held *model.Struct) {
+func (p *planner) remember(held *plugin.Struct) {
 	if held == nil || held.Named == nil {
 		return
 	}
@@ -344,7 +343,7 @@ func (p *planner) owned(out *form, where blamed) bool {
 	// nobody wrote a reader for. Saying so is the only answer that leaves them
 	// somewhere to go.
 	if half := p.halfCodec(out.typ); half != "" {
-		p.diags.Add(diag.New(codeHalfCodec, where.pos,
+		p.diags.Add(plugin.New(codeHalfCodec, where.pos,
 			"%s declares %s and not the other half", out.spelled.Text, half).
 			WithHint("%s", halfHint))
 		return true
@@ -549,7 +548,7 @@ func (p *planner) refuse(where blamed, format string, args ...any) {
 		said = where.name + " is " + said
 	}
 
-	p.diags.Add(diag.New(codeOpaqueField, where.pos, "%s", said).
+	p.diags.Add(plugin.New(codeOpaqueField, where.pos, "%s", said).
 		WithHint("%s", fallbackHint))
 }
 
@@ -579,7 +578,7 @@ const (
 //
 // prefix is how the struct being walked is reached from the outermost value,
 // and guards are the pointer fields on the way to it.
-func (p *planner) flatten(held *model.Struct, prefix string, guards []guard, walked map[string]bool) []member {
+func (p *planner) flatten(held *plugin.Struct, prefix string, guards []guard, walked map[string]bool) []member {
 	if held == nil || walked[key(held.Type())] {
 		// A struct embedding itself has no finite set of members. Go allows it
 		// only through a pointer, which is why it has to be stopped by what has
@@ -599,7 +598,7 @@ func (p *planner) flatten(held *model.Struct, prefix string, guards []guard, wal
 
 // member returns what one field contributes: its own member, or the members of
 // the struct it embeds.
-func (p *planner) member(field model.Field, prefix string, guards []guard, walked map[string]bool) []member {
+func (p *planner) member(field plugin.Field, prefix string, guards []guard, walked map[string]bool) []member {
 	if wrong, found := p.unsupported(field); found {
 		p.diags.Add(wrong)
 		return nil
@@ -637,7 +636,7 @@ func (p *planner) member(field model.Field, prefix string, guards []guard, walke
 // encoding/json/v2 states: embedding is implicit for a Go embedded field, and a
 // name written in a tag is what asks for a nested object instead. A named field
 // is promoted only when it asks to be.
-func (p *planner) promotes(field model.Field) bool {
+func (p *planner) promotes(field plugin.Field) bool {
 	if has(field, optionEmbed) {
 		return true
 	}
@@ -653,7 +652,7 @@ func (p *planner) promotes(field model.Field) bool {
 // it. Anything else that cannot be walked into is refused, because a field
 // asking to be embedded and not written at all is silence about a whole group
 // of members.
-func (p *planner) promoted(field model.Field, path string, guards []guard, walked map[string]bool) []member {
+func (p *planner) promoted(field plugin.Field, path string, guards []guard, walked map[string]bool) []member {
 	under := field.Type.Type
 	if pointer, is := under.Underlying().(*types.Pointer); is {
 		under = pointer.Elem()
@@ -690,7 +689,7 @@ func (p *planner) promoted(field model.Field, path string, guards []guard, walke
 
 // fieldForm decides how a field's value is written, honouring a directive
 // above it that asks for the reflective encoder.
-func (p *planner) fieldForm(field model.Field) *form {
+func (p *planner) fieldForm(field plugin.Field) *form {
 	if p.fallback(field) {
 		return &form{typ: field.Type.Type, spelled: p.spellingOf(field.Type.Type), how: writtenFallback}
 	}
@@ -704,18 +703,18 @@ func (p *planner) fieldForm(field model.Field) *form {
 // this layer takes on a field and stdlib is its only value, so anything else
 // written there is a misspelling, and a misspelling that quietly turned
 // reflection on would be the one mistake this option exists to make visible.
-func (p *planner) fallback(field model.Field) bool {
+func (p *planner) fallback(field plugin.Field) bool {
 	found := false
 
-	for _, directive := range model.Written(field.Directives, markerName) {
+	for _, directive := range plugin.Written(field.Directives, markerName) {
 		key, value, split := strings.Cut(directive.Args, "=")
 		switch {
 		case strings.TrimSpace(key) != optionFallback:
-			p.diags.Add(diag.New(codeTagOption, directive.Pos,
+			p.diags.Add(plugin.New(codeTagOption, directive.Pos,
 				"%s is not an option this layer takes on a field", strings.TrimSpace(key)).
 				WithHint("a field takes %s=%s and nothing else", optionFallback, fallbackValue))
 		case !split || strings.TrimSpace(value) != fallbackValue:
-			p.diags.Add(diag.New(codeTagOption, directive.Pos,
+			p.diags.Add(plugin.New(codeTagOption, directive.Pos,
 				"%s takes %s and was given %q", optionFallback, fallbackValue, strings.TrimSpace(value)).
 				WithHint("%s is the only reflective boundary there is", fallbackValue))
 		default:
@@ -740,26 +739,26 @@ const (
 // so is the whole of the handling — silently ignoring an option that names a
 // date layout produces timestamps in the wrong format, which is exactly the
 // kind of wrong that reaches production.
-func (p *planner) unsupported(field model.Field) (diag.Diagnostic, bool) {
+func (p *planner) unsupported(field plugin.Field) (plugin.Diagnostic, bool) {
 	if option, ok := tagOption(field, optionFormat); ok {
-		return diag.New(codeTagOption, field.Pos,
+		return plugin.New(codeTagOption, field.Pos,
 			"%s is written with %s, which this Go release does not support", field.Name, option.Raw).
 			WithHint("%s", formatHint), true
 	}
 
 	if option, ok := tagOption(field, optionCase); ok {
-		return diag.New(codeTagOption, field.Pos,
+		return plugin.New(codeTagOption, field.Pos,
 			"%s is written with %s, which decides how a name is matched when reading", field.Name, option.Raw).
 			WithHint("%s", caseHint), true
 	}
 
 	if option, ok := tagOption(field, optionString); ok {
-		return diag.New(codeTagOption, field.Pos,
+		return plugin.New(codeTagOption, field.Pos,
 			"%s is tagged %q, which puts its number inside a JSON string", field.Name, ","+option.Raw).
 			WithHint("%s", quotedHint), true
 	}
 
-	return diag.Diagnostic{}, false
+	return plugin.Diagnostic{}, false
 }
 
 // formatHint and caseHint say what to do about an option this layer does not
@@ -774,14 +773,14 @@ const (
 )
 
 // has reports whether a field's json tag carries a bare option.
-func has(field model.Field, name string) bool {
+func has(field plugin.Field, name string) bool {
 	tag, ok := field.Tag(jsonKey)
 	return ok && tag.Has(name)
 }
 
 // tagged reports whether a field's name on the wire was written rather than
 // derived, which is what breaks a tie between two fields at one depth.
-func tagged(field model.Field) bool {
+func tagged(field plugin.Field) bool {
 	tag, ok := field.Tag(jsonKey)
 	return ok && tag.Name != ""
 }
@@ -835,7 +834,7 @@ func (p *planner) resolve(held []member) []member {
 			continue
 		}
 		if rival, tied := p.ambiguous(held, i, one); tied {
-			p.diags.Add(diag.New(codeNameCollides, one.field.Pos,
+			p.diags.Add(plugin.New(codeNameCollides, one.field.Pos,
 				"%s and %s are both written as %q", one.path, rival.path, one.name).
 				WithHint("%s", "give one of them a different name in its json tag, or leave it out with json:\"-\""))
 			continue

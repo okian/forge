@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/okian/forge/internal/emit"
+	"github.com/okian/forge/plugin"
 )
 
 // writer assembles one closed set's API as source.
@@ -33,7 +33,7 @@ func (w *writer) line(format string, args ...any) {
 
 // wrapped writes a sentence over however many comment lines it takes.
 func (w *writer) wrapped(text string) {
-	for _, held := range emit.Wrapped(text, emit.CommentWidth) {
+	for _, held := range plugin.Wrapped(text, plugin.CommentWidth) {
 		w.line("// %s", held)
 	}
 }

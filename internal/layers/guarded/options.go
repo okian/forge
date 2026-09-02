@@ -1,9 +1,8 @@
 package guarded
 
 import (
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/view"
+	"github.com/okian/forge/plugin"
 )
 
 // The method a JSON codec is entered through, which the elements have and this
@@ -11,7 +10,7 @@ import (
 const marshalMethod = "MarshalJSONTo"
 
 // viewName returns what a scope over this declaration hands over.
-func viewName(ctx *layer.Context) string {
+func viewName(ctx *plugin.Context) string {
 	if ctx == nil {
 		return ""
 	}
@@ -24,7 +23,7 @@ func viewName(ctx *layer.Context) string {
 // a slice of them and the view's signatures name them, so it is the one type
 // this layer has to write down that is not one it invented.
 //
-// Against nothing, where every other layer spells against [layer.Context.Bound].
+// Against nothing, where every other layer spells against [plugin.Context.Bound].
 // This one only ever spells a subject its own package declares — [Layer.Generate]
 // refuses any other, because a surface writes its element bare and a scope
 // forwards that spelling as it stands — and a local type is written bare
@@ -33,15 +32,15 @@ func viewName(ctx *layer.Context) string {
 // stack is being composed as well as while it is being generated, and a context
 // has been told what the file binds only in the second. A layer that read it
 // would describe its surface one way and write it another.
-func elem(ctx *layer.Context) string {
+func elem(ctx *plugin.Context) string {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		return ""
 	}
-	return model.Spell(ctx.Model.Subject.Type(), local(ctx), nil).Text
+	return plugin.Spell(ctx.Model.Subject.Type(), local(ctx), nil).Text
 }
 
 // local returns the import path of the package being generated into.
-func local(ctx *layer.Context) string {
+func local(ctx *plugin.Context) string {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Pkg == nil {
 		return ""
 	}
@@ -62,15 +61,15 @@ const (
 )
 
 // locker reports whether the declaration asked for the lock itself.
-func locker(ctx *layer.Context) bool { return named(ctx, optionExpose) == exposeLocker }
+func locker(ctx *plugin.Context) bool { return named(ctx, optionExpose) == exposeLocker }
 
 // lockedWrite reports whether the declaration asked for encoding to hold the
 // lock rather than copy first.
-func lockedWrite(ctx *layer.Context) bool { return named(ctx, optionEncode) == encodeLocked }
+func lockedWrite(ctx *plugin.Context) bool { return named(ctx, optionEncode) == encodeLocked }
 
 // holds returns how the container beneath the lock is made, and nothing where
 // its zero value is already one.
-func holds(ctx *layer.Context) *layer.Constructor {
+func holds(ctx *plugin.Context) *plugin.Constructor {
 	made, needs := ctx.Holds()
 	if !needs {
 		return nil
@@ -79,7 +78,7 @@ func holds(ctx *layer.Context) *layer.Constructor {
 }
 
 // named returns what an option was set to, or nothing.
-func named(ctx *layer.Context, key string) string {
+func named(ctx *plugin.Context, key string) string {
 	if ctx == nil {
 		return ""
 	}

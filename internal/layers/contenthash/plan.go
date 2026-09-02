@@ -7,15 +7,14 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // codeOpaqueField reports a value nothing can hash by its content.
 //
 // A 2xxx, because it is about the subject: the field's type is what cannot be
 // hashed, and the author is the one who can say what should happen instead.
-var codeOpaqueField = diag.Register(2017, "field type cannot be hashed by its content")
+var codeOpaqueField = plugin.Register(2017, "field type cannot be hashed by its content")
 
 // codeNotAHash reports a type that declares something called Hash which is not
 // a hash of itself.
@@ -24,14 +23,14 @@ var codeOpaqueField = diag.Register(2017, "field type cannot be hashed by its co
 // generating it would leave the type without the method every other type in the
 // closure has, and the call sites would not compile either. Saying so is the
 // only answer that leaves them somewhere to go.
-var codeNotAHash = diag.Register(2018, "a type declares a Hash that is not a content hash")
+var codeNotAHash = plugin.Register(2018, "a type declares a Hash that is not a content hash")
 
 // codeHashOption reports a directive above a field that is not the one option a
 // field takes.
 //
 // A 3xxx, because it is about something somebody wrote in a directive rather
 // than about the type it was written above.
-var codeHashOption = diag.Register(3024, "hash directive on a field is not one")
+var codeHashOption = plugin.Register(3024, "hash directive on a field is not one")
 
 // notAHashHint says what to do about a Hash that is not one.
 const notAHashHint = "rename the method, or give it the signature a content hash has — " +
@@ -109,7 +108,7 @@ type form struct {
 	// typ is the type itself, and spelled is how it is written in the file
 	// being generated into.
 	typ     types.Type
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// how says which shape the hash takes.
 	how how
@@ -147,7 +146,7 @@ type member struct {
 // hashed is one field and how it is mixed in.
 type hashed struct {
 	// field is the field itself, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 
 	// path reaches the field from the value being hashed.
 	path string
@@ -160,8 +159,8 @@ type hashed struct {
 type plan struct {
 	// of is the type being hashed, and spelled how it is written in the file
 	// being generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// fields are the ones mixed in, in declaration order. It is empty for a
 	// type whose underlying type is not a struct, which has value instead.
@@ -192,14 +191,14 @@ type planner struct {
 	// bound is what the file will bind, which every spelling is written
 	// against so that a type from a package called math is not written under
 	// the name the arithmetic's own import has.
-	bound []model.Import
+	bound []plugin.Import
 
 	// known holds every struct the subject reaches, by the identity that tells
 	// two apart, so that a field whose type is one of them is hashed by calling
 	// its own hash rather than by inlining what it holds. It is also what makes
 	// the generator terminate: a type that reaches itself produces a method
 	// that calls itself.
-	known map[string]*model.Struct
+	known map[string]*plugin.Struct
 
 	// plans holds what has been worked out, and order the identities in the
 	// order they were reached, which is the order the methods are written.
@@ -221,16 +220,16 @@ type planner struct {
 	// function and a call is where a cycle stops being infinite.
 	filling map[string]bool
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // key identifies a type across the whole plan, by the spelling that keeps two
 // types of one name in two packages apart.
-func key(t types.Type) string { return model.TypeIdentity(t) }
+func key(t types.Type) string { return plugin.TypeIdentity(t) }
 
 // plan works out what the subject and everything it reaches need hashing.
-func (p *planner) plan(held *model.Struct) {
-	p.known = make(map[string]*model.Struct)
+func (p *planner) plan(held *plugin.Struct) {
+	p.known = make(map[string]*plugin.Struct)
 	p.plans = make(map[string]*plan)
 	p.excluded = make(map[string]bool)
 	p.forms = make(map[string]*form)
@@ -269,7 +268,7 @@ func (p *planner) delegate() {
 		delete(p.plans, ref)
 
 		if !declares(held.Type()) {
-			p.diags.Add(diag.New(codeNotAHash, held.Pos,
+			p.diags.Add(plugin.New(codeNotAHash, held.Pos,
 				"%s declares %s, which does not answer with a number", held.Ref().Name, method).
 				WithHint("%s", notAHashHint))
 		}
@@ -299,7 +298,7 @@ func (p *planner) exclude() {
 		// leaving the declaration with nothing generated and nothing said would
 		// be the silence this layer refuses everywhere else.
 		if i == 0 {
-			p.diags.Add(diag.New(codeOpaqueField, held.Pos,
+			p.diags.Add(plugin.New(codeOpaqueField, held.Pos,
 				"%s has unexported fields the package being generated into cannot read", held.Ref().Name).
 				WithHint("%s", subjectHint))
 		}
@@ -318,7 +317,7 @@ func (p *planner) exclude() {
 //
 // A struct of the package being generated into is never partial: unexported or
 // not, its fields can be named from where the hash is written.
-func partial(held *model.Struct, into string) bool {
+func partial(held *plugin.Struct, into string) bool {
 	if held == nil || held.Local(into) {
 		return false
 	}
@@ -341,8 +340,8 @@ func partial(held *model.Struct, into string) bool {
 //
 // A struct written in place has no name and so no plan of its own, which means
 // nothing else will answer for it. A named one does, and is left to do so.
-func opaque(held *model.Struct, into string) bool {
-	return slices.ContainsFunc(held.Fields, func(one model.Field) bool {
+func opaque(held *plugin.Struct, into string) bool {
+	return slices.ContainsFunc(held.Fields, func(one plugin.Field) bool {
 		return !one.Exported || unnameable(one.Type.Type, into, make(map[types.Type]bool))
 	})
 }
@@ -411,7 +410,7 @@ func holds(under types.Type) []types.Type {
 }
 
 // remember records a type and reserves its plan, in the order reached.
-func (p *planner) remember(held *model.Struct) {
+func (p *planner) remember(held *plugin.Struct) {
 	if held == nil || held.Named == nil {
 		return
 	}
@@ -424,9 +423,9 @@ func (p *planner) remember(held *model.Struct) {
 	p.known[ref] = held
 	p.plans[ref] = &plan{
 		of:      held,
-		spelled: model.Spell(held.Type(), p.into, p.bound),
+		spelled: plugin.Spell(held.Type(), p.into, p.bound),
 		attach:  held.Attachable(p.into),
-		why:     model.Unattachable(held, p.into),
+		why:     plugin.Unattachable(held, p.into),
 	}
 	p.order = append(p.order, ref)
 }
@@ -461,12 +460,12 @@ func (p *planner) fill(held *plan) {
 // layer takes on a field, so anything else is a misspelling — and a misspelling
 // that quietly left a field in the hash would be the one mistake this option
 // exists to make visible.
-func (p *planner) ignored(field model.Field) bool {
+func (p *planner) ignored(field plugin.Field) bool {
 	held := false
 
-	for _, directive := range model.Written(field.Directives, verb) {
+	for _, directive := range plugin.Written(field.Directives, verb) {
 		if written := strings.TrimSpace(directive.Args); written != optionIgnore {
-			p.diags.Add(diag.New(codeHashOption, directive.Pos,
+			p.diags.Add(plugin.New(codeHashOption, directive.Pos,
 				"%s is not an option this layer takes on a field", written).
 				WithHint("a field takes %s and nothing else", optionIgnore))
 			continue
@@ -524,7 +523,7 @@ func (p *planner) decide(t types.Type, where blamed) *form {
 		return found
 	}
 
-	out := &form{typ: t, spelled: model.Spell(t, p.into, p.bound)}
+	out := &form{typ: t, spelled: plugin.Spell(t, p.into, p.bound)}
 	p.forms[ref] = out
 
 	where.of = out
@@ -586,7 +585,7 @@ func (p *planner) fillForm(out *form, where blamed) {
 
 // fillReached decides a named struct the subject walk found, which is one of
 // three things.
-func (p *planner) fillReached(out *form, held *model.Struct, where blamed) {
+func (p *planner) fillReached(out *form, held *plugin.Struct, where blamed) {
 	ref := key(out.typ)
 
 	switch one, writing := p.plans[ref]; {
@@ -602,7 +601,7 @@ func (p *planner) fillReached(out *form, held *model.Struct, where blamed) {
 		out.how = howMethod
 
 	case !one.attach:
-		out.how, out.call = howThrough, model.Through(held, verb, "", p.into)
+		out.how, out.call = howThrough, plugin.Through(held, verb, "", p.into)
 
 	default:
 		out.how = howMethod
@@ -690,7 +689,7 @@ func (p *planner) refuse(where blamed, format string, args ...any) {
 		where.of.refusal = said
 	}
 
-	p.diags.Add(diag.New(codeOpaqueField, where.at, "%s is %s", where.what, said).
+	p.diags.Add(plugin.New(codeOpaqueField, where.at, "%s is %s", where.what, said).
 		WithHint("%s", ignoreHint))
 }
 

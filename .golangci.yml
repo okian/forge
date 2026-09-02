@@ -274,7 +274,10 @@ linters:
       # A Diagnostic is not an error being returned up a stack; it is a record a
       # generator collects and reports in a set. Naming it DiagnosticError would
       # describe the Go interface it happens to satisfy rather than the thing.
-      - path: 'internal/diag/diagnostic\.go$'
+      #
+      # Both where it is declared and where it is published, since the published
+      # name is an alias for the same type and the rule reads the name.
+      - path: '(internal/diag/diagnostic|plugin/diag)\.go$'
         linters:
           - errname
 

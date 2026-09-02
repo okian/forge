@@ -13,19 +13,15 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/templates"
+	"github.com/okian/forge/plugin"
 )
 
 // codeCapacityNotPositive reports a declared capacity that could hold nothing.
 //
 // A 3xxx, because it is about an option somebody wrote rather than about how
 // the stack composes: the layer is fine and the number is not.
-var codeCapacityNotPositive = diag.Register(3017, "declared capacity holds nothing")
+var codeCapacityNotPositive = plugin.Register(3017, "declared capacity holds nothing")
 
 // bodies is the template this layer emits, embedded from the package beside it.
 //
@@ -91,13 +87,13 @@ var templateImports = map[string]string{
 
 // taken returns what the template's imports bind, sorted so that a spelling
 // built from them does not depend on a map.
-func taken() []model.Import {
-	out := make([]model.Import, 0, len(templateImports))
+func taken() []plugin.Import {
+	out := make([]plugin.Import, 0, len(templateImports))
 	for path, name := range templateImports {
-		out = append(out, model.Import{Path: path, Name: name})
+		out = append(out, plugin.Import{Path: path, Name: name})
 	}
 
-	slices.SortFunc(out, func(a, b model.Import) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortFunc(out, func(a, b plugin.Import) int { return strings.Compare(a.Path, b.Path) })
 	return out
 }
 
@@ -112,7 +108,7 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
@@ -122,17 +118,17 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // of, and moving it out of the way of a name the file turns out not to bind
 // costs nothing; not moving it out of the way of one the file does bind is a
 // package imported twice under one name.
-func (Layer) Binds() []model.Import { return taken() }
+func (Layer) Binds() []plugin.Import { return taken() }
 
 // Writes names nothing, because everything this layer writes is about the
 // buffer rather than about what is in it.
 func (Layer) Writes() []string { return nil }
 
 // Kind says where in a stack the layer may appear.
-func (Layer) Kind() model.Kind { return model.KindStorage }
+func (Layer) Kind() plugin.Kind { return plugin.KindStorage }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -150,17 +146,17 @@ func (Layer) Doc() string {
 func (Layer) Transparent() bool { return false }
 
 // OptionSchema declares every option the layer accepts.
-func (Layer) OptionSchema() []layer.OptionDef {
-	return []layer.OptionDef{
+func (Layer) OptionSchema() []plugin.OptionDef {
+	return []plugin.OptionDef{
 		// Not required: a ring whose capacity is not declared takes it at
 		// construction, which is what a caller sizing a buffer from
 		// configuration needs.
 		{
-			Key: optionCap, Value: layer.ValueInt,
+			Key: optionCap, Value: plugin.ValueInt,
 			Doc: "how many elements the buffer holds, when that is fixed at build time rather than passed to the constructor",
 		},
 		{
-			Key: optionOverflow, Value: layer.ValueEnum,
+			Key: optionOverflow, Value: plugin.ValueEnum,
 			Values:  []string{overflowOverwrite, overflowError},
 			Default: overflowOverwrite,
 			Doc:     "what a push does when the buffer is full",
@@ -174,7 +170,7 @@ func (Layer) OptionSchema() []layer.OptionDef {
 // beneath it is the subject and whatever element layers attached to the
 // subject, and none of that is something a container has to be able to do
 // anything with.
-func (Layer) Accepts(shape.Shape) error { return nil }
+func (Layer) Accepts(plugin.Shape) error { return nil }
 
 // Shape returns what the layer exposes to the layer above it.
 //
@@ -183,8 +179,8 @@ func (Layer) Accepts(shape.Shape) error { return nil }
 // if it does. Indexed is not among them, because the elements are not where
 // their positions say they are — reaching the third one means knowing where the
 // oldest is, which is what All is for.
-func (l Layer) Shape(ctx *layer.Context, below shape.Shape) shape.Shape {
-	below.Caps = below.Caps.With(shape.Sized, shape.Ordered, shape.Streamable, shape.Bounded)
+func (l Layer) Shape(ctx *plugin.Context, below plugin.Shape) plugin.Shape {
+	below.Caps = below.Caps.With(plugin.Sized, plugin.Ordered, plugin.Streamable, plugin.Bounded)
 	return below.WithMethods(l.methods(ctx, below.Elem)...)
 }
 
@@ -198,7 +194,7 @@ func (l Layer) Shape(ctx *layer.Context, below shape.Shape) shape.Shape {
 // What the options change is here rather than hidden, because it is the surface
 // they change. A refusing container's Push returns an error and a layer above
 // wrapping it has to know that before it writes the call.
-func (l Layer) methods(ctx *layer.Context, elem model.TypeRef) []shape.Method {
+func (l Layer) methods(ctx *plugin.Context, elem plugin.TypeRef) []plugin.Method {
 	var (
 		seq    = "iter.Seq[" + spellElem(elem) + "]"
 		refuse = refusing(ctx)
@@ -208,13 +204,13 @@ func (l Layer) methods(ctx *layer.Context, elem model.TypeRef) []shape.Method {
 		fails = " error"
 	}
 
-	out := make([]shape.Method, 0, 6)
+	out := make([]plugin.Method, 0, 6)
 	out = append(out,
-		shape.Method{Name: "Cap", Signature: "() int", Owner: l.Origin(), Pointer: true, Doc: "how many elements the container can hold"},
-		shape.Method{Name: "Len", Signature: "() int", Owner: l.Origin(), Pointer: true, Doc: "how many elements the container holds"},
-		shape.Method{Name: "All", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the oldest element to the newest"},
-		shape.Method{Name: "Backward", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the newest element to the oldest"},
-		shape.Method{Name: "Reset", Signature: "()", Owner: l.Origin(), Pointer: true, Doc: "empties the container, keeping the buffer it was constructed with"})
+		plugin.Method{Name: "Cap", Signature: "() int", Owner: l.Origin(), Pointer: true, Doc: "how many elements the container can hold"},
+		plugin.Method{Name: "Len", Signature: "() int", Owner: l.Origin(), Pointer: true, Doc: "how many elements the container holds"},
+		plugin.Method{Name: "All", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the oldest element to the newest"},
+		plugin.Method{Name: "Backward", Signature: "() " + seq, Owner: l.Origin(), Pointer: true, Doc: "walks from the newest element to the oldest"},
+		plugin.Method{Name: "Reset", Signature: "()", Owner: l.Origin(), Pointer: true, Doc: "empties the container, keeping the buffer it was constructed with"})
 
 	pushes := "adds an element, dropping the oldest to make room"
 	appends := "adds every element a sequence yields, dropping older ones as it fills"
@@ -224,11 +220,11 @@ func (l Layer) methods(ctx *layer.Context, elem model.TypeRef) []shape.Method {
 	}
 
 	return append(out,
-		shape.Method{
+		plugin.Method{
 			Name: pushOverwriting, Signature: "(v " + spellElem(elem) + ")" + fails,
 			Owner: l.Origin(), Pointer: true, Doc: pushes,
 		},
-		shape.Method{
+		plugin.Method{
 			Name: appendOverwriting, Signature: "(seq " + seq + ")" + fails,
 			Owner: l.Origin(), Pointer: true, Doc: appends,
 		})
@@ -241,7 +237,7 @@ func (l Layer) methods(ctx *layer.Context, elem model.TypeRef) []shape.Method {
 // because a shape is asked for before anything has filled defaults in — a layer
 // that read the option raw would describe an unwritten declaration as one
 // policy and generate it as the other.
-func refusing(ctx *layer.Context) bool {
+func refusing(ctx *plugin.Context) bool {
 	if ctx == nil {
 		return false
 	}
@@ -257,7 +253,7 @@ func refusing(ctx *layer.Context) bool {
 // stack whose subject could not be modelled has no element at all, and is
 // spelled as the template spells it, which is the honest answer to a question
 // with no answer yet.
-func spellElem(elem model.TypeRef) string {
+func spellElem(elem plugin.TypeRef) string {
 	if elem.Name == "" {
 		return param
 	}
@@ -265,18 +261,18 @@ func spellElem(elem model.TypeRef) string {
 }
 
 // Generate returns the declarations this layer contributes.
-func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
+func (l Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and the
 		// declaration is the thing that is missing. The pipeline never asks a
 		// layer to generate for a model it does not have, so reaching here is
 		// forge calling itself wrongly rather than anybody writing anything.
-		return layer.Unit{}, errors.New("ring: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("ring: asked to generate without a modelled declaration")
 	}
 
 	fixed, err := declaredCapacity(ctx)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	// Spelled against what the file will already bind, so that a subject from a
@@ -289,23 +285,23 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 
 	out, diags := l.apply(ctx, subject, held)
 	if refused := diags.Err(); refused != nil {
-		return layer.Unit{}, refused
+		return plugin.Unit{}, refused
 	}
 
 	if wrong := accounted(out.Imports); wrong != "" {
-		return layer.Unit{}, fmt.Errorf("ring: %s", wrong)
+		return plugin.Unit{}, fmt.Errorf("ring: %s", wrong)
 	}
 
 	decls, err := chosen(out.Decls, held, ctx, fixed)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: out.Comments,
 		Fset:     out.Fset,
-		Imports:  append(emit.Reaching(decls, out.Imports), imported(subject)...),
+		Imports:  append(plugin.Reaching(decls, out.Imports), imported(subject)...),
 	}, nil
 }
 
@@ -331,17 +327,17 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 // does: a caller asking that way is asking what the layer is rather than what
 // it would emit here, and what a constructor is called is a fact about a
 // declaration that has not been given.
-func (Layer) Constructor(ctx *layer.Context) (layer.Constructor, bool) {
+func (Layer) Constructor(ctx *plugin.Context) (plugin.Constructor, bool) {
 	if ctx == nil || ctx.Model == nil {
-		return layer.Constructor{}, false
+		return plugin.Constructor{}, false
 	}
 
 	fixed, err := declaredCapacity(ctx)
 	if err != nil {
-		return layer.Constructor{}, false
+		return plugin.Constructor{}, false
 	}
 
-	out := layer.Constructor{Name: constructorFor(ctx.Declared()), Pointer: true}
+	out := plugin.Constructor{Name: constructorFor(ctx.Declared()), Pointer: true}
 	if fixed == 0 {
 		out.Params, out.Args = []string{sizeParam + " int"}, []string{sizeParam}
 	}
@@ -362,7 +358,7 @@ const sizeParam = "size"
 // hold none of something is not a smaller container: it is one whose every push
 // is a mistake, discovered at the first one rather than at the declaration that
 // made it inevitable.
-func declaredCapacity(ctx *layer.Context) (int, error) {
+func declaredCapacity(ctx *plugin.Context) (int, error) {
 	written, ok := ctx.Options.Lookup(optionCap)
 	if !ok {
 		return 0, nil
@@ -379,7 +375,7 @@ func declaredCapacity(ctx *layer.Context) (int, error) {
 	// caret lands under the number somebody wrote.
 	switch {
 	case size <= 0:
-		return 0, diag.New(codeCapacityNotPositive, written.Pos,
+		return 0, plugin.New(codeCapacityNotPositive, written.Pos,
 			"%s=%d, and a container that holds nothing has nothing to be", optionCap, size).
 			WithHint("%s", "write a positive capacity, or leave "+optionCap+
 				" out and pass one to the constructor")
@@ -389,7 +385,7 @@ func declaredCapacity(ctx *layer.Context) (int, error) {
 	// int, so a package that builds where forge ran would not build for a
 	// smaller word. Committed output has to compile everywhere the module does.
 	case size > math.MaxInt32:
-		return 0, diag.New(codeCapacityNotPositive, written.Pos,
+		return 0, plugin.New(codeCapacityNotPositive, written.Pos,
 			"%s=%d, which is more than an int holds on every platform this could be built for", optionCap, size).
 			WithHint("%s", "write a capacity below "+strconv.Itoa(math.MaxInt32)+
 				", or leave "+optionCap+" out and pass one to the constructor")
@@ -416,7 +412,7 @@ type plan struct {
 }
 
 // planned decides what this declaration makes of the template.
-func planned(ctx *layer.Context, fixed int) plan {
+func planned(ctx *plugin.Context, fixed int) plan {
 	declared := ctx.Declared()
 
 	held := plan{
@@ -474,7 +470,7 @@ func (p plan) spelled(name, declared string) string {
 // constructor and an error a caller writes out. Everything else the template
 // declares is a helper, and takes the declaration's prefix so that it cannot
 // collide with something the author wrote.
-func (Layer) apply(ctx *layer.Context, subject model.Spelling, held plan) (templates.Result, diag.Set) {
+func (Layer) apply(ctx *plugin.Context, subject plugin.Spelling, held plan) (templates.Result, plugin.Diagnostics) {
 	return templates.Apply(
 		templates.Template{Name: "ring", Source: bodies},
 		templates.Rewrite{
@@ -500,7 +496,7 @@ func (Layer) apply(ctx *layer.Context, subject model.Spelling, held plan) (templ
 // works on the names a package declares: a method is not one of those, and two
 // methods cannot carry the name Push in a template that has to compile. So the
 // kept one is renamed here, once the other is gone and the name is free.
-func chosen(decls []ast.Decl, held plan, ctx *layer.Context, fixed int) ([]ast.Decl, error) {
+func chosen(decls []ast.Decl, held plan, ctx *plugin.Context, fixed int) ([]ast.Decl, error) {
 	kept := make([]ast.Decl, 0, len(decls))
 
 	for _, decl := range decls {
@@ -669,7 +665,7 @@ func size(decls []ast.Decl, named string, fixed int) error {
 // is the thing that keeps the list from being a comment about a file that has
 // since changed. It fails on the first run of this package's tests, which is
 // where an import added to the template is cheapest to notice.
-func accounted(imports []emit.Import) string {
+func accounted(imports []plugin.Import) string {
 	for _, one := range imports {
 		if _, known := templateImports[one.Path]; !known {
 			return "the template imports " + one.Path + ", which nothing recorded a bound name for"
@@ -679,11 +675,9 @@ func accounted(imports []emit.Import) string {
 }
 
 // imported returns a spelling's imports in the shape a unit carries.
-func imported(spelled model.Spelling) []emit.Import {
-	out := make([]emit.Import, 0, len(spelled.Imports))
-	for _, one := range spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+func imported(spelled plugin.Spelling) []plugin.Import {
+	out := make([]plugin.Import, 0, len(spelled.Imports))
+	out = append(out, spelled.Imports...)
 	return out
 }
 
@@ -706,6 +700,6 @@ func exported(declared, before, after string) string {
 // lower returns a name with its first letter in lower case, and upper with it
 // in upper case. Between them they turn a declared name into the prefix its
 // helpers take and into the tail of the names built around it.
-func lower(name string) string { return model.Lower(name) }
+func lower(name string) string { return plugin.Lower(name) }
 
-func upper(name string) string { return model.Upper(name) }
+func upper(name string) string { return plugin.Upper(name) }

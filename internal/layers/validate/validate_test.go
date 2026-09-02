@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/goldentest"
+	"github.com/okian/forge/plugin"
 )
 
 // Every rule becomes the condition it means, written against the field it was
@@ -296,7 +296,7 @@ func TestAStructWhoseValidateIsNotOne(t *testing.T) {
 		t.Fatal("a check was written beside a method of the same name")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}

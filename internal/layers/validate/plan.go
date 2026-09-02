@@ -4,8 +4,7 @@ import (
 	"go/types"
 	"strconv"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // What can be wrong with the rules written on a subject.
@@ -16,9 +15,9 @@ import (
 // author believing a value is checked, and nothing downstream ever says
 // otherwise.
 var (
-	codeUnknownRule = diag.Register(2012, "validate tag names a rule that is not one")
-	codeRuleValue   = diag.Register(2013, "validate rule was given a value it does not take")
-	codeRuleShape   = diag.Register(2014, "validate rule cannot be asked of this type")
+	codeUnknownRule = plugin.Register(2012, "validate tag names a rule that is not one")
+	codeRuleValue   = plugin.Register(2013, "validate rule was given a value it does not take")
+	codeRuleShape   = plugin.Register(2014, "validate rule cannot be asked of this type")
 )
 
 // codeNotACheck reports a type that declares something called Validate which is
@@ -28,7 +27,7 @@ var (
 // generating it would leave the type without the method every other type in the
 // closure has, and the call sites would not compile either. Saying so is the
 // only answer that leaves them somewhere to go.
-var codeNotACheck = diag.Register(2019, "a type declares a Validate that is not a check")
+var codeNotACheck = plugin.Register(2019, "a type declares a Validate that is not a check")
 
 // notACheckHint says what to do about one.
 const notACheckHint = "rename the method, or give it the signature a check has — " +
@@ -55,7 +54,7 @@ const (
 // checked is one field and everything asked of it.
 type checked struct {
 	// field is the field itself, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 
 	// path reaches the field from the value being checked, which for a field
 	// of the subject is its own name.
@@ -70,7 +69,7 @@ type checked struct {
 	// and spelled is how that type must be written in the file being generated
 	// into — which a zero written out as a composite literal names.
 	form    form
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// hook records that the subject declares ValidateName, so the author's own
 	// check is called where the tags' are.
@@ -96,13 +95,13 @@ type checked struct {
 type plan struct {
 	// of is the struct being checked, and spelled is how it is written in the
 	// file being generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// bound is what that file will bind, carried so that a type spelled after
 	// the plan was made is spelled against the same set as the ones spelled
 	// while it was being made.
-	bound []model.Import
+	bound []plugin.Import
 
 	// fields are its checks, in declaration order.
 	fields []checked
@@ -138,12 +137,12 @@ type planner struct {
 	// bound is what the file will bind, which every spelling is written
 	// against so that a type from a package called regexp is not written under
 	// the name this layer's own import has.
-	bound []model.Import
+	bound []plugin.Import
 
 	// known holds every struct the subject reaches, by the identity that tells
 	// two apart, so that a field whose type is one of them is checked by
 	// calling its own method rather than by inlining its rules.
-	known map[string]*model.Struct
+	known map[string]*plugin.Struct
 
 	// plans holds what has been worked out, and order the identities in the
 	// order they were reached, which is the order the methods are written.
@@ -156,12 +155,12 @@ type planner struct {
 	// somebody had already written it.
 	delegated map[string]bool
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // plan works out what the subject and everything it reaches need.
-func (p *planner) plan(held *model.Struct) *plan {
-	p.known = make(map[string]*model.Struct)
+func (p *planner) plan(held *plugin.Struct) *plan {
+	p.known = make(map[string]*plugin.Struct)
 	p.plans = make(map[string]*plan)
 	p.delegated = make(map[string]bool)
 
@@ -207,7 +206,7 @@ func (p *planner) delegate() {
 		p.delegated[ref] = true
 
 		if !declares(held.Type()) {
-			p.diags.Add(diag.New(codeNotACheck, held.Pos,
+			p.diags.Add(plugin.New(codeNotACheck, held.Pos,
 				"%s declares %s, which does not answer with an error alone", held.Ref().Name, method).
 				WithHint("%s", notACheckHint))
 		}
@@ -215,7 +214,7 @@ func (p *planner) delegate() {
 }
 
 // remember records a struct and reserves its plan, in the order reached.
-func (p *planner) remember(held *model.Struct) {
+func (p *planner) remember(held *plugin.Struct) {
 	if held == nil || held.Named == nil {
 		return
 	}
@@ -228,17 +227,17 @@ func (p *planner) remember(held *model.Struct) {
 	p.known[ref] = held
 	p.plans[ref] = &plan{
 		of:      held,
-		spelled: model.Spell(held.Type(), p.into, p.bound),
+		spelled: plugin.Spell(held.Type(), p.into, p.bound),
 		bound:   p.bound,
 		attach:  held.Attachable(p.into),
-		why:     model.Unattachable(held, p.into),
+		why:     plugin.Unattachable(held, p.into),
 	}
 	p.order = append(p.order, ref)
 }
 
 // key identifies a type across the whole plan, by the spelling that keeps two
 // types of one name in two packages apart.
-func key(t types.Type) string { return model.TypeIdentity(t) }
+func key(t types.Type) string { return plugin.TypeIdentity(t) }
 
 // fill works out one struct's checks.
 func (p *planner) fill(held *plan) {
@@ -246,7 +245,7 @@ func (p *planner) fill(held *plan) {
 		one := checked{
 			field: field, path: field.Name,
 			form:    formOf(field.Type.Type),
-			spelled: model.Spell(field.Type.Type, p.into, p.bound),
+			spelled: plugin.Spell(field.Type.Type, p.into, p.bound),
 		}
 
 		// An unexported field of a struct declared in another package cannot be
@@ -279,7 +278,7 @@ func (p *planner) rules(one *checked, held *plan) {
 
 	found, problems := written(tag.Raw)
 	for _, wrong := range problems {
-		p.diags.Add(diag.New(codeUnknownRule, one.field.Pos,
+		p.diags.Add(plugin.New(codeUnknownRule, one.field.Pos,
 			"%s carries %s", one.field.Name, wrong.says).
 			WithHint("%s", "the rules are documented in the layer, and a tag that names something else is a check nobody performs"))
 	}
@@ -289,7 +288,7 @@ func (p *planner) rules(one *checked, held *plan) {
 			continue
 		}
 		if asked.name == ruleRegexp {
-			one.pattern = model.Through(held.of, "pattern", one.field.Name, p.into)
+			one.pattern = plugin.Through(held.of, "pattern", one.field.Name, p.into)
 		}
 		one.rules = append(one.rules, asked)
 	}
@@ -302,13 +301,13 @@ func (p *planner) applicable(one *checked, asked rule) bool {
 	if !described {
 		// A rule the grammar accepted and this table has no row for is this
 		// file having drifted from the one beside it.
-		p.diags.Add(diag.New(codeUnknownRule, one.field.Pos,
+		p.diags.Add(plugin.New(codeUnknownRule, one.field.Pos,
 			"%s carries %s", one.field.Name, unknown(asked.name)))
 		return false
 	}
 
 	if !needs.accepts(one.form) {
-		p.diags.Add(diag.New(codeRuleShape, one.field.Pos,
+		p.diags.Add(plugin.New(codeRuleShape, one.field.Pos,
 			"%s is a %s, and %s needs %s",
 			one.field.Name, one.field.Type, asked.name, needs.needs).
 			WithHint("%s", advice(needs)))
@@ -320,14 +319,14 @@ func (p *planner) applicable(one *checked, asked rule) bool {
 	// number and min on a slice is a count, and only the type says which.
 	if counted(asked) && !one.form.numeric {
 		if !asked.digits {
-			p.diags.Add(diag.New(codeRuleValue, one.field.Pos,
+			p.diags.Add(plugin.New(codeRuleValue, one.field.Pos,
 				"%s asks for a length of %s, and a length is a whole number",
 				one.field.Name, asked.number).
 				WithHint("%s", lengths))
 			return false
 		}
 		if held, err := strconv.ParseInt(asked.number, 10, 64); err == nil && held < 0 {
-			p.diags.Add(diag.New(codeRuleValue, one.field.Pos,
+			p.diags.Add(plugin.New(codeRuleValue, one.field.Pos,
 				"%s asks for a length of %s, and nothing is shorter than nothing",
 				one.field.Name, asked.number).
 				WithHint("%s", lengths))
@@ -338,7 +337,7 @@ func (p *planner) applicable(one *checked, asked rule) bool {
 	// A whole number compared against a fraction is a comparison the language
 	// will not write, and rounding it would enforce a rule nobody asked for.
 	if counted(asked) && one.form.numeric && !one.form.float && !asked.digits {
-		p.diags.Add(diag.New(codeRuleValue, one.field.Pos,
+		p.diags.Add(plugin.New(codeRuleValue, one.field.Pos,
 			"%s is a %s and %s asks for %s, which is not a whole number",
 			one.field.Name, one.field.Type, asked.name, asked.number).
 			WithHint("%s", "write a whole number, or declare the field as a float"))
@@ -365,7 +364,7 @@ func (p *planner) members(one *checked, asked rule) bool {
 	for _, member := range asked.members {
 		if one.form.float {
 			if _, err := strconv.ParseFloat(member, 64); err != nil {
-				p.diags.Add(diag.New(codeRuleValue, one.field.Pos,
+				p.diags.Add(plugin.New(codeRuleValue, one.field.Pos,
 					"%s is a %s and oneof lists %s, which is not a number",
 					one.field.Name, one.field.Type, member).
 					WithHint("%s", members))
@@ -374,7 +373,7 @@ func (p *planner) members(one *checked, asked rule) bool {
 			continue
 		}
 		if _, err := strconv.ParseInt(member, 10, 64); err != nil {
-			p.diags.Add(diag.New(codeRuleValue, one.field.Pos,
+			p.diags.Add(plugin.New(codeRuleValue, one.field.Pos,
 				"%s is a %s and oneof lists %s, which is not a whole number",
 				one.field.Name, one.field.Type, member).
 				WithHint("%s", members))
@@ -399,7 +398,7 @@ func advice(needs wants) string {
 // with the package it belongs to, so a method written by the last run looks
 // like one the author wrote. Every other type is one forge has never written
 // anything for, and what go/types says about it is the author's.
-func (p *planner) nested(field model.Field) (nested, indirect bool) {
+func (p *planner) nested(field plugin.Field) (nested, indirect bool) {
 	held := field.Type.Type
 	if held == nil {
 		return false, false
@@ -426,7 +425,7 @@ func (p *planner) nested(field model.Field) (nested, indirect bool) {
 // package being generated into, because Go puts a method only where its type
 // is. A struct that carries the method — its author's or this run's — is called
 // through it, which is what every check written before this one did.
-func (p *planner) throughFor(field model.Field) string {
+func (p *planner) throughFor(field plugin.Field) string {
 	held := field.Type.Type
 	if held == nil {
 		return ""
@@ -439,7 +438,7 @@ func (p *planner) throughFor(field model.Field) string {
 	if !writing || one.attach {
 		return ""
 	}
-	return model.Through(one.of, verb, "", p.into)
+	return plugin.Through(one.of, verb, "", p.into)
 }
 
 // declares reports whether a type has a check of its own, whichever receiver it
@@ -532,7 +531,7 @@ func (p *planner) forget() {
 // Delegating takes one away because somebody already wrote it, and the call is
 // the whole point — clearing it would leave the author's own check unreached,
 // in code that compiles and quietly stops enforcing whatever it enforced.
-func (p *planner) dropped(field model.Field) bool {
+func (p *planner) dropped(field plugin.Field) bool {
 	held := field.Type.Type
 	if held == nil {
 		return false

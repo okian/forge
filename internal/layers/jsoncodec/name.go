@@ -6,8 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/tags"
+	"github.com/okian/forge/plugin"
 )
 
 // jsonKey is the struct tag key the wire names are read from.
@@ -27,7 +26,7 @@ const jsonKey = "json"
 // the package, but the moment the same subject is reached from anywhere else it
 // could not, and a codec whose output depended on where it was generated is
 // worse than one that leaves the field out everywhere.
-func wireName(field model.Field, style string) (string, bool) {
+func wireName(field plugin.Field, style string) (string, bool) {
 	if !field.Exported {
 		return "", false
 	}
@@ -57,7 +56,7 @@ func restyled(name, style string) string {
 	case styleSnake:
 		return snake(name)
 	case styleCamel:
-		return model.Camel(name)
+		return plugin.Camel(name)
 	default:
 		return name
 	}
@@ -106,7 +105,7 @@ func snake(name string) string {
 func identifier(t types.Type) string {
 	switch held := types.Unalias(t).(type) {
 	case *types.Basic:
-		return model.Upper(held.Name())
+		return plugin.Upper(held.Name())
 
 	case *types.Named:
 		return qualified(held)
@@ -141,11 +140,11 @@ func identifier(t types.Type) string {
 // rare, and it produces a redeclaration in the output rather than a silently
 // wrong encoding.
 func qualified(named *types.Named) string {
-	ref := model.RefOf(named)
+	ref := plugin.RefOf(named)
 
-	out := model.Upper(ref.Name)
+	out := plugin.Upper(ref.Name)
 	if obj := named.Obj(); obj != nil && obj.Pkg() != nil {
-		out = model.Upper(obj.Pkg().Name()) + out
+		out = plugin.Upper(obj.Pkg().Name()) + out
 	}
 	return out + arguments(named)
 }
@@ -287,8 +286,8 @@ func (p *planner) textWriter(t types.Type) string {
 // number of results into a file the author cannot edit — a package that does
 // not build, from a run that reported nothing wrong.
 //
-// The tree is asked through [layer.Context.Authored], which keeps forge's own
-// output out of the answer, and the run through [layer.Context.Writes]. What
+// The tree is asked through [plugin.Context.Authored], which keeps forge's own
+// output out of the answer, and the run through [plugin.Context.Writes]. What
 // this run will write is taken on trust, because there is no signature to read
 // yet: a method a layer named is one it is generating, and a layer that
 // generated a MarshalText of some other shape has broken its own contract
@@ -467,10 +466,10 @@ func hasMethod(t types.Type, name string) bool {
 
 // tagOption returns a json tag option written on a field, and whether it is
 // there.
-func tagOption(field model.Field, name string) (tags.Option, bool) {
+func tagOption(field plugin.Field, name string) (plugin.TagOption, bool) {
 	tag, ok := field.Tag(jsonKey)
 	if !ok {
-		return tags.Option{}, false
+		return plugin.TagOption{}, false
 	}
 	return tag.Lookup(name)
 }

@@ -8,11 +8,10 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // The declaration decides what an untagged field is called on the wire.
@@ -99,8 +98,8 @@ func TestOmittingEveryZeroValuedMember(t *testing.T) {
 }
 
 // options builds what a declaration wrote for this layer.
-func options(style string, omitZero bool) model.Options {
-	out := model.Options{Layer: "json"}
+func options(style string, omitZero bool) plugin.Options {
+	out := plugin.Options{Layer: "json"}
 	if style != "" {
 		out.Entries = append(out.Entries, model.Option{Key: "names", Value: style})
 	}
@@ -111,7 +110,7 @@ func options(style string, omitZero bool) model.Options {
 }
 
 // written returns the source of the codec generated for one fixture subject.
-func written(t *testing.T, name string, opts model.Options) string {
+func written(t *testing.T, name string, opts plugin.Options) string {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -140,13 +139,13 @@ func written(t *testing.T, name string, opts model.Options) string {
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	unit, err := jsoncodec.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	unit, err := jsoncodec.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: pkg, Pos: token.Position{Filename: "person.go"},
 		},
 		Options: opts,
-	}, shape.Shape{})
+	}, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("generating a codec for %s: %v", name, err)
 	}
@@ -228,7 +227,7 @@ func TestWhatACodecDoesNotBind(t *testing.T) {
 	for _, name := range []string{"Borrowed", "Scalared", "Elsewhere", "Nested", "Composites", "Stamped"} {
 		t.Run(name, func(t *testing.T) {
 			for key, held := range codecUnit(t, modelPkg, name).Provides {
-				named := emit.Qualifiers(held.Decls)
+				named := plugin.Qualifiers(held.Decls)
 
 				for _, one := range held.Imports {
 					if one.Name == "_" || one.Name == "." {

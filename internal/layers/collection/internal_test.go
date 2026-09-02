@@ -9,11 +9,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/shared/seq"
+	"github.com/okian/forge/plugin"
 )
 
 // Pluralising is where this layer meets English, which has no complete answer —
@@ -97,7 +95,7 @@ func TestTwoGeneratedNamesThatAreOne(t *testing.T) {
 	// layer's own Len is exactly this.
 	over := plan{
 		declared: "Persons", at: at,
-		beneath:     shape.Shape{}.WithMethods(shape.Method{Name: "Len"}),
+		beneath:     plugin.Shape{}.WithMethods(plugin.Method{Name: "Len"}),
 		projections: []column{{field: "Len", method: "Len"}},
 	}
 
@@ -131,11 +129,11 @@ func TestTwoGeneratedNamesThatAreOne(t *testing.T) {
 // the emitted half is pruned against — so a template that grew an import nobody
 // recorded is refused rather than carried into a file that may not name it.
 func TestATemplateThatGrewAnImport(t *testing.T) {
-	if wrong := accounted([]emit.Import{{Path: "cmp", Name: "cmp"}, {Path: "iter", Name: "iter"}}); wrong != "" {
+	if wrong := accounted([]plugin.Import{{Path: "cmp", Name: "cmp"}, {Path: "iter", Name: "iter"}}); wrong != "" {
 		t.Errorf("the template's own imports were refused: %s", wrong)
 	}
 
-	wrong := accounted([]emit.Import{{Path: "encoding/json/v2", Name: "json"}})
+	wrong := accounted([]plugin.Import{{Path: "encoding/json/v2", Name: "json"}})
 	if wrong == "" {
 		t.Fatal("an import nothing recorded a name for was accepted")
 	}
@@ -147,7 +145,7 @@ func TestATemplateThatGrewAnImport(t *testing.T) {
 // The names the spelling keeps clear of are the template's, in an order a map
 // did not decide.
 func TestWhatTheTemplateBinds(t *testing.T) {
-	want := []model.Import{
+	want := []plugin.Import{
 		{Path: "cmp", Name: "cmp"},
 		{Path: "iter", Name: "iter"},
 		{Path: "slices", Name: "slices"},
@@ -200,12 +198,12 @@ func TestTheTemplateBindsWhatItSaysItDoes(t *testing.T) {
 // narrower question, and only an invented name has to be, so that the ordinary
 // import reads the way somebody would have written it by hand.
 func TestWhichImportsAreNamed(t *testing.T) {
-	got := imported([]model.Import{
+	got := imported([]plugin.Import{
 		{Path: "time", Name: "time"},
 		{Path: "example.com/util/slices", Name: "slices2", Aliased: true},
 	})
 
-	want := []emit.Import{
+	want := []plugin.Import{
 		{Path: "time", Name: "time"},
 		{Path: "example.com/util/slices", Name: "slices2", Aliased: true},
 	}
@@ -258,7 +256,7 @@ func TestWhatGenerateRefusesATemplateFor(t *testing.T) {
 			defer func() { bodies = was }()
 			bodies = []byte(tc.source)
 
-			_, err := New().Generate(declaring(), shape.Shape{})
+			_, err := New().Generate(declaring(), plugin.Shape{})
 			if err == nil {
 				t.Fatal("the template was generated from")
 			}
@@ -271,17 +269,17 @@ func TestWhatGenerateRefusesATemplateFor(t *testing.T) {
 
 // declaring builds what a layer is asked to generate against: an inline
 // declaration over a subject with one field, which provokes nothing on its own.
-func declaring() *layer.Context {
+func declaring() *plugin.Context {
 	pkg := types.NewPackage("example.com/model", "model")
 	obj := types.NewTypeName(token.NoPos, pkg, "Person", nil)
 
-	return &layer.Context{
-		Model: &model.Model{
+	return &plugin.Context{
+		Model: &plugin.Model{
 			Name: "Persons",
-			Form: model.FormInline,
-			Subject: &model.Struct{
+			Form: plugin.FormInline,
+			Subject: &plugin.Struct{
 				Named:  types.NewNamed(obj, types.NewStruct(nil, nil), nil),
-				Fields: []model.Field{{Name: "Name", Exported: true, Type: model.Classified{Type: types.Typ[types.String]}}},
+				Fields: []plugin.Field{{Name: "Name", Exported: true, Type: plugin.Classified{Type: types.Typ[types.String]}}},
 			},
 			Pkg: &packages.Package{PkgPath: "example.com/model"},
 			Pos: token.Position{Filename: "model/spec.go", Line: 8, Column: 6},
@@ -299,18 +297,18 @@ func TestASpellingThatIsNotAType(t *testing.T) {
 	cases := map[string]plan{
 		"a subject that is not one": {
 			declared: "Persons",
-			subject:  model.Spelling{Text: "not a type"},
-			sorts:    []column{{field: "Name", method: "SortedByName", typ: model.Spelling{Text: "string"}}},
+			subject:  plugin.Spelling{Text: "not a type"},
+			sorts:    []column{{field: "Name", method: "SortedByName", typ: plugin.Spelling{Text: "string"}}},
 		},
 		"a key that is not one": {
 			declared: "Persons",
-			subject:  model.Spelling{Text: "not a type"},
-			indexes:  []column{{field: "Name", method: "ByName", typ: model.Spelling{Text: "string"}}},
+			subject:  plugin.Spelling{Text: "not a type"},
+			indexes:  []column{{field: "Name", method: "ByName", typ: plugin.Spelling{Text: "string"}}},
 		},
 		"a field whose type is not one": {
 			declared:    "Persons",
-			subject:     model.Spelling{Text: "Person"},
-			projections: []column{{field: "Name", method: "Names", typ: model.Spelling{Text: "not a type"}}},
+			subject:     plugin.Spelling{Text: "Person"},
+			projections: []column{{field: "Name", method: "Names", typ: plugin.Spelling{Text: "not a type"}}},
 		},
 	}
 
@@ -330,12 +328,12 @@ func TestASpellingThatIsNotAType(t *testing.T) {
 // the subject is. It is passed over rather than reported a second time.
 func TestAnOptionNamingAFieldThatIsNotThere(t *testing.T) {
 	ctx := declaring()
-	ctx.Options = model.Options{
+	ctx.Options = plugin.Options{
 		Layer:   "collection",
 		Entries: []model.Option{{Key: "sort", Value: "Nonesuch"}},
 	}
 
-	held, diags := planned(ctx, shape.Shape{})
+	held, diags := planned(ctx, plugin.Shape{})
 	if !diags.Empty() {
 		t.Errorf("a field validation had already refused was reported again:\n%s", diags.Render())
 	}
@@ -347,13 +345,13 @@ func TestAnOptionNamingAFieldThatIsNotThere(t *testing.T) {
 // One package named by two fields is imported once, since a file importing it
 // twice is a file that does not compile.
 func TestAPackageTwoFieldsShare(t *testing.T) {
-	moment := model.Spelling{
+	moment := plugin.Spelling{
 		Text:    "time.Time",
-		Imports: []model.Import{{Path: "time", Name: "time"}},
+		Imports: []plugin.Import{{Path: "time", Name: "time"}},
 	}
 
 	held := plan{
-		subject:     model.Spelling{Text: "Person"},
+		subject:     plugin.Spelling{Text: "Person"},
 		projections: []column{{field: "Joined", typ: moment}, {field: "Left", typ: moment}},
 	}
 
@@ -369,16 +367,16 @@ func TestAPackageTwoFieldsShare(t *testing.T) {
 func TestAFieldNamedTwiceReachesTheLayerOnce(t *testing.T) {
 	ctx := declaring()
 	ctx.Model.Subject.Fields = append(ctx.Model.Subject.Fields,
-		model.Field{Name: "Tags", Exported: true, Type: model.Classified{
+		plugin.Field{Name: "Tags", Exported: true, Type: plugin.Classified{
 			Type: types.NewSlice(types.Typ[types.String]),
 		}})
 
-	ctx.Options = model.Options{
+	ctx.Options = plugin.Options{
 		Layer:   "collection",
 		Entries: []model.Option{{Key: "index", Value: "Name,Name"}},
 	}
 
-	held, diags := planned(ctx, shape.Shape{})
+	held, diags := planned(ctx, plugin.Shape{})
 	if !diags.Empty() {
 		t.Errorf("a usable field named twice was reported:\n%s", diags.Render())
 	}
@@ -388,12 +386,12 @@ func TestAFieldNamedTwiceReachesTheLayerOnce(t *testing.T) {
 
 	// And one that cannot be generated from is refused once rather than once
 	// per mention, which is the shape the first fix for this had.
-	ctx.Options = model.Options{
+	ctx.Options = plugin.Options{
 		Layer:   "collection",
 		Entries: []model.Option{{Key: "index", Value: "Tags,Tags"}},
 	}
 
-	if _, diags = planned(ctx, shape.Shape{}); diags.Len() != 1 {
+	if _, diags = planned(ctx, plugin.Shape{}); diags.Len() != 1 {
 		t.Errorf("an unusable field named twice was reported %d times:\n%s", diags.Len(), diags.Render())
 	}
 }
@@ -403,12 +401,12 @@ func TestAFieldNamedTwiceReachesTheLayerOnce(t *testing.T) {
 // author cannot edit.
 func TestTheViewNamedAfterTheSharedOne(t *testing.T) {
 	ctx := declaring()
-	ctx.Options = model.Options{
+	ctx.Options = plugin.Options{
 		Layer:   "collection",
 		Entries: []model.Option{{Key: "seq", Value: seq.Name}},
 	}
 
-	_, err := New().Generate(ctx, shape.Shape{})
+	_, err := New().Generate(ctx, plugin.Shape{})
 	if err == nil {
 		t.Fatal("the view was named after the type it is declared over")
 	}
@@ -429,7 +427,7 @@ func TestATemplateThatGrewAMethod(t *testing.T) {
 		"func (c Collection[T]) All() iter.Seq[T] { return nil }\n\n" +
 		"func (c Collection[T]) counted() int { return 0 }\n")
 
-	_, err := New().Generate(declaring(), shape.Shape{})
+	_, err := New().Generate(declaring(), plugin.Shape{})
 	if err == nil {
 		t.Fatal("a method nothing here knows about was passed over")
 	}

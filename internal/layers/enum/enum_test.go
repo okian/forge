@@ -4,11 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/enum"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // A named integer with constants against it gets the whole API of a closed set.
@@ -271,7 +268,7 @@ func TestAnUnsignedSet(t *testing.T) {
 func TestASubjectThatIsNotAScalar(t *testing.T) {
 	err := refused(t, "Structured")
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -291,7 +288,7 @@ func TestASubjectThatIsNotAScalar(t *testing.T) {
 func TestAScalarWithNoMembers(t *testing.T) {
 	err := refused(t, "Empty")
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -311,7 +308,7 @@ func TestASubjectAnotherPackageDeclares(t *testing.T) {
 		t.Fatal("a set was written for a type this package cannot declare on")
 	}
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -332,7 +329,7 @@ func TestASubjectAnotherPackageDeclares(t *testing.T) {
 func TestTwoMembersOfOneName(t *testing.T) {
 	err := refused(t, "Clashing")
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -409,9 +406,9 @@ func contains(held []string, want string) bool {
 // A closed set says its elements are comparable and go to text, which is what a
 // container above it can act on.
 func TestWhatTheLayerExposes(t *testing.T) {
-	got := enum.New().Shape(nil, shape.Shape{})
+	got := enum.New().Shape(nil, plugin.Shape{})
 
-	for _, want := range []shape.Cap{shape.Comparable, shape.Encodable} {
+	for _, want := range []plugin.Cap{plugin.Comparable, plugin.Encodable} {
 		if !got.Caps.Has(want) {
 			t.Errorf("the layer exposes %s, which does not include %s", got.Caps, want)
 		}
@@ -419,7 +416,7 @@ func TestWhatTheLayerExposes(t *testing.T) {
 
 	// And nothing is refused beneath it: what a subject is is not a capability,
 	// and is asked of the subject instead.
-	if err := enum.New().Accepts(shape.Shape{Caps: shape.Set(shape.Structured)}); err != nil {
+	if err := enum.New().Accepts(plugin.Shape{Caps: plugin.Caps(plugin.Structured)}); err != nil {
 		t.Errorf("the layer refused a shape rather than a subject: %v", err)
 	}
 }
@@ -427,13 +424,13 @@ func TestWhatTheLayerExposes(t *testing.T) {
 // Asked to generate with no declaration, the layer says so rather than
 // panicking.
 func TestGeneratingWithNoDeclaration(t *testing.T) {
-	for name, ctx := range map[string]*layer.Context{
+	for name, ctx := range map[string]*plugin.Context{
 		"no context":     nil,
 		"no declaration": {},
-		"no subject":     {Model: &model.Model{Name: "Statuses"}},
+		"no subject":     {Model: &plugin.Model{Name: "Statuses"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := enum.New().Generate(ctx, shape.Shape{}); err == nil {
+			if _, err := enum.New().Generate(ctx, plugin.Shape{}); err == nil {
 				t.Error("the layer generated without a declaration")
 			}
 		})

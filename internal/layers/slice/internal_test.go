@@ -10,10 +10,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // What the template imports is written down, and what is written down is what
@@ -26,11 +23,11 @@ import (
 // path does not say what it binds. encoding/json/v2 binds json and math/rand/v2
 // binds rand, and the last element is v2 for both.
 func TestATemplateThatGrewAnImport(t *testing.T) {
-	if wrong := accounted([]emit.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}); wrong != "" {
+	if wrong := accounted([]plugin.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}); wrong != "" {
 		t.Errorf("the template's own imports were refused: %s", wrong)
 	}
 
-	wrong := accounted([]emit.Import{{Path: "iter", Name: "iter"}, {Path: "encoding/json/v2", Name: "json"}})
+	wrong := accounted([]plugin.Import{{Path: "iter", Name: "iter"}, {Path: "encoding/json/v2", Name: "json"}})
 	if wrong == "" {
 		t.Fatal("an import nothing recorded a name for was accepted")
 	}
@@ -42,7 +39,7 @@ func TestATemplateThatGrewAnImport(t *testing.T) {
 // What the spelling is given is what the template's imports bind, path and name
 // both, in an order a map did not decide.
 func TestWhatTheTemplateBinds(t *testing.T) {
-	want := []model.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
+	want := []plugin.Import{{Path: "iter", Name: "iter"}, {Path: "slices", Name: "slices"}}
 	if !slices.Equal(taken(), want) {
 		t.Errorf("the template binds %v, want %v", taken(), want)
 	}
@@ -145,7 +142,7 @@ func TestWhatCannotBeLeftOut(t *testing.T) {
 	// A type declared beside the container would be taken out with it — the
 	// helper and its documentation both, out of a file whose other
 	// declarations still call it.
-	if _, err := owned([]ast.Decl{grouped}, model.FormInline, "Persons"); err == nil {
+	if _, err := owned([]ast.Decl{grouped}, plugin.FormInline, "Persons"); err == nil {
 		t.Error("a helper declared beside the container was dropped with it")
 	} else if !strings.Contains(err.Error(), "2 types in one group") {
 		t.Errorf("the error %q does not say what is wrong", err)
@@ -161,7 +158,7 @@ func TestWhatCannotBeLeftOut(t *testing.T) {
 		}},
 	}
 
-	if _, err := owned([]ast.Decl{naming}, model.FormInline, "Persons"); err == nil {
+	if _, err := owned([]ast.Decl{naming}, plugin.FormInline, "Persons"); err == nil {
 		t.Error("a declaration naming a package was dropped, and its import left behind")
 	} else if !strings.Contains(err.Error(), "sync") {
 		t.Errorf("the error %q does not name the package", err)
@@ -180,7 +177,7 @@ func TestWhatCannotBeLeftOut(t *testing.T) {
 		},
 	}
 
-	out, err := owned([]ast.Decl{naming, using}, model.FormInline, "Persons")
+	out, err := owned([]ast.Decl{naming, using}, plugin.FormInline, "Persons")
 	if err != nil {
 		t.Errorf("a declaration whose package is still named was kept: %v", err)
 	}
@@ -232,7 +229,7 @@ func TestWhatGenerateRefusesATemplateFor(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			defer stood(t, tc.source)()
 
-			_, err := New().Generate(declaring(), shape.Shape{})
+			_, err := New().Generate(declaring(), plugin.Shape{})
 			if err == nil {
 				t.Fatal("the template was generated from")
 			}
@@ -263,15 +260,15 @@ func stood(t *testing.T, source string) func() {
 // declaring builds what a layer is asked to generate against: an inline
 // declaration over a subject in its own package, which is the ordinary case and
 // the one that provokes nothing on its own.
-func declaring() *layer.Context {
+func declaring() *plugin.Context {
 	pkg := types.NewPackage("example.com/model", "model")
 	obj := types.NewTypeName(token.NoPos, pkg, "Person", nil)
 
-	return &layer.Context{
-		Model: &model.Model{
+	return &plugin.Context{
+		Model: &plugin.Model{
 			Name:    "Persons",
-			Form:    model.FormInline,
-			Subject: &model.Struct{Named: types.NewNamed(obj, types.NewStruct(nil, nil), nil)},
+			Form:    plugin.FormInline,
+			Subject: &plugin.Struct{Named: types.NewNamed(obj, types.NewStruct(nil, nil), nil)},
 			Pkg:     &packages.Package{PkgPath: "example.com/model"},
 			Pos:     token.Position{Filename: "model/person.go", Line: 10, Column: 6},
 		},

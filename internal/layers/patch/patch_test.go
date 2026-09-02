@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/goldentest"
+	"github.com/okian/forge/plugin"
 )
 
 // Every exported field becomes a pointer, because a pointer is how Go says
@@ -207,7 +207,7 @@ func TestWhatAPatchRefuses(t *testing.T) {
 				t.Fatalf("a patch was written for %s", name)
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}
@@ -237,7 +237,7 @@ func TestAFieldWhoseTypeHasNoNameHere(t *testing.T) {
 		t.Fatal("a patch declared a field nothing here could name")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}

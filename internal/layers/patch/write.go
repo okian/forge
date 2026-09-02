@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/okian/forge/internal/emit"
+	"github.com/okian/forge/plugin"
 )
 
 // The names the generated patch binds, written once so that the type and both
@@ -40,7 +40,7 @@ func (w *writer) blank() { w.out.WriteByte('\n') }
 // wrapped writes a sentence over however many comment lines it takes, so that
 // a long one does not run off the side of a file the rest of which is wrapped.
 func (w *writer) wrapped(text string) {
-	for _, line := range emit.Wrapped(text, emit.CommentWidth) {
+	for _, line := range plugin.Wrapped(text, plugin.CommentWidth) {
 		w.line("// %s", line)
 	}
 }

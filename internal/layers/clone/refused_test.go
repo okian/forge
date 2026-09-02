@@ -4,10 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/clone"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // A subject no method can be attached to is refused, and the refusal says which
@@ -22,9 +20,9 @@ import (
 // something was unreachable would leave the reader to work out which of the
 // types their declaration reaches was meant.
 func TestACopyIsRefusedForASubjectItCannotName(t *testing.T) {
-	_, err := clone.New().Generate(&layer.Context{
-		Model: &model.Model{Name: "Elsewhere", Subject: &model.Struct{}},
-	}, shape.Shape{})
+	_, err := clone.New().Generate(&plugin.Context{
+		Model: &plugin.Model{Name: "Elsewhere", Subject: &plugin.Struct{}},
+	}, plugin.Shape{})
 
 	if err == nil {
 		t.Fatal("generating for a subject with no name of its own: want an error, got none")

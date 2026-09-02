@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/goldentest"
+	"github.com/okian/forge/plugin"
 )
 
 // Each of the things the language gives a value directly is mixed in as itself,
@@ -307,7 +307,7 @@ func TestWhatCannotBeHashed(t *testing.T) {
 				t.Fatalf("a hash was written for %s", name)
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}
@@ -337,7 +337,7 @@ func TestARefusalPointsWhereTheAuthorCanAct(t *testing.T) {
 		t.Fatal("a hash was written over a value part of which could not be read")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}
@@ -362,7 +362,7 @@ func TestASubjectThisPackageCannotReadTheWholeOf(t *testing.T) {
 		t.Fatal("a hash was written over a value half of which could not be read")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}

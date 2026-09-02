@@ -5,10 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/guarded"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // What the layer says about itself, which is what every stage that is not
@@ -19,11 +17,11 @@ func TestWhatTheLayerSaysItIs(t *testing.T) {
 	if got, want := held.Origin(), marker("Guarded"); got != want {
 		t.Errorf("claims %s, want %s", got, want)
 	}
-	if got := held.Kind(); got != model.KindDecorator {
-		t.Errorf("kind is %s, want %s", got, model.KindDecorator)
+	if got := held.Kind(); got != plugin.KindDecorator {
+		t.Errorf("kind is %s, want %s", got, plugin.KindDecorator)
 	}
-	if got := held.Stage(); got != layer.StageReady {
-		t.Errorf("stage is %s, want %s", got, layer.StageReady)
+	if got := held.Stage(); got != plugin.StageReady {
+		t.Errorf("stage is %s, want %s", got, plugin.StageReady)
 	}
 	if held.Doc() == "" {
 		t.Error("the layer says nothing about what it is for")
@@ -39,13 +37,13 @@ func TestWhatTheLayerSaysItIs(t *testing.T) {
 // back for.
 func TestALockOverSomethingItCannotWalk(t *testing.T) {
 	below := walking("Person")
-	below.Caps = below.Caps.Without(shape.Streamable)
+	below.Caps = below.Caps.Without(plugin.Streamable)
 
 	err := guarded.New().Accepts(below)
 	if err == nil {
 		t.Fatal("a stack with nothing to walk was accepted")
 	}
-	if !strings.Contains(err.Error(), shape.Streamable.String()) {
+	if !strings.Contains(err.Error(), plugin.Streamable.String()) {
 		t.Errorf("the refusal does not name what is missing: %v", err)
 	}
 
@@ -59,10 +57,10 @@ func TestALockOverSomethingItCannotWalk(t *testing.T) {
 func TestWhatALockExposes(t *testing.T) {
 	above := guarded.New().Shape(asked("Persons"), walking("Person"))
 
-	if !above.Caps.Has(shape.Concurrent) {
+	if !above.Caps.Has(plugin.Concurrent) {
 		t.Errorf("a lock exposes %s, and nothing about it says it is safe to share", above.Caps)
 	}
-	for _, gone := range []shape.Cap{shape.Streamable, shape.Indexed} {
+	for _, gone := range []plugin.Cap{plugin.Streamable, plugin.Indexed} {
 		if above.Caps.Has(gone) {
 			t.Errorf("a lock still exposes %s, which is the reach it exists to take away", gone)
 		}
@@ -104,7 +102,7 @@ func TestWhatAScopeHandsOver(t *testing.T) {
 // stack's own, so a stack with none has nothing to forward to.
 func TestALockOverSomethingThatCannotBeCounted(t *testing.T) {
 	below := walking("Person")
-	below.Caps = below.Caps.Without(shape.Sized)
+	below.Caps = below.Caps.Without(plugin.Sized)
 
 	above := guarded.New().Shape(asked("Persons"), below)
 	if _, has := above.Method("Len"); has {
@@ -151,7 +149,7 @@ func TestTheLockItself(t *testing.T) {
 // wrote none.
 func TestTheContainersCodec(t *testing.T) {
 	with := walking("Person")
-	with.Caps = with.Caps.With(shape.Encodable)
+	with.Caps = with.Caps.With(plugin.Encodable)
 
 	above := guarded.New().Shape(asked("Persons"), with)
 	if _, has := above.Method("MarshalJSONTo"); !has {
@@ -213,23 +211,23 @@ func TestTheOptionsALockTakes(t *testing.T) {
 func TestHowALockSaysItIsMade(t *testing.T) {
 	cases := map[string]struct {
 		declared string
-		holds    *layer.Constructor
-		want     layer.Constructor
+		holds    *plugin.Constructor
+		want     plugin.Constructor
 		needs    bool
 	}{
 		"over a container that needs no making": {declared: "Persons"},
 		"over one the caller sizes": {
 			declared: "Persons",
-			holds:    &layer.Constructor{Name: "newPersonsHeld", Params: []string{"size int"}, Args: []string{"size"}, Pointer: true},
-			want:     layer.Constructor{Name: "NewPersons", Params: []string{"size int"}, Args: []string{"size"}, Pointer: true},
+			holds:    &plugin.Constructor{Name: "newPersonsHeld", Params: []string{"size int"}, Args: []string{"size"}, Pointer: true},
+			want:     plugin.Constructor{Name: "NewPersons", Params: []string{"size int"}, Args: []string{"size"}, Pointer: true},
 			needs:    true,
 		},
 		// The lock is itself enclosed, so what it declares onto is unexported
 		// and its own way in takes that visibility with it.
 		"enclosed by something else": {
 			declared: "personsHeld",
-			holds:    &layer.Constructor{Name: "newPersonsHeldHeld", Pointer: true},
-			want:     layer.Constructor{Name: "newPersonsHeld", Pointer: true},
+			holds:    &plugin.Constructor{Name: "newPersonsHeldHeld", Pointer: true},
+			want:     plugin.Constructor{Name: "newPersonsHeld", Pointer: true},
 			needs:    true,
 		},
 	}
@@ -267,7 +265,7 @@ func TestHowALockSaysItIsMade(t *testing.T) {
 // one big enough to be worth a pointer — so the branch is exercised here rather
 // than by any stack.
 func TestALockOverAContainerMadeByValue(t *testing.T) {
-	ctx := asked("Persons").Holding(&layer.Constructor{
+	ctx := asked("Persons").Holding(&plugin.Constructor{
 		Name: "newPersonsHeld", Params: []string{"elems ...Person"}, Args: []string{"elems..."},
 	})
 

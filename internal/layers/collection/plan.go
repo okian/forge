@@ -7,11 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/shared/seq"
+	"github.com/okian/forge/plugin"
 )
 
 // plan is what a declaration asked for, worked out before anything is built.
@@ -25,7 +22,7 @@ type plan struct {
 	// and subject the element spelled as that package has to spell it.
 	declared string
 	pkg      string
-	subject  model.Spelling
+	subject  plugin.Spelling
 
 	// view is what the lazy view over the elements is called.
 	view string
@@ -42,7 +39,7 @@ type plan struct {
 
 	// beneath is what the layers under this one put on the declared type, which
 	// is what a name this layer generates must not already be.
-	beneath shape.Shape
+	beneath plugin.Shape
 }
 
 // column is one field a generated method is built from: its name on the
@@ -51,12 +48,12 @@ type plan struct {
 type column struct {
 	field  string
 	method string
-	typ    model.Spelling
+	typ    plugin.Spelling
 }
 
 // planned reads a declaration and says what this layer will generate for it.
-func planned(ctx *layer.Context, below shape.Shape) (plan, diag.Set) {
-	var diags diag.Set
+func planned(ctx *plugin.Context, below plugin.Shape) (plan, plugin.Diagnostics) {
+	var diags plugin.Diagnostics
 
 	subject := ctx.Model.Subject
 
@@ -106,7 +103,7 @@ func planned(ctx *layer.Context, below shape.Shape) (plan, diag.Set) {
 // declarations and not others — and a surface that depends on where the
 // declaration happens to live is worse than one that stops at the export
 // boundary everywhere.
-func projections(subject *model.Struct, spelled model.Spelling, bound []model.Import) ([]column, []model.Import) {
+func projections(subject *plugin.Struct, spelled plugin.Spelling, bound []plugin.Import) ([]column, []plugin.Import) {
 	var out []column
 
 	for _, field := range subject.Fields {
@@ -114,7 +111,7 @@ func projections(subject *model.Struct, spelled model.Spelling, bound []model.Im
 			continue
 		}
 
-		typ := model.Spell(field.Type.Type, spelled.Local, bound)
+		typ := plugin.Spell(field.Type.Type, spelled.Local, bound)
 		bound = typ.Bound(bound)
 
 		out = append(out, column{field: field.Name, method: plural(field.Name), typ: typ})
@@ -127,7 +124,7 @@ func projections(subject *model.Struct, spelled model.Spelling, bound []model.Im
 type asked struct {
 	option string
 	prefix string
-	usable func(model.Field) (diag.Code, string)
+	usable func(plugin.Field) (plugin.Code, string)
 }
 
 // The two options that name fields. Both are choices a declaration makes rather
@@ -152,9 +149,9 @@ var (
 // every name read rather than every column kept, or a field that is both
 // repeated and unusable is refused once per mention.
 func columns(
-	ctx *layer.Context, subject *model.Struct, spelled model.Spelling, bound []model.Import,
-	of asked, diags *diag.Set,
-) ([]column, []model.Import) {
+	ctx *plugin.Context, subject *plugin.Struct, spelled plugin.Spelling, bound []plugin.Import,
+	of asked, diags *plugin.Diagnostics,
+) ([]column, []plugin.Import) {
 	var out []column
 
 	said := make(map[string]bool)
@@ -175,13 +172,13 @@ func columns(
 		}
 
 		if code, why := usable(field, of); why != "" {
-			diags.Add(diag.New(code, written.Pos,
+			diags.Add(plugin.New(code, written.Pos,
 				"%s=%s: %s %s", of.option, name, name, why).
 				WithHint("%s", "drop it from the option, or name a field this layer can generate from"))
 			continue
 		}
 
-		typ := model.Spell(field.Type.Type, spelled.Local, bound)
+		typ := plugin.Spell(field.Type.Type, spelled.Local, bound)
 		bound = typ.Bound(bound)
 
 		out = append(out, column{field: field.Name, method: of.prefix + field.Name, typ: typ})
@@ -195,7 +192,7 @@ func columns(
 // that does not depend on which option named the field: generated code that
 // cannot read a field cannot do anything with it, and a method called Bysecret
 // is not a name anybody would write even where it compiles.
-func usable(field model.Field, of asked) (diag.Code, string) {
+func usable(field plugin.Field, of asked) (plugin.Code, string) {
 	if !field.Exported {
 		return codeFieldUnexported, "is not exported, and generated code cannot read it"
 	}
@@ -204,14 +201,14 @@ func usable(field model.Field, of asked) (diag.Code, string) {
 
 // orderableField and keyableField say what stops a field from being sorted by
 // or indexed by, or nothing.
-func orderableField(field model.Field) (diag.Code, string) {
+func orderableField(field plugin.Field) (plugin.Code, string) {
 	if orderable(field.Type.Type) {
 		return 0, ""
 	}
 	return codeSortNotOrdered, "is " + field.Type.String() + ", which cannot be compared for order"
 }
 
-func keyableField(field model.Field) (diag.Code, string) {
+func keyableField(field plugin.Field) (plugin.Code, string) {
 	if keyable(field.Type.Type) {
 		return 0, ""
 	}
@@ -221,7 +218,7 @@ func keyableField(field model.Field) (diag.Code, string) {
 // named returns the value written for an option, and nothing when it was not
 // written. Every option this layer takes is optional, so absence is an answer
 // rather than something to report.
-func named(options model.Options, key string) string {
+func named(options plugin.Options, key string) string {
 	value, _ := options.Get(key)
 	return value
 }
@@ -233,20 +230,20 @@ func named(options model.Options, key string) string {
 // time.Time is the ordinary case — and a projection returning one names it.
 // Gathering the subject's alone was the shape of mistake that produces a file
 // which is right in every line and does not compile.
-func (p plan) imports() []model.Import {
+func (p plan) imports() []plugin.Import {
 	out := slices.Clone(p.subject.Imports)
 
 	for _, columns := range [][]column{p.projections, p.sorts, p.indexes} {
 		for _, one := range columns {
 			for _, needed := range one.typ.Imports {
-				if !slices.ContainsFunc(out, func(held model.Import) bool { return held.Path == needed.Path }) {
+				if !slices.ContainsFunc(out, func(held plugin.Import) bool { return held.Path == needed.Path }) {
 					out = append(out, needed)
 				}
 			}
 		}
 	}
 
-	slices.SortFunc(out, func(a, b model.Import) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortFunc(out, func(a, b plugin.Import) int { return strings.Compare(a.Path, b.Path) })
 	return out
 }
 
@@ -265,14 +262,14 @@ func (p plan) imports() []model.Import {
 // Every clash rather than the first, because a subject that produced one has
 // very likely produced two and reporting them one build at a time is the thing
 // this project's diagnostics are written not to do.
-func (p plan) clashes() diag.Set {
-	var diags diag.Set
+func (p plan) clashes() plugin.Diagnostics {
+	var diags plugin.Diagnostics
 
 	// The view's own type is not a method and is checked apart from them: it
 	// is the one name this layer takes in the package rather than on the type,
 	// and the shared view it is declared over is the one thing already there.
 	if p.view == seq.Name {
-		diags.Add(diag.New(codeNamesCollide, p.at,
+		diags.Add(plugin.New(codeNamesCollide, p.at,
 			"the view is called %s, which is the name of the shared view it is declared over", p.view).
 			WithHint("%s", "name it something else with the seq option"))
 	}
@@ -284,7 +281,7 @@ func (p plan) clashes() diag.Set {
 
 	for _, one := range p.generated() {
 		if first, twice := seen[one.method]; twice {
-			diags.Add(diag.New(codeNamesCollide, p.at,
+			diags.Add(plugin.New(codeNamesCollide, p.at,
 				"%s is generated for %s and is already %s", one.method, one.field, first).
 				WithHint("%s", "the two cannot both be reached; drop the option that named one of them, "+
 					"or rename the field a projection was built from"))
@@ -384,10 +381,10 @@ func (p plan) build() ([]ast.Decl, error) {
 // the collection; Swap changes it and still takes one, because what it reorders
 // is the array behind the slice header rather than the header itself, and
 // sort.Sort asks a value for all three.
-func (p plan) surface(owner model.TypeRef) []shape.Method {
-	out := make([]shape.Method, 0, 1+len(p.projections)+len(p.sorts)+len(p.indexes))
+func (p plan) surface(owner plugin.TypeRef) []plugin.Method {
+	out := make([]plugin.Method, 0, 1+len(p.projections)+len(p.sorts)+len(p.indexes))
 
-	out = append(out, shape.Method{
+	out = append(out, plugin.Method{
 		Name: "Seq", Signature: "() " + p.view, Owner: owner,
 		Doc: fmt.Sprintf("Seq returns a lazy view over the elements, as %s.", p.view),
 	})
@@ -402,7 +399,7 @@ func (p plan) surface(owner model.TypeRef) []shape.Method {
 		{p.indexes, keyedBy, func(key string) string { return "map[" + key + "]" + p.subject.Text }},
 	} {
 		for _, one := range kind.columns {
-			out = append(out, shape.Method{
+			out = append(out, plugin.Method{
 				Name: one.method, Signature: "() " + kind.result(one.typ.Text), Owner: owner,
 				Doc: kind.doc(one),
 			})
@@ -418,11 +415,11 @@ func (p plan) surface(owner model.TypeRef) []shape.Method {
 	by := p.sorts[0].field
 
 	return append(out,
-		shape.Method{
+		plugin.Method{
 			Name: "Less", Signature: "(i, j int) bool", Owner: owner,
 			Doc: fmt.Sprintf("Less reports whether the element at i sorts before the one at j, by %s.", by),
 		},
-		shape.Method{
+		plugin.Method{
 			Name: "Swap", Signature: "(i, j int)", Owner: owner,
 			Doc: fmt.Sprintf("Swap exchanges the elements at i and j, which is how sorting by %s moves them.", by),
 		},

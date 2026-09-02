@@ -8,10 +8,8 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // The pieces below are reached through Generate in the tests beside this file.
@@ -23,15 +21,15 @@ import (
 // A run with no declaration to generate for is forge calling itself wrongly,
 // and says so as itself rather than as a diagnostic about anybody's source.
 func TestGeneratingWithNothingToGenerateFor(t *testing.T) {
-	cases := map[string]*layer.Context{
+	cases := map[string]*plugin.Context{
 		"no context":     nil,
 		"no declaration": {},
-		"no subject":     {Model: &model.Model{Name: "Persons"}},
+		"no subject":     {Model: &plugin.Model{Name: "Persons"}},
 	}
 
 	for name, ctx := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := New().Generate(ctx, shape.Shape{})
+			_, err := New().Generate(ctx, plugin.Shape{})
 
 			if err == nil {
 				t.Fatal("generating was allowed")
@@ -46,9 +44,9 @@ func TestGeneratingWithNothingToGenerateFor(t *testing.T) {
 // A capacity that is not a number reaches the layer only if the option's own
 // validation did not run, and is refused rather than assumed.
 func TestACapacityThatIsNotANumber(t *testing.T) {
-	ctx := &layer.Context{
-		Model:   &model.Model{Name: "Persons", Form: model.FormSpec, Subject: &model.Struct{}},
-		Options: model.Options{Entries: []model.Option{{Key: optionCap, Value: "lots"}}},
+	ctx := &plugin.Context{
+		Model:   &plugin.Model{Name: "Persons", Form: plugin.FormSpec, Subject: &plugin.Struct{}},
+		Options: plugin.Options{Entries: []model.Option{{Key: optionCap, Value: "lots"}}},
 	}
 
 	_, err := declaredCapacity(ctx)
@@ -177,11 +175,11 @@ func TestWritingTheCapacityIn(t *testing.T) {
 // An import the template grew that nothing wrote a bound name for is reported,
 // because it is a name the subject was not moved out of the way of.
 func TestAnImportNothingRecorded(t *testing.T) {
-	if wrong := accounted([]emit.Import{{Path: "iter", Name: "iter"}}); wrong != "" {
+	if wrong := accounted([]plugin.Import{{Path: "iter", Name: "iter"}}); wrong != "" {
 		t.Errorf("a recorded import was reported: %s", wrong)
 	}
 
-	wrong := accounted([]emit.Import{{Path: "encoding/json/v2", Name: "json"}})
+	wrong := accounted([]plugin.Import{{Path: "encoding/json/v2", Name: "json"}})
 	if wrong == "" {
 		t.Error("an import nothing recorded was passed over")
 	}
@@ -193,12 +191,12 @@ func TestAnImportNothingRecorded(t *testing.T) {
 // A spelling's imports are carried whole, so that a file knows what each one
 // binds and whether it has to write the name.
 func TestCarryingASpellingsImports(t *testing.T) {
-	got := imported(model.Spelling{Imports: []model.Import{
+	got := imported(plugin.Spelling{Imports: []plugin.Import{
 		{Path: "example.com/domain", Name: "domain"},
 		{Path: "example.com/util/iter", Name: "iter2", Aliased: true},
 	}})
 
-	want := []emit.Import{
+	want := []plugin.Import{
 		{Path: "example.com/domain", Name: "domain"},
 		{Path: "example.com/util/iter", Name: "iter2", Aliased: true},
 	}
@@ -246,7 +244,7 @@ func TestRenamingSomethingThatIsNotAFunction(t *testing.T) {
 		}},
 	}
 
-	_, err := chosen(decls, held, &layer.Context{Model: &model.Model{Name: "Persons"}}, 0)
+	_, err := chosen(decls, held, &plugin.Context{Model: &plugin.Model{Name: "Persons"}}, 0)
 	if err == nil {
 		t.Fatal("a type carrying a method's name was renamed as though it were one")
 	}
@@ -263,7 +261,7 @@ func TestATemplateWithNothingToChooseBetween(t *testing.T) {
 
 	decls := []ast.Decl{&ast.FuncDecl{Name: ast.NewIdent("Unrelated")}}
 
-	_, err := chosen(decls, held, &layer.Context{Model: &model.Model{Name: "Persons"}}, 0)
+	_, err := chosen(decls, held, &plugin.Context{Model: &plugin.Model{Name: "Persons"}}, 0)
 	if err == nil {
 		t.Fatal("a template nothing was dropped from was emitted whole")
 	}

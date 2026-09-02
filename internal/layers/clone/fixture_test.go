@@ -10,12 +10,11 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/clone"
 	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // The fixture packages: the one the subjects are declared in, and the one they
@@ -46,7 +45,7 @@ func loadFixture(t *testing.T) *load.Session {
 
 // generating asks the layer for one fixture subject's copy, with the options
 // the declaration wrote.
-func generating(t *testing.T, name string, options model.Options) (layer.Unit, error) {
+func generating(t *testing.T, name string, options plugin.Options) (plugin.Unit, error) {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -76,20 +75,20 @@ func generating(t *testing.T, name string, options model.Options) (layer.Unit, e
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	return clone.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	return clone.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: pkg, Pos: token.Position{Filename: "model.go"},
 		},
 		Options: options,
-	}, shape.Shape{})
+	}, plugin.Shape{})
 }
 
 // written asks for a subject's copy and fails the test if the layer refused.
-func written(t *testing.T, name string) layer.Unit {
+func written(t *testing.T, name string) plugin.Unit {
 	t.Helper()
 
-	unit, err := generating(t, name, model.Options{})
+	unit, err := generating(t, name, plugin.Options{})
 	if err != nil {
 		t.Fatalf("generating for %s: %v", name, err)
 	}
@@ -98,10 +97,10 @@ func written(t *testing.T, name string) layer.Unit {
 
 // sharing asks for a subject's copy under a declaration that asked for
 // references to be carried across.
-func sharing(t *testing.T, name string) layer.Unit {
+func sharing(t *testing.T, name string) plugin.Unit {
 	t.Helper()
 
-	unit, err := generating(t, name, model.Options{
+	unit, err := generating(t, name, plugin.Options{
 		Layer:   "clone",
 		Entries: []model.Option{{Key: "aliasing", Value: "share"}},
 	})
@@ -112,7 +111,7 @@ func sharing(t *testing.T, name string) layer.Unit {
 }
 
 // source renders everything a subject's generation contributed, as one file.
-func source(t *testing.T, unit layer.Unit) string {
+func source(t *testing.T, unit plugin.Unit) string {
 	t.Helper()
 
 	file := emit.File{Package: "model"}

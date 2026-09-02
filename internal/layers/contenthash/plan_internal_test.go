@@ -5,7 +5,7 @@ import (
 	"go/types"
 	"testing"
 
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // What a composite written in place is made of, and nothing for what is not one.
@@ -100,7 +100,7 @@ func TestAStructKeepingBackAnotherPackagesField(t *testing.T) {
 // struct with no type of its own would leave an entry every later stage has to
 // special-case.
 func TestAStructThatIsNotOneIsNotRemembered(t *testing.T) {
-	cases := map[string]*model.Struct{
+	cases := map[string]*plugin.Struct{
 		"nothing":               nil,
 		"a struct with no type": {},
 	}

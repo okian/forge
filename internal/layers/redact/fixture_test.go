@@ -10,12 +10,10 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/redact"
 	"github.com/okian/forge/internal/load"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // modelPkg is the fixture package the subjects are declared in.
@@ -45,7 +43,7 @@ func loadFixture(t *testing.T) *load.Session {
 
 // generating asks the layer for one fixture subject's log value and returns
 // what it produced, and what it said.
-func generating(t *testing.T, name string) (layer.Unit, error) {
+func generating(t *testing.T, name string) (plugin.Unit, error) {
 	t.Helper()
 	return asking(t, modelPkg, name)
 }
@@ -53,7 +51,7 @@ func generating(t *testing.T, name string) (layer.Unit, error) {
 // asking generates for one subject of one fixture package, into the model
 // package — so that a subject declared somewhere else is asked about from where
 // a declaration over it would be written.
-func asking(t *testing.T, from, name string) (layer.Unit, error) {
+func asking(t *testing.T, from, name string) (plugin.Unit, error) {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -88,19 +86,19 @@ func asking(t *testing.T, from, name string) (layer.Unit, error) {
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	ctx := (&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormSpec, Subject: built,
+	ctx := (&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormSpec, Subject: built,
 			Pkg: pkg, Pos: declaredAt,
 		},
 	}).Binding(redact.New().Binds())
 
-	return redact.New().Generate(ctx, shape.Shape{})
+	return redact.New().Generate(ctx, plugin.Shape{})
 }
 
 // written asks for a subject's log value and fails the test if the layer
 // refused.
-func written(t *testing.T, name string) layer.Unit {
+func written(t *testing.T, name string) plugin.Unit {
 	t.Helper()
 
 	unit, err := generating(t, name)
@@ -128,7 +126,7 @@ func refused(t *testing.T, name string) error {
 // written for the structs it reaches as well — which is the whole of what makes
 // this layer more than the one a tag earns on its own — and what a reader is
 // asking about is the file the package ends up with.
-func source(t *testing.T, unit layer.Unit) string {
+func source(t *testing.T, unit plugin.Unit) string {
 	t.Helper()
 
 	file := emit.File{Package: "model"}

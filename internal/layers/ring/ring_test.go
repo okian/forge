@@ -15,7 +15,7 @@ import (
 	"github.com/okian/forge/internal/layers/ring"
 	"github.com/okian/forge/internal/merge"
 	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // where the declaration these tests generate for was written, and the package
@@ -33,13 +33,13 @@ const subjectSource = "package model\n\n" +
 	"type Person struct {\n\tName string\n\tAge  int\n}\n"
 
 // person is the subject the declarations below are specialised to.
-func person(pkgPath, pkgName string) *model.Struct {
+func person(pkgPath, pkgName string) *plugin.Struct {
 	pkg := types.NewPackage(pkgPath, pkgName)
 	obj := types.NewTypeName(token.NoPos, pkg, "Person", nil)
 
-	return &model.Struct{
+	return &plugin.Struct{
 		Named: types.NewNamed(obj, types.NewStruct(nil, nil), nil),
-		Fields: []model.Field{
+		Fields: []plugin.Field{
 			{Name: "Name", Exported: true},
 			{Name: "Age", Exported: true},
 		},
@@ -53,23 +53,23 @@ func person(pkgPath, pkgName string) *model.Struct {
 // own invariants, so the layer says it is not transparent and composition
 // refuses it anywhere else — a test generating an inline one would be testing
 // something no run can produce.
-func declaration(name string, written ...string) *layer.Context {
+func declaration(name string, written ...string) *plugin.Context {
 	entries := make([]model.Option, 0, len(written))
 	for _, one := range written {
 		key, value, _ := strings.Cut(one, "=")
 		entries = append(entries, model.Option{Key: key, Value: value})
 	}
 
-	ctx := &layer.Context{
-		Model: &model.Model{
+	ctx := &plugin.Context{
+		Model: &plugin.Model{
 			Name:    name,
-			Form:    model.FormSpec,
+			Form:    plugin.FormSpec,
 			Subject: person(local, "model"),
-			Stack:   []model.LayerRef{{Origin: ring.New().Origin(), Kind: model.KindStorage}},
+			Stack:   []plugin.LayerRef{{Origin: ring.New().Origin(), Kind: plugin.KindStorage}},
 			Pkg:     &packages.Package{PkgPath: local},
 			Pos:     declaredAt,
 		},
-		Options: model.Options{Layer: "ring", Entries: entries, Pos: declaredAt},
+		Options: plugin.Options{Layer: "ring", Entries: entries, Pos: declaredAt},
 	}
 
 	// What the file will bind, which generation works out from the whole stack
@@ -81,10 +81,10 @@ func declaration(name string, written ...string) *layer.Context {
 }
 
 // generate asks the layer for its unit, failing the test if it refuses.
-func generate(t *testing.T, ctx *layer.Context) layer.Unit {
+func generate(t *testing.T, ctx *plugin.Context) plugin.Unit {
 	t.Helper()
 
-	unit, err := ring.New().Generate(ctx, shape.Shape{})
+	unit, err := ring.New().Generate(ctx, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("the layer refused to generate: %v", err)
 	}
@@ -93,7 +93,7 @@ func generate(t *testing.T, ctx *layer.Context) layer.Unit {
 
 // generated renders a unit as the file it will be written to, through the same
 // merge and emit steps generation uses.
-func generated(t *testing.T, ctx *layer.Context) []byte {
+func generated(t *testing.T, ctx *plugin.Context) []byte {
 	t.Helper()
 
 	merged := merge.Units(generate(t, ctx))
@@ -178,7 +178,7 @@ func TestACapacityTheDeclarationFixes(t *testing.T) {
 // The overwriting policy is what a declaration gets when it says nothing, and
 // the methods that add elements return nothing.
 func TestTheOverwritingPolicy(t *testing.T) {
-	for _, ctx := range []*layer.Context{declaration("Persons"), declaration("Persons", "overflow=overwrite")} {
+	for _, ctx := range []*plugin.Context{declaration("Persons"), declaration("Persons", "overflow=overwrite")} {
 		out := generated(t, ctx)
 
 		if !bytes.Contains(out, []byte("func (r *Persons) Push(v Person) {")) {
@@ -232,7 +232,7 @@ func TestTheRefusingPolicy(t *testing.T) {
 // it rather than at the first push.
 func TestACapacityThatHoldsNothing(t *testing.T) {
 	for _, written := range []string{"cap=0", "cap=-8"} {
-		_, err := ring.New().Generate(declaration("Persons", written), shape.Shape{})
+		_, err := ring.New().Generate(declaration("Persons", written), plugin.Shape{})
 
 		if err == nil {
 			t.Fatalf("%s was generated for", written)
@@ -282,7 +282,7 @@ func TestTheSurfaceMatchesWhatIsEmitted(t *testing.T) {
 			// Asked against the element the stack beneath carries, which is
 			// what a layer above would ask against: a shape with none has the
 			// layer spell its own type parameter, and no file holds that.
-			beneath := shape.Shape{Elem: model.TypeRef{Pkg: local, Name: "Person"}}
+			beneath := plugin.Shape{Elem: plugin.TypeRef{Pkg: local, Name: "Person"}}
 
 			for _, method := range ring.New().Shape(ctx, beneath).Surface {
 				want := "func (r *Persons) " + method.Name + method.Signature
@@ -301,7 +301,7 @@ func TestTheSurfaceMatchesWhatIsEmitted(t *testing.T) {
 // second container sharing the first's elements. A layer above wrapping these
 // has to know that before it writes the call.
 func TestEveryMethodTakesAPointer(t *testing.T) {
-	for _, method := range ring.New().Shape(declaration("Persons"), shape.Shape{}).Surface {
+	for _, method := range ring.New().Shape(declaration("Persons"), plugin.Shape{}).Surface {
 		if !method.Pointer {
 			t.Errorf("%s is described as reachable on a value", method.Name)
 		}
@@ -340,7 +340,7 @@ func TestACapacityAndAPolicyTogether(t *testing.T) {
 // The output is committed and built wherever the module is, so a number that
 // only compiles where forge ran is a file that does not compile there.
 func TestACapacityBiggerThanEveryPlatform(t *testing.T) {
-	_, err := ring.New().Generate(declaration("Persons", "cap=2147483648"), shape.Shape{})
+	_, err := ring.New().Generate(declaration("Persons", "cap=2147483648"), plugin.Shape{})
 
 	if err == nil {
 		t.Fatal("a capacity beyond a 32-bit int was generated for")
@@ -356,7 +356,7 @@ func TestWhereARefusedCapacityPoints(t *testing.T) {
 	ctx := declaration("Persons", "cap=0")
 	ctx.Options.Entries[0].Pos = token.Position{Filename: "model/person.go", Line: 9, Column: 14}
 
-	_, err := ring.New().Generate(ctx, shape.Shape{})
+	_, err := ring.New().Generate(ctx, plugin.Shape{})
 	if err == nil {
 		t.Fatal("a capacity of nothing was generated for")
 	}
@@ -402,7 +402,7 @@ func TestTheUnwrittenPolicyIsTheDeclaredDefault(t *testing.T) {
 //
 // What the subject is moved out of the way of is what the whole package's files
 // will bind, which reaches the layer through the context rather than being
-// looked up here: see [layer.Context.Bound]. A stack of this layer alone binds
+// looked up here: see [plugin.Context.Bound]. A stack of this layer alone binds
 // what this layer binds, which is what the helper hands over.
 //
 // The refusing policy, because that is the one that reaches for errors: it

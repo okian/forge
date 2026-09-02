@@ -10,19 +10,16 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/layers/collection"
 	"github.com/okian/forge/internal/layers/slice"
 	"github.com/okian/forge/internal/merge"
-	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/shared/seq"
+	"github.com/okian/forge/plugin"
 )
 
 // The declaration these tests generate for, and where it was written.
@@ -47,7 +44,7 @@ const subjectSource = "package model\n\n" +
 	"}\n"
 
 // person builds the model of that subject, field for field.
-func person(t *testing.T) *model.Struct {
+func person(t *testing.T) *plugin.Struct {
 	t.Helper()
 
 	pkg := types.NewPackage(local, "model")
@@ -58,28 +55,28 @@ func person(t *testing.T) *model.Struct {
 		types.NewTypeName(token.NoPos, types.NewPackage("time", "time"), "Time", nil),
 		types.NewStruct(nil, nil), nil)
 
-	return &model.Struct{
+	return &plugin.Struct{
 		Named: named,
-		Fields: []model.Field{
+		Fields: []plugin.Field{
 			held("ID", types.Typ[types.Int]),
 			held("Name", types.Typ[types.String]),
 			held("Address", types.Typ[types.String]),
 			held("City", types.Typ[types.String]),
 			held("Joined", moment),
 			held("Tags", types.NewSlice(types.Typ[types.String])),
-			{Name: "secret", Type: model.Classified{Type: types.Typ[types.String]}},
+			{Name: "secret", Type: plugin.Classified{Type: types.Typ[types.String]}},
 		},
 	}
 }
 
 // held builds one exported field of the subject.
-func held(name string, of types.Type) model.Field {
-	return model.Field{Name: name, Exported: true, Type: model.Classified{Type: of}}
+func held(name string, of types.Type) plugin.Field {
+	return plugin.Field{Name: name, Exported: true, Type: plugin.Classified{Type: of}}
 }
 
 // declaration builds what a layer is asked to generate against, with the
 // options a directive would have written on it.
-func declaration(t *testing.T, directives ...string) *layer.Context {
+func declaration(t *testing.T, directives ...string) *plugin.Context {
 	t.Helper()
 
 	stack := stacked()
@@ -97,9 +94,9 @@ func declaration(t *testing.T, directives ...string) *layer.Context {
 		t.Fatalf("the directives were refused:\n%s", diags.Render())
 	}
 
-	ctx := &layer.Context{
-		Model: &model.Model{
-			Name: "Persons", Form: model.FormSpec, Subject: subject, Stack: stack,
+	ctx := &plugin.Context{
+		Model: &plugin.Model{
+			Name: "Persons", Form: plugin.FormSpec, Subject: subject, Stack: stack,
 			Options: set,
 			Pkg:     &packages.Package{PkgPath: local},
 			Pos:     declaredAt,
@@ -121,10 +118,10 @@ func declaration(t *testing.T, directives ...string) *layer.Context {
 }
 
 // stacked is the declaration's layers, outermost first.
-func stacked() []model.LayerRef {
-	return []model.LayerRef{
-		{Origin: collection.New().Origin(), Kind: model.KindRefining},
-		{Origin: slice.New().Origin(), Kind: model.KindStorage},
+func stacked() []plugin.LayerRef {
+	return []plugin.LayerRef{
+		{Origin: collection.New().Origin(), Kind: plugin.KindRefining},
+		{Origin: slice.New().Origin(), Kind: plugin.KindStorage},
 	}
 }
 
@@ -158,10 +155,10 @@ func directive(text string, line int) discover.Directive {
 // emits methods that call the storage layer's walk and return a type the shared
 // view supplies, so output that compiles on its own would be output that had
 // been cut down until it did.
-func generated(t *testing.T, ctx *layer.Context) []byte {
+func generated(t *testing.T, ctx *plugin.Context) []byte {
 	t.Helper()
 
-	storage, err := slice.New().Generate(ctx, shape.Shape{})
+	storage, err := slice.New().Generate(ctx, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("the storage layer refused: %v", err)
 	}
@@ -170,7 +167,7 @@ func generated(t *testing.T, ctx *layer.Context) []byte {
 	// out here: what this layer generates depends on it, and a shape assembled
 	// for the test would be a second account of the storage to keep in step
 	// with the first.
-	query, err := collection.New().Generate(ctx, slice.New().Shape(ctx, shape.Shape{}))
+	query, err := collection.New().Generate(ctx, slice.New().Shape(ctx, plugin.Shape{}))
 	if err != nil {
 		t.Fatalf("the collection layer refused: %v", err)
 	}
@@ -280,12 +277,12 @@ func TestAFieldTheOrderCannotBeTakenFrom(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := collection.New().Generate(declaration(t, tc.directive), shape.Shape{})
+			_, err := collection.New().Generate(declaration(t, tc.directive), plugin.Shape{})
 			if err == nil {
 				t.Fatal("a field the layer cannot generate from was accepted")
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("the error %v is not a diagnostic", err)
 			}
@@ -310,10 +307,10 @@ func TestAFieldTheOrderCannotBeTakenFrom(t *testing.T) {
 // A time is not ordered by cmp and is a perfectly good map key, which is the
 // pair of answers that shows the two checks are asking different questions.
 func TestATimeIsAKeyAndNotAnOrder(t *testing.T) {
-	if _, err := collection.New().Generate(declaration(t, "//forge:collection index=Joined"), shape.Shape{}); err != nil {
+	if _, err := collection.New().Generate(declaration(t, "//forge:collection index=Joined"), plugin.Shape{}); err != nil {
 		t.Errorf("a time was refused as a key: %v", err)
 	}
-	if _, err := collection.New().Generate(declaration(t, "//forge:collection sort=Joined"), shape.Shape{}); err == nil {
+	if _, err := collection.New().Generate(declaration(t, "//forge:collection sort=Joined"), plugin.Shape{}); err == nil {
 		t.Error("a time was accepted as an order, and cmp cannot compare one")
 	}
 }
@@ -335,7 +332,7 @@ func TestTheViewCanBeNamed(t *testing.T) {
 // The shared view is required rather than declared, so the stage that assembles
 // a package emits one copy however many declarations there ask for it.
 func TestTheSharedViewIsRequiredAndNotDeclared(t *testing.T) {
-	unit, err := collection.New().Generate(declaration(t), shape.Shape{})
+	unit, err := collection.New().Generate(declaration(t), plugin.Shape{})
 	if err != nil {
 		t.Fatalf("the layer refused: %v", err)
 	}
@@ -357,13 +354,13 @@ func TestGeneratingTwiceIsTheSameBytes(t *testing.T) {
 
 // A layer asked to generate for nothing has nothing to point a diagnostic at.
 func TestGeneratingWithoutADeclaration(t *testing.T) {
-	for name, ctx := range map[string]*layer.Context{
+	for name, ctx := range map[string]*plugin.Context{
 		"no context": nil,
 		"no model":   {},
-		"no subject": {Model: &model.Model{Name: "Persons"}},
+		"no subject": {Model: &plugin.Model{Name: "Persons"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := collection.New().Generate(ctx, shape.Shape{}); err == nil {
+			if _, err := collection.New().Generate(ctx, plugin.Shape{}); err == nil {
 				t.Fatal("the layer generated without a declaration")
 			}
 		})
@@ -373,13 +370,13 @@ func TestGeneratingWithoutADeclaration(t *testing.T) {
 // The layer says what it needs of the stack beneath it, which is that it can be
 // walked and nothing more.
 func TestWhatTheLayerSitsOn(t *testing.T) {
-	if err := collection.New().Accepts(shape.Shape{Caps: shape.Set(shape.Sized)}); err == nil {
+	if err := collection.New().Accepts(plugin.Shape{Caps: plugin.Caps(plugin.Sized)}); err == nil {
 		t.Error("a stack with nothing to walk was accepted")
 	} else if !strings.Contains(err.Error(), "Streamable") {
 		t.Errorf("the error %q does not name what is missing", err)
 	}
 
-	if err := collection.New().Accepts(shape.Shape{Caps: shape.Set(shape.Streamable)}); err != nil {
+	if err := collection.New().Accepts(plugin.Shape{Caps: plugin.Caps(plugin.Streamable)}); err != nil {
 		t.Errorf("a walkable stack was refused: %v", err)
 	}
 }
@@ -421,12 +418,12 @@ func TestAnUnexportedFieldNamedByAnOption(t *testing.T) {
 		"//forge:collection index=secret",
 	} {
 		t.Run(directive, func(t *testing.T) {
-			_, err := collection.New().Generate(declaration(t, directive), shape.Shape{})
+			_, err := collection.New().Generate(declaration(t, directive), plugin.Shape{})
 			if err == nil {
 				t.Fatal("an unexported field was generated from")
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("the error %v is not a diagnostic", err)
 			}
@@ -458,7 +455,7 @@ func TestFieldsFromPackagesThatWouldClash(t *testing.T) {
 	ctx := declaration(t)
 	ctx.Model.Subject = subject
 
-	unit, err := collection.New().Generate(ctx, shape.Shape{})
+	unit, err := collection.New().Generate(ctx, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("the layer refused: %v", err)
 	}
@@ -512,15 +509,15 @@ func TestANameTheStorageBeneathAlreadyHas(t *testing.T) {
 	ctx := declaration(t)
 	ctx.Model.Subject = subject
 
-	beneath := shape.Shape{Caps: shape.Set(shape.Streamable)}.
-		WithMethods(shape.Method{Name: "Lens"})
+	beneath := plugin.Shape{Caps: plugin.Caps(plugin.Streamable)}.
+		WithMethods(plugin.Method{Name: "Lens"})
 
 	_, err := collection.New().Generate(ctx, beneath)
 	if err == nil {
 		t.Fatal("a method the storage beneath already declared was generated again")
 	}
 
-	reported, _ := diag.From(err)
+	reported, _ := plugin.From(err)
 	if got, want := reported.Code.String(), "FRG4101"; got != want {
 		t.Errorf("code is %s, want %s", got, want)
 	}

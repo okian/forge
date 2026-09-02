@@ -12,14 +12,12 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/slice"
 	"github.com/okian/forge/internal/merge"
-	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // where the declaration these tests generate for was written, and the package
@@ -37,13 +35,13 @@ const subjectSource = "package model\n\n" +
 	"type Person struct {\n\tName string\n\tAge  int\n}\n"
 
 // person is the subject the declarations below are specialised to.
-func person(pkgPath, pkgName string) *model.Struct {
+func person(pkgPath, pkgName string) *plugin.Struct {
 	pkg := types.NewPackage(pkgPath, pkgName)
 	obj := types.NewTypeName(token.NoPos, pkg, "Person", nil)
 
-	return &model.Struct{
+	return &plugin.Struct{
 		Named: types.NewNamed(obj, types.NewStruct(nil, nil), nil),
-		Fields: []model.Field{
+		Fields: []plugin.Field{
 			{Name: "Name", Exported: true},
 			{Name: "Age", Exported: true},
 		},
@@ -52,13 +50,13 @@ func person(pkgPath, pkgName string) *model.Struct {
 
 // declaration builds what a layer is asked to generate against, the way the
 // pipeline builds it.
-func declaration(name string, form model.Form, subject *model.Struct) *layer.Context {
-	ctx := &layer.Context{
-		Model: &model.Model{
+func declaration(name string, form plugin.Form, subject *plugin.Struct) *plugin.Context {
+	ctx := &plugin.Context{
+		Model: &plugin.Model{
 			Name:    name,
 			Form:    form,
 			Subject: subject,
-			Stack:   []model.LayerRef{{Origin: slice.New().Origin(), Kind: model.KindStorage}},
+			Stack:   []plugin.LayerRef{{Origin: slice.New().Origin(), Kind: plugin.KindStorage}},
 			Pkg:     &packages.Package{PkgPath: local},
 			Pos:     declaredAt,
 		},
@@ -74,15 +72,15 @@ func declaration(name string, form model.Form, subject *model.Struct) *layer.Con
 
 // inline is the ordinary case: a declaration in an ordinary file, whose
 // underlying type the author already wrote.
-func inline() *layer.Context {
-	return declaration("Persons", model.FormInline, person(local, "model"))
+func inline() *plugin.Context {
+	return declaration("Persons", plugin.FormInline, person(local, "model"))
 }
 
 // generate asks the layer for its unit, failing the test if it refuses.
-func generate(t *testing.T, ctx *layer.Context) layer.Unit {
+func generate(t *testing.T, ctx *plugin.Context) plugin.Unit {
 	t.Helper()
 
-	unit, err := slice.New().Generate(ctx, shape.Shape{})
+	unit, err := slice.New().Generate(ctx, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("the layer refused to generate: %v", err)
 	}
@@ -91,7 +89,7 @@ func generate(t *testing.T, ctx *layer.Context) layer.Unit {
 
 // generated renders a unit as the file it will be written to, through the same
 // merge and emit steps generation uses.
-func generated(t *testing.T, ctx *layer.Context) []byte {
+func generated(t *testing.T, ctx *plugin.Context) []byte {
 	t.Helper()
 
 	merged := merge.Units(generate(t, ctx))
@@ -141,7 +139,7 @@ func TestTheInlineFormIsGivenMethodsAndNotADeclaration(t *testing.T) {
 // file out of every layer's contribution — so a constraint written here would
 // be one layer's opinion about a file it shares.
 func TestTheSpecFormIsGivenTheDeclarationToo(t *testing.T) {
-	out := generated(t, declaration("Persons", model.FormSpec, person(local, "model")))
+	out := generated(t, declaration("Persons", plugin.FormSpec, person(local, "model")))
 
 	if !bytes.Contains(out, []byte("type Persons []Person")) {
 		t.Errorf("no declaration was written for a form that has none:\n%s", out)
@@ -251,7 +249,7 @@ func receiverName(expr ast.Expr) (string, bool) {
 // A shape whose subject could not be modelled still has to answer, because the
 // explain command asks it about declarations that did not resolve.
 func TestASurfaceOverNoSubject(t *testing.T) {
-	exposed := slice.New().Shape(nil, shape.Shape{})
+	exposed := slice.New().Shape(nil, plugin.Shape{})
 
 	all, ok := exposed.Method("All")
 	if !ok {
@@ -266,14 +264,14 @@ func TestASurfaceOverNoSubject(t *testing.T) {
 // for a type from another package is qualified — and the file then has to
 // import it, or it is a name nothing binds.
 func TestASubjectFromAnotherPackage(t *testing.T) {
-	ctx := declaration("Persons", model.FormInline, person("example.com/domain", "domain"))
+	ctx := declaration("Persons", plugin.FormInline, person("example.com/domain", "domain"))
 	unit := generate(t, ctx)
 
 	out := generated(t, ctx)
 	if !bytes.Contains(out, []byte("domain.Person")) {
 		t.Errorf("the subject is not spelled for the package it is written in:\n%s", out)
 	}
-	if !slices.Contains(unit.Imports, emit.Import{Path: "example.com/domain", Name: "domain"}) {
+	if !slices.Contains(unit.Imports, plugin.Import{Path: "example.com/domain", Name: "domain"}) {
 		t.Errorf("the unit imports %v, and none of them is the subject's package", unit.Imports)
 	}
 }
@@ -289,7 +287,7 @@ func TestASubjectFromAnotherPackage(t *testing.T) {
 // it records is the one worth reading, since nothing about this fix is visible
 // in a signature.
 func TestASubjectWhosePackageNameIsAlreadyTaken(t *testing.T) {
-	ctx := declaration("Persons", model.FormSpec, person("example.com/util/slices", "slices"))
+	ctx := declaration("Persons", plugin.FormSpec, person("example.com/util/slices", "slices"))
 	unit := generate(t, ctx)
 
 	out := generated(t, ctx)
@@ -302,7 +300,7 @@ func TestASubjectWhosePackageNameIsAlreadyTaken(t *testing.T) {
 			t.Errorf("the output does not hold %q:\n%s", want, out)
 		}
 	}
-	if !slices.Contains(unit.Imports, emit.Import{Path: "example.com/util/slices", Name: "slices2", Aliased: true}) {
+	if !slices.Contains(unit.Imports, plugin.Import{Path: "example.com/util/slices", Name: "slices2", Aliased: true}) {
 		t.Errorf("the unit imports %v, and none of them binds the subject's package", unit.Imports)
 	}
 
@@ -314,9 +312,9 @@ func TestASubjectWhosePackageNameIsAlreadyTaken(t *testing.T) {
 // leaves methods on a type nothing declares, and guessing spec declares a type
 // they already have.
 func TestGeneratingForADeclarationWrittenInNoForm(t *testing.T) {
-	ctx := declaration("Persons", model.FormInvalid, person(local, "model"))
+	ctx := declaration("Persons", plugin.FormInvalid, person(local, "model"))
 
-	if _, err := slice.New().Generate(ctx, shape.Shape{}); err == nil {
+	if _, err := slice.New().Generate(ctx, plugin.Shape{}); err == nil {
 		t.Fatal("a declaration written in no form was generated for")
 	} else if !strings.Contains(err.Error(), "Persons") {
 		t.Errorf("the error %q does not name the declaration", err)
@@ -373,7 +371,7 @@ func TestTheConstructorFollowsTheTypesVisibility(t *testing.T) {
 
 	for declared, want := range cases {
 		t.Run(declared, func(t *testing.T) {
-			out := generated(t, declaration(declared, model.FormSpec, person(local, "model")))
+			out := generated(t, declaration(declared, plugin.FormSpec, person(local, "model")))
 			if !bytes.Contains(out, []byte(want)) {
 				t.Errorf("no constructor reads %q:\n%s", want, out)
 			}
@@ -394,15 +392,15 @@ func TestGeneratingTwiceIsTheSameBytes(t *testing.T) {
 // so it says so as an ordinary error: the declaration is the thing that is
 // missing.
 func TestGeneratingWithoutADeclaration(t *testing.T) {
-	cases := map[string]*layer.Context{
+	cases := map[string]*plugin.Context{
 		"no context": nil,
 		"no model":   {},
-		"no subject": {Model: &model.Model{Name: "Persons"}},
+		"no subject": {Model: &plugin.Model{Name: "Persons"}},
 	}
 
 	for name, ctx := range cases {
 		t.Run(name, func(t *testing.T) {
-			unit, err := slice.New().Generate(ctx, shape.Shape{})
+			unit, err := slice.New().Generate(ctx, plugin.Shape{})
 			if err == nil {
 				t.Fatal("the layer generated without a declaration")
 			}
@@ -420,14 +418,14 @@ func TestGeneratingWithoutADeclaration(t *testing.T) {
 // file to see what happens, and the refusal points at the declaration that
 // asked rather than at generated code nobody can edit.
 func TestADeclarationThatCannotBeWritten(t *testing.T) {
-	ctx := declaration("not an identifier", model.FormSpec, person(local, "model"))
+	ctx := declaration("not an identifier", plugin.FormSpec, person(local, "model"))
 
-	_, err := slice.New().Generate(ctx, shape.Shape{})
+	_, err := slice.New().Generate(ctx, plugin.Shape{})
 	if err == nil {
 		t.Fatal("a name that is not one was written")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("the error %v is not a diagnostic, so nothing says where it is about", err)
 	}

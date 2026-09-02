@@ -1,9 +1,8 @@
 package builder
 
 import (
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/layers/validate"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // codeUnsettable reports a field a builder cannot set and a rule saying it must
@@ -12,7 +11,7 @@ import (
 // A 2xxx, because it is about the subject: what is wrong is that the field is
 // unexported and the tag on it says a value has to be supplied, and only the
 // author can decide which of the two to change.
-var codeUnsettable = diag.Register(2020, "a builder cannot be given a field it cannot set")
+var codeUnsettable = plugin.Register(2020, "a builder cannot be given a field it cannot set")
 
 // codeTakenName reports a field whose setter would take a name the builder
 // already uses.
@@ -20,13 +19,13 @@ var codeUnsettable = diag.Register(2020, "a builder cannot be given a field it c
 // A 4xxx rather than a 2xxx: nothing is wrong with the field, and nothing is
 // wrong with the builder. What is wrong is that the two would be one method,
 // which is a decision about emission rather than about either.
-var codeTakenName = diag.Register(4019, "a builder's setter wants a name the builder already has")
+var codeTakenName = plugin.Register(4019, "a builder's setter wants a name the builder already has")
 
 // codeNothingToGive reports a subject a builder would offer nothing of.
 //
 // A 2xxx like the one above, and for the same reason: what is wrong is the
 // subject, and what to do about it is the author's.
-var codeNothingToGive = diag.Register(2021, "a builder over a subject with nothing a caller can give")
+var codeNothingToGive = plugin.Register(2021, "a builder over a subject with nothing a caller can give")
 
 // codeUnwritable reports a field whose type a builder cannot name, or must not
 // copy.
@@ -66,19 +65,19 @@ const (
 	verb   = "builder"
 )
 
-var codeUnwritable = diag.Register(2022, "a builder cannot be given a field of this type")
+var codeUnwritable = plugin.Register(2022, "a builder cannot be given a field of this type")
 
 // settable is one field a builder can be given.
 type settable struct {
 	// field is the field itself, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 
 	// name is the setter's own name, which is the field's.
 	name string
 
 	// spelled is how the field's type must be written in the file being
 	// generated into.
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// demanded records that the author said a value has to be given, and index
 	// is which of the builder's record of what it was given this field is.
@@ -95,12 +94,12 @@ type plan struct {
 	// bound is what the file will bind, which every spelling is written
 	// against so that a field's type from a package a layer of the stack
 	// already imports is written under a name the file has not taken.
-	bound []model.Import
+	bound []plugin.Import
 
 	// of is the subject, and spelled how it is written in the file being
 	// generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// declared is the builder type's own name, and made the function that
 	// returns one.
@@ -114,17 +113,17 @@ type plan struct {
 	// the size of the builder's record of what it was given.
 	demanded int
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // planned works out what a subject's builder is made of.
-func planned(held *model.Struct, into string, bound []model.Import) *plan {
+func planned(held *plugin.Struct, into string, bound []plugin.Import) *plan {
 	out := &plan{
 		into:     into,
 		bound:    bound,
 		of:       held,
-		spelled:  model.Spell(held.Type(), into, bound),
-		declared: model.Through(held, "", suffix, into),
+		spelled:  plugin.Spell(held.Type(), into, bound),
+		declared: plugin.Through(held, "", suffix, into),
 	}
 	out.made = "New" + out.declared
 
@@ -137,7 +136,7 @@ func planned(held *model.Struct, into string, bound []model.Import) *plan {
 	// at the call site and one that names none of them is a type nobody could
 	// have wanted.
 	if len(out.fields) == 0 && out.diags.Empty() {
-		out.diags.Add(diag.New(codeNothingToGive, held.Pos,
+		out.diags.Add(plugin.New(codeNothingToGive, held.Pos,
 			"%s has no field a caller could give", held.Ref().Name).
 			WithHint("%s", emptyHint))
 	}
@@ -146,7 +145,7 @@ func planned(held *model.Struct, into string, bound []model.Import) *plan {
 }
 
 // consider decides what one field of the subject means to the builder.
-func (p *plan) consider(field model.Field) {
+func (p *plan) consider(field plugin.Field) {
 	demanded := validate.Demands(field)
 
 	// What a builder offers is what a caller can name, and an unexported field
@@ -154,7 +153,7 @@ func (p *plan) consider(field model.Field) {
 	// something a builder is not for, rather than a thing to work around.
 	if !field.Exported {
 		if demanded {
-			p.diags.Add(diag.New(codeUnsettable, field.Pos,
+			p.diags.Add(plugin.New(codeUnsettable, field.Pos,
 				"%s is unexported and is tagged as one a value has to carry", field.Name).
 				WithHint("%s", unsettableHint))
 		}
@@ -162,7 +161,7 @@ func (p *plan) consider(field model.Field) {
 	}
 
 	if field.Name == method {
-		p.diags.Add(diag.New(codeTakenName, field.Pos,
+		p.diags.Add(plugin.New(codeTakenName, field.Pos,
 			"a setter for %s would take the name %s ends a builder with", field.Name, method).
 			WithHint("%s", takenHint))
 		return
@@ -174,7 +173,7 @@ func (p *plan) consider(field model.Field) {
 	one := settable{
 		field:    field,
 		name:     field.Name,
-		spelled:  model.Spell(field.Type.Type, p.into, p.bound),
+		spelled:  plugin.Spell(field.Type.Type, p.into, p.bound),
 		demanded: demanded,
 	}
 	if demanded {
@@ -192,17 +191,17 @@ func (p *plan) consider(field model.Field) {
 // unexported belongs to the package that declared it; and the body assigns the
 // value, which is a copy — so a field holding a lock would produce an
 // assignment the vet everybody runs reports, in a file the caller cannot fix.
-func (p *plan) writable(field model.Field) bool {
-	if what, found := model.Unnameable(field.Type.Type, p.into); found {
-		p.diags.Add(diag.New(codeUnwritable, field.Pos,
+func (p *plan) writable(field plugin.Field) bool {
+	if what, found := plugin.Unnameable(field.Type.Type, p.into); found {
+		p.diags.Add(plugin.New(codeUnwritable, field.Pos,
 			"%s is a %s, and %s cannot be named from the package being generated into",
 			field.Name, field.Type, what).
 			WithHint("%s", unnameableHint))
 		return false
 	}
 
-	if what, found := model.Uncopyable(field.Type.Type); found {
-		p.diags.Add(diag.New(codeUnwritable, field.Pos,
+	if what, found := plugin.Uncopyable(field.Type.Type); found {
+		p.diags.Add(plugin.New(codeUnwritable, field.Pos,
 			"%s holds a %s, which is a value that must not be copied", field.Name, what).
 			WithHint("%s", uncopyableHint))
 		return false

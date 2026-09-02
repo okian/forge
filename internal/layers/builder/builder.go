@@ -7,11 +7,8 @@ import (
 	"go/parser"
 	"go/token"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/failures"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // container is the marker this layer claims.
@@ -28,7 +25,7 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
@@ -36,7 +33,7 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // The failure vocabulary a refused build reports in, which is all a builder
 // needs beyond the subject's own types: a setter per field and a Build reach
 // for nothing else.
-func (Layer) Binds() []model.Import { return failures.Binds() }
+func (Layer) Binds() []plugin.Import { return failures.Binds() }
 
 // Writes names nothing, because a builder puts its methods on the builder.
 //
@@ -50,10 +47,10 @@ func (Layer) Writes() []string { return nil }
 // An element layer: a builder makes one value rather than a container of them,
 // which is why what it writes is about the subject and why two declarations
 // over one subject share it.
-func (Layer) Kind() model.Kind { return model.KindElement }
+func (Layer) Kind() plugin.Kind { return plugin.KindElement }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -66,17 +63,17 @@ func (Layer) Doc() string {
 // point rather than an omission: which fields a value has to carry is the same
 // decision the rules on it record, and a second way of writing it down on the
 // declaration would be a second thing to keep in step.
-func (Layer) OptionSchema() []layer.OptionDef { return nil }
+func (Layer) OptionSchema() []plugin.OptionDef { return nil }
 
 // Accepts reports whether the layer can sit on the shape beneath it.
 //
 // A builder is written out of the subject's fields, so a subject with none is
 // nothing to write one from — a type with one method and no setters is a
 // constructor spelled the long way.
-func (Layer) Accepts(below shape.Shape) error {
-	if !below.Caps.Has(shape.Structured) {
+func (Layer) Accepts(below plugin.Shape) error {
+	if !below.Caps.Has(plugin.Structured) {
 		return fmt.Errorf("%s needs the stack beneath it to be %s, and it is %s",
-			container, shape.Structured, below.Caps)
+			container, plugin.Structured, below.Caps)
 	}
 	return nil
 }
@@ -87,15 +84,15 @@ func (Layer) Accepts(below shape.Shape) error {
 // subject rather than anything on the declared type, and a container above it
 // neither gains nor loses by holding elements that can be built one field at a
 // time.
-func (Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape { return below }
+func (Layer) Shape(_ *plugin.Context, below plugin.Shape) plugin.Shape { return below }
 
 // Generate returns the builder for the subject.
-func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
+func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and the
 		// declaration is what is missing. Reaching here is forge calling itself
 		// wrongly rather than anybody writing anything.
-		return layer.Unit{}, errors.New("builder: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("builder: asked to generate without a modelled declaration")
 	}
 
 	// No question here about whether a method can be attached to the subject.
@@ -105,7 +102,7 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	// named, and that is asked of each of them.
 	built := planned(ctx.Model.Subject, ctx.Model.Pkg.PkgPath, ctx.Bound())
 	if err := built.diags.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	return provided(built)
@@ -118,8 +115,8 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 // subject reach here twice and produce the same builder twice — and a package
 // holding one type twice does not compile. The key is what says the two are the
 // same thing.
-func provided(built *plan) (layer.Unit, error) {
-	out := make(map[string]layer.Unit, 2)
+func provided(built *plan) (plugin.Unit, error) {
+	out := make(map[string]plugin.Unit, 2)
 
 	if built.demanded > 0 {
 		// Only where something can be missing. A subject no field of which has
@@ -128,31 +125,31 @@ func provided(built *plan) (layer.Unit, error) {
 		// speaks.
 		reported, err := failures.Unit()
 		if err != nil {
-			return layer.Unit{}, err
+			return plugin.Unit{}, err
 		}
 		out[failures.Key] = reported
 	}
 
 	unit, err := builderFor(built)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
-	out[verb+": "+model.TypeIdentity(built.of.Type())] = unit
+	out[verb+": "+plugin.TypeIdentity(built.of.Type())] = unit
 
-	return layer.Unit{Provides: out}, nil
+	return plugin.Unit{Provides: out}, nil
 }
 
 // builderFor builds the declarations for one subject's builder.
-func builderFor(held *plan) (layer.Unit, error) {
+func builderFor(held *plan) (plugin.Unit, error) {
 	w := &writer{}
 	w.builder(held)
 
 	decls, comments, fset, err := parsed(w.String(), held.spelled.Text)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: comments,
 		Fset:     fset,
@@ -181,16 +178,12 @@ func parsed(source, about string) ([]ast.Decl, []*ast.CommentGroup, *token.FileS
 // signature — and then only what the declarations turn out to name, which is
 // the bargain every generated file makes: one missing an import does not
 // compile, and neither does one carrying an import it never names.
-func needed(held *plan, decls []ast.Decl) []emit.Import {
-	out := make([]emit.Import, 0, len(held.spelled.Imports)+len(held.fields))
-	for _, one := range held.spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+func needed(held *plan, decls []ast.Decl) []plugin.Import {
+	out := make([]plugin.Import, 0, len(held.spelled.Imports)+len(held.fields))
+	out = append(out, held.spelled.Imports...)
 	for _, field := range held.fields {
-		for _, one := range field.spelled.Imports {
-			out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-		}
+		out = append(out, field.spelled.Imports...)
 	}
 
-	return emit.Reaching(decls, out)
+	return plugin.Reaching(decls, out)
 }

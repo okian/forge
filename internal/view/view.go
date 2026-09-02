@@ -168,11 +168,7 @@ func Source(of Asked) (string, error) {
 // importing returns what the view was given to import, as the emitter holds an
 // import.
 func importing(of Asked) []emit.Import {
-	out := make([]emit.Import, 0, len(of.Imports))
-	for _, one := range of.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
-	return out
+	return slices.Clone(of.Imports)
 }
 
 // reaching returns the name a signature mentions that a view must not, or

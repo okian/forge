@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/collection"
 	"github.com/okian/forge/internal/layers/slice"
 	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // What the layer tells the layers above it is on the declared type has to be
@@ -111,8 +111,8 @@ func TestTheSurfaceFollowsTheDeclaration(t *testing.T) {
 // method this layer emits is named after a field or an option, and there is no
 // honest answer for those without the declaration that names them.
 func TestASurfaceWithoutADeclaration(t *testing.T) {
-	for _, ctx := range []*layer.Context{nil, {}, {Model: nil}} {
-		got := collection.New().Shape(ctx, shape.Shape{})
+	for _, ctx := range []*plugin.Context{nil, {}, {Model: nil}} {
+		got := collection.New().Shape(ctx, plugin.Shape{})
 
 		if want := []string{"Seq"}; !slices.Equal(names(got), want) {
 			t.Errorf("a shape asked without a declaration exposes %v, want %v", names(got), want)
@@ -140,8 +140,8 @@ func TestASurfaceOverADeclarationThatCannotBeGenerated(t *testing.T) {
 	// two cannot both be reached, generation says so with the position and the
 	// caret, and nothing about that is a shape's to report.
 	ctx := declaration(t)
-	below := shape.Shape{Caps: shape.Set(shape.Streamable)}.
-		WithMethods(shape.Method{Name: "Names", Signature: "() []string"})
+	below := plugin.Shape{Caps: plugin.Caps(plugin.Streamable)}.
+		WithMethods(plugin.Method{Name: "Names", Signature: "() []string"})
 
 	got := collection.New().Shape(ctx, below)
 	if !slices.Contains(names(got), "Seq") {
@@ -154,20 +154,20 @@ func TestASurfaceOverADeclarationThatCannotBeGenerated(t *testing.T) {
 }
 
 // exposed is what this layer alone reports for a declaration.
-func exposed(ctx *layer.Context) shape.Shape {
-	return collection.New().Shape(ctx, shape.Shape{Caps: shape.Set(shape.Streamable)})
+func exposed(ctx *plugin.Context) plugin.Shape {
+	return collection.New().Shape(ctx, plugin.Shape{Caps: plugin.Caps(plugin.Streamable)})
 }
 
 // overStorage is what the whole stack reports: the storage beneath, and this
 // layer over what it exposes.
-func overStorage(ctx *layer.Context) shape.Shape {
+func overStorage(ctx *plugin.Context) plugin.Shape {
 	storage := slice.New().Shape(ctx, shape.Subject(ctx.Model.Subject))
 	return collection.New().Shape(ctx, storage)
 }
 
 // names returns the surface's method names in the order the layer reports them,
 // which is the order they are emitted in.
-func names(exposed shape.Shape) []string { return exposed.Names() }
+func names(exposed plugin.Shape) []string { return exposed.Names() }
 
 // published returns the exported methods the source declares on a type, sorted.
 //

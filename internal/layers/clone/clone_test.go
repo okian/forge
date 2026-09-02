@@ -4,9 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // The copy opens by assigning, which is already the whole of it for a subject
@@ -291,12 +290,12 @@ func TestWhatCannotBeCopied(t *testing.T) {
 
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := generating(t, name, model.Options{})
+			_, err := generating(t, name, plugin.Options{})
 			if err == nil {
 				t.Fatalf("a copy was written for %s", name)
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}
@@ -317,7 +316,7 @@ func TestWhatCannotBeCopied(t *testing.T) {
 // The three things nothing can copy are all refused, rather than one of them
 // standing in for the others.
 func TestEveryOpaqueFieldIsReported(t *testing.T) {
-	_, err := generating(t, "Opaque", model.Options{})
+	_, err := generating(t, "Opaque", plugin.Options{})
 	if err == nil {
 		t.Fatal("a copy was written for a subject of things nothing can copy")
 	}
@@ -331,7 +330,7 @@ func TestEveryOpaqueFieldIsReported(t *testing.T) {
 
 // And saying what was meant is what makes them writable.
 func TestSayingWhatWasMeantMakesThemWritable(t *testing.T) {
-	if _, err := generating(t, "Marked", model.Options{}); err != nil {
+	if _, err := generating(t, "Marked", plugin.Options{}); err != nil {
 		t.Errorf("a subject that said what it meant was refused anyway: %v", err)
 	}
 }

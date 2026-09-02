@@ -4,8 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // codeTakenName reports a field whose place in the patch would take a name the
@@ -14,20 +13,20 @@ import (
 // A 4xxx rather than a 2xxx: nothing is wrong with the field, and nothing is
 // wrong with the patch. What is wrong is that the two would be one name, which
 // is a decision about emission rather than about either.
-var codeTakenName = diag.Register(4020, "a patch's field wants a name the patch already has")
+var codeTakenName = plugin.Register(4020, "a patch's field wants a name the patch already has")
 
 // codeNothingToChange reports a subject a patch would carry nothing of.
 //
 // A 2xxx, because it is about the subject: a patch with no fields is a request
 // that cannot say anything, and only the author can change that.
-var codeNothingToChange = diag.Register(2023, "a patch over a subject with nothing a caller can change")
+var codeNothingToChange = plugin.Register(2023, "a patch over a subject with nothing a caller can change")
 
 // codeUnwritable reports a field whose type a patch cannot name, or must not
 // copy.
 //
 // A 2xxx as well. Both are facts about the subject's fields that the patch's
 // own declaration or Apply would run into, and both are the author's to change.
-var codeUnwritable = diag.Register(2024, "a patch cannot carry a field of this type")
+var codeUnwritable = plugin.Register(2024, "a patch cannot carry a field of this type")
 
 // takenHint says what to do about a field named after one of the patch's own
 // methods.
@@ -60,14 +59,14 @@ const (
 // patched is one field a patch can carry.
 type patched struct {
 	// field is the field itself, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 
 	// name is the patch's own field, which is the subject's.
 	name string
 
 	// spelled is how the field's type must be written in the file being
 	// generated into. The patch holds a pointer to it.
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// tag is the field's struct tag, exactly as the subject carries it.
 	//
@@ -90,12 +89,12 @@ type plan struct {
 	// bound is what the file will bind, which every spelling is written
 	// against so that a field's type from a package a layer of the stack
 	// already imports is written under a name the file has not taken.
-	bound []model.Import
+	bound []plugin.Import
 
 	// of is the subject, and spelled how it is written in the file being
 	// generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// declared is the patch type's own name.
 	declared string
@@ -107,17 +106,17 @@ type plan struct {
 	// so that the type can say so rather than leave a reader to notice.
 	kept bool
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // planned works out what a subject's patch is made of.
-func planned(held *model.Struct, into string, bound []model.Import) *plan {
+func planned(held *plugin.Struct, into string, bound []plugin.Import) *plan {
 	out := &plan{
 		into:     into,
 		bound:    bound,
 		of:       held,
-		spelled:  model.Spell(held.Type(), into, bound),
-		declared: model.Through(held, "", suffix, into),
+		spelled:  plugin.Spell(held.Type(), into, bound),
+		declared: plugin.Through(held, "", suffix, into),
 	}
 
 	for _, field := range held.Fields {
@@ -129,7 +128,7 @@ func planned(held *model.Struct, into string, bound []model.Import) *plan {
 	// methods, one of which always answers true and the other of which always
 	// does nothing.
 	if len(out.fields) == 0 && out.diags.Empty() {
-		out.diags.Add(diag.New(codeNothingToChange, held.Pos,
+		out.diags.Add(plugin.New(codeNothingToChange, held.Pos,
 			"%s has no field a caller could change", held.Ref().Name).
 			WithHint("%s", emptyHint))
 	}
@@ -138,7 +137,7 @@ func planned(held *model.Struct, into string, bound []model.Import) *plan {
 }
 
 // consider decides what one field of the subject means to the patch.
-func (p *plan) consider(field model.Field) {
+func (p *plan) consider(field plugin.Field) {
 	// A patch is filled in from outside the package that declares the subject,
 	// which is what makes it a patch rather than an assignment, and an
 	// unexported field is not reachable from there.
@@ -148,7 +147,7 @@ func (p *plan) consider(field model.Field) {
 	}
 
 	if field.Name == applyMethod || field.Name == zeroMethod {
-		p.diags.Add(diag.New(codeTakenName, field.Pos,
+		p.diags.Add(plugin.New(codeTakenName, field.Pos,
 			"a patch carrying %s would take the name one of its own methods has", field.Name).
 			WithHint("%s", takenHint))
 		return
@@ -160,7 +159,7 @@ func (p *plan) consider(field model.Field) {
 	p.fields = append(p.fields, patched{
 		field:   field,
 		name:    field.Name,
-		spelled: model.Spell(field.Type.Type, p.into, p.bound),
+		spelled: plugin.Spell(field.Type.Type, p.into, p.bound),
 		tag:     tagged(field),
 	})
 }
@@ -177,7 +176,7 @@ func (p *plan) consider(field model.Field) {
 // as an ordinary string literal where a value holds one — a backquote inside a
 // raw string ends it, and a tag that ended early would be a tag that meant
 // something else.
-func tagged(field model.Field) string {
+func tagged(field plugin.Field) string {
 	if len(field.Tags) == 0 {
 		return ""
 	}
@@ -206,17 +205,17 @@ func tagged(field model.Field) string {
 // that is unexported belongs to the package that declared it; and Apply assigns
 // the value, which is a copy — so a field holding a lock would produce an
 // assignment the vet everybody runs reports, in a file the caller cannot fix.
-func (p *plan) writable(field model.Field) bool {
-	if what, found := model.Unnameable(field.Type.Type, p.into); found {
-		p.diags.Add(diag.New(codeUnwritable, field.Pos,
+func (p *plan) writable(field plugin.Field) bool {
+	if what, found := plugin.Unnameable(field.Type.Type, p.into); found {
+		p.diags.Add(plugin.New(codeUnwritable, field.Pos,
 			"%s is a %s, and %s cannot be named from the package being generated into",
 			field.Name, field.Type, what).
 			WithHint("%s", unnameableHint))
 		return false
 	}
 
-	if what, found := model.Uncopyable(field.Type.Type); found {
-		p.diags.Add(diag.New(codeUnwritable, field.Pos,
+	if what, found := plugin.Uncopyable(field.Type.Type); found {
+		p.diags.Add(plugin.New(codeUnwritable, field.Pos,
 			"%s holds a %s, which is a value that must not be copied", field.Name, what).
 			WithHint("%s", uncopyableHint))
 		return false

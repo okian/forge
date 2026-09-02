@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/layers/embedded"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // A file's declarations come across, and its package clause and imports do not.
@@ -21,7 +21,7 @@ func TestWhatComesAcrossAndWhatDoesNot(t *testing.T) {
 		"// Package helper is not the package this lands in.\npackage helper\n\n"+
 			"import \"math\"\n\n"+
 			"// Half is what a caller is here for.\nfunc Half(f float64) float64 { return math.Abs(f) / 2 }\n"),
-		[]model.Import{{Path: "math", Name: "math"}})
+		[]plugin.Import{{Path: "math", Name: "math"}})
 	if err != nil {
 		t.Fatalf("carrying a file across: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestWhatComesAcrossAndWhatDoesNot(t *testing.T) {
 func TestOnlyWhatIsNamedIsBound(t *testing.T) {
 	unit, err := embedded.Unit("shared.go",
 		[]byte("package helper\n\nimport \"math\"\n\nfunc Twice(n int) int { return n * 2 }\n"),
-		[]model.Import{{Path: "math", Name: "math"}, {Path: "strings", Name: "strings"}})
+		[]plugin.Import{{Path: "math", Name: "math"}, {Path: "strings", Name: "strings"}})
 	if err != nil {
 		t.Fatalf("carrying a file across: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestOnlyWhatIsNamedIsBound(t *testing.T) {
 func TestAnImportNothingRecordedANameFor(t *testing.T) {
 	_, err := embedded.Unit("shared.go",
 		[]byte("package helper\n\nimport \"strings\"\n\nfunc Up(s string) string { return strings.ToUpper(s) }\n"),
-		[]model.Import{{Path: "math", Name: "math"}})
+		[]plugin.Import{{Path: "math", Name: "math"}})
 
 	if err == nil {
 		t.Fatal("a file importing something unaccounted for was carried across")
@@ -93,7 +93,7 @@ func TestAFileThatDoesNotParse(t *testing.T) {
 // would contribute nothing, which is a mistake rather than an empty answer.
 func TestAFileThatDeclaresNothing(t *testing.T) {
 	_, err := embedded.Unit("shared.go", []byte("package helper\n\nimport \"math\"\n"),
-		[]model.Import{{Path: "math", Name: "math"}})
+		[]plugin.Import{{Path: "math", Name: "math"}})
 
 	if err == nil {
 		t.Fatal("a file declaring nothing was carried across")
@@ -109,7 +109,7 @@ func TestAPackageKeepsTheNameItWasBoundTo(t *testing.T) {
 	unit, err := embedded.Unit("shared.go",
 		[]byte("package helper\n\nimport js \"encoding/json/v2\"\n\n"+
 			"func Bytes(v any) ([]byte, error) { return js.Marshal(v) }\n"),
-		[]model.Import{{Path: "encoding/json/v2", Name: "js", Aliased: true}})
+		[]plugin.Import{{Path: "encoding/json/v2", Name: "js", Aliased: true}})
 	if err != nil {
 		t.Fatalf("carrying a file across: %v", err)
 	}

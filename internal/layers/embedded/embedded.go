@@ -23,9 +23,7 @@ import (
 	"go/token"
 	"strconv"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // Unit returns an embedded file's declarations as a contribution to somebody
@@ -37,33 +35,33 @@ import (
 // and the list did not is refused here, where it is a failing test in this
 // repository, rather than emitted into a package that then names something it
 // never imported.
-func Unit(name string, source []byte, binds []model.Import) (layer.Unit, error) {
+func Unit(name string, source []byte, binds []plugin.Import) (plugin.Unit, error) {
 	fset := token.NewFileSet()
 
 	file, err := parser.ParseFile(fset, name, source, parser.ParseComments)
 	if err != nil {
-		return layer.Unit{}, fmt.Errorf("%s does not parse: %w", name, err)
+		return plugin.Unit{}, fmt.Errorf("%s does not parse: %w", name, err)
 	}
 
 	decls := carried(file)
 	if len(decls) == 0 {
-		return layer.Unit{}, errors.New(name + " declares nothing")
+		return plugin.Unit{}, errors.New(name + " declares nothing")
 	}
 
 	if wrong := accounted(name, file, fset, binds); wrong != "" {
-		return layer.Unit{}, errors.New(wrong)
+		return plugin.Unit{}, errors.New(wrong)
 	}
 
-	imports := make([]emit.Import, 0, len(binds))
+	imports := make([]plugin.Import, 0, len(binds))
 	for _, one := range binds {
-		imports = append(imports, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
+		imports = append(imports, plugin.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: file.Comments,
 		Fset:     fset,
-		Imports:  emit.Reaching(decls, imports),
+		Imports:  plugin.Reaching(decls, imports),
 	}, nil
 }
 
@@ -90,7 +88,7 @@ func carried(file *ast.File) []ast.Decl {
 // It fails on the first run of the layer's own tests, which is where an import
 // added to the file beside it is cheapest to notice — and long before a package
 // somewhere else is written a file naming a package it does not import.
-func accounted(name string, file *ast.File, fset *token.FileSet, binds []model.Import) string {
+func accounted(name string, file *ast.File, fset *token.FileSet, binds []plugin.Import) string {
 	for _, one := range file.Imports {
 		path, err := strconv.Unquote(one.Path.Value)
 		if err != nil {

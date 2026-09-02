@@ -8,10 +8,7 @@ import (
 	"go/token"
 	"slices"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // container is the marker this layer claims, and verb what its contributions
@@ -24,11 +21,11 @@ const (
 // The packages generated code imports, and the names they bind.
 //
 // Written down rather than derived from the paths, for the reason
-// [layer.Layer.Binds] gives. Both are reached by every set there is — errors
+// [plugin.Layer.Binds] gives. Both are reached by every set there is — errors
 // for a name nobody declared, strconv for rendering the value that was not one
 // — so what this decides is not which of them a file keeps but which names the
 // subject is moved out of the way of.
-var imports = []model.Import{
+var imports = []plugin.Import{
 	{Path: "errors", Name: "errors"},
 	{Path: "strconv", Name: "strconv"},
 }
@@ -44,11 +41,11 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
-func (Layer) Binds() []model.Import { return slices.Clone(imports) }
+func (Layer) Binds() []plugin.Import { return slices.Clone(imports) }
 
 // Writes names the closed set's API, which all of it goes on the subject.
 //
@@ -68,10 +65,10 @@ func (Layer) Writes() []string {
 // An element layer: what a closed set can do is a fact about one value rather
 // than about a container of them, which is why the methods go on the subject
 // and why two declarations over one subject share what it produces.
-func (Layer) Kind() model.Kind { return model.KindElement }
+func (Layer) Kind() plugin.Kind { return plugin.KindElement }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -83,7 +80,7 @@ func (Layer) Doc() string {
 // What the members are is written in the constant block, which is where a
 // reader of the type already looks. A declaration naming them would be the same
 // list twice, and the copy that drifts is the one nobody reads.
-func (Layer) OptionSchema() []layer.OptionDef { return nil }
+func (Layer) OptionSchema() []plugin.OptionDef { return nil }
 
 // Accepts reports whether the layer can sit on the shape beneath it.
 //
@@ -99,7 +96,7 @@ func (Layer) OptionSchema() []layer.OptionDef { return nil }
 // way to say "not structured": a rule written as one would be a layer refusing
 // a capability rather than wanting one, which nothing else in the catalog does
 // and nothing reading a catalog would expect.
-func (Layer) Accepts(shape.Shape) error { return nil }
+func (Layer) Accepts(plugin.Shape) error { return nil }
 
 // Shape returns what the layer exposes to the layer above it.
 //
@@ -108,23 +105,23 @@ func (Layer) Accepts(shape.Shape) error { return nil }
 // when they are the same member — and that they go to text and back. What it
 // does not learn is method names, because the methods go on the subject and a
 // surface describes the declared type.
-func (Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
-	below.Caps = below.Caps.With(shape.Comparable, shape.Encodable)
+func (Layer) Shape(_ *plugin.Context, below plugin.Shape) plugin.Shape {
+	below.Caps = below.Caps.With(plugin.Comparable, plugin.Encodable)
 	return below
 }
 
 // Generate returns the closed set's API.
-func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
+func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and the
 		// declaration is what is missing. Reaching here is forge calling itself
 		// wrongly rather than anybody writing anything.
-		return layer.Unit{}, errors.New("enum: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("enum: asked to generate without a modelled declaration")
 	}
 
 	held := ctx.Model.Subject
 	if !held.Reachable() {
-		return layer.Unit{}, fmt.Errorf("enum: %s cannot be named from the package being generated into",
+		return plugin.Unit{}, fmt.Errorf("enum: %s cannot be named from the package being generated into",
 			ctx.Model.Name)
 	}
 
@@ -134,12 +131,12 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	// declaration and is reported as one rather than as a file that does not
 	// parse.
 	if !held.Local(ctx.Model.Pkg.PkgPath) {
-		return layer.Unit{}, elsewhere(held, ctx.Model.Pos)
+		return plugin.Unit{}, elsewhere(held, ctx.Model.Pos)
 	}
 
 	built := planned(held, ctx.Model.Pkg.Fset, ctx.Model.Pkg.PkgPath, ctx.Bound(), ctx.Model.Pos)
 	if err := built.diags.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	return provided(built)
@@ -151,28 +148,28 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 // subject reach here twice and produce the same methods twice — and a package
 // holding one method twice does not compile. The key is what says the two are
 // the same thing.
-func provided(built *plan) (layer.Unit, error) {
+func provided(built *plan) (plugin.Unit, error) {
 	unit, err := setFor(built)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{Provides: map[string]layer.Unit{
-		verb + ": " + model.TypeIdentity(built.of.Type()): unit,
+	return plugin.Unit{Provides: map[string]plugin.Unit{
+		verb + ": " + plugin.TypeIdentity(built.of.Type()): unit,
 	}}, nil
 }
 
 // setFor builds the declarations for one closed set.
-func setFor(held *plan) (layer.Unit, error) {
+func setFor(held *plan) (plugin.Unit, error) {
 	w := &writer{}
 	w.set(held)
 
 	decls, comments, fset, err := parsed(w.String(), held.spelled.Text)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: comments,
 		Fset:     fset,
@@ -205,14 +202,12 @@ func parsed(source, about string) ([]ast.Decl, []*ast.CommentGroup, *token.FileS
 // are. The narrowing is here because what a layer writes is what decides its
 // imports, and a list that were merely asserted to be right would be wrong the
 // first time somebody changed the writer.
-func needed(held *plan, decls []ast.Decl) []emit.Import {
-	out := make([]emit.Import, 0, len(imports)+len(held.spelled.Imports))
+func needed(held *plan, decls []ast.Decl) []plugin.Import {
+	out := make([]plugin.Import, 0, len(imports)+len(held.spelled.Imports))
 	for _, one := range imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name})
+		out = append(out, plugin.Import{Path: one.Path, Name: one.Name})
 	}
-	for _, one := range held.spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+	out = append(out, held.spelled.Imports...)
 
-	return emit.Reaching(decls, out)
+	return plugin.Reaching(decls, out)
 }

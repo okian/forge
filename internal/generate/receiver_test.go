@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
@@ -122,11 +123,7 @@ func verbatim(name string) map[string]string { return map[string]string{name: na
 
 // imports carries a spelling's imports in the shape a unit holds.
 func imports(spelled model.Spelling) []emit.Import {
-	out := make([]emit.Import, 0, len(spelled.Imports))
-	for _, one := range spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
-	return out
+	return slices.Clone(spelled.Imports)
 }
 
 // declaredIn builds a subject declared in another package of the same module,

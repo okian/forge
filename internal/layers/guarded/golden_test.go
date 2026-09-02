@@ -6,7 +6,7 @@ import (
 
 	"github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // The two stacks a lock is written for, generated whole and recorded.
@@ -29,7 +29,7 @@ func TestALockOverTheStacksItIsFor(t *testing.T) {
 
 		// subject is what the stack is over, and is the plain one where nothing
 		// says otherwise.
-		subject *model.Struct
+		subject *plugin.Struct
 	}{
 		// The composition M4.5 exists for: a bounded container of subjects that
 		// carry a codec, behind a lock. Every part of this layer is exercised

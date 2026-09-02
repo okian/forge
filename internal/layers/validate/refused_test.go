@@ -4,11 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/validate"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // refusedPkg is the fixture package holding the tags that cannot become a
@@ -58,7 +55,7 @@ func TestWhatCannotBecomeACheck(t *testing.T) {
 			// part of what an error prints — it is rendered beneath the
 			// message, where an author reads it — so checking the string would
 			// pass for a refusal that carried no hint at all.
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}
@@ -84,7 +81,7 @@ func TestWhereARefusalPoints(t *testing.T) {
 		t.Fatal("a check was written for a rule that cannot be asked")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}
@@ -110,7 +107,7 @@ func TestTheTwoRulesThatLookAlikeTeachTheDifference(t *testing.T) {
 				t.Fatalf("a check was written for %s", name)
 			}
 
-			reported, _ := diag.From(err)
+			reported, _ := plugin.From(err)
 			if !strings.Contains(reported.Hint, "write "+want) {
 				t.Errorf("the hint does not name %s:\n%s", want, reported.Hint)
 			}
@@ -127,9 +124,9 @@ func TestTheTwoRulesThatLookAlikeTeachTheDifference(t *testing.T) {
 // of the tag refusals above: nothing is wrong with what the author wrote, and
 // the message says so by naming the declaration rather than a rule.
 func TestACheckIsRefusedForASubjectItCannotName(t *testing.T) {
-	_, err := validate.New().Generate(&layer.Context{
-		Model: &model.Model{Name: "Elsewhere", Subject: &model.Struct{}},
-	}, shape.Shape{})
+	_, err := validate.New().Generate(&plugin.Context{
+		Model: &plugin.Model{Name: "Elsewhere", Subject: &plugin.Struct{}},
+	}, plugin.Shape{})
 
 	if err == nil {
 		t.Fatal("generating for a subject with no name of its own: want an error, got none")

@@ -8,11 +8,7 @@ import (
 	"go/token"
 	"slices"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // The marker this layer claims, and the name a directive writes it under.
@@ -31,7 +27,7 @@ const optionNames = "names"
 // Written down rather than derived from the paths, because a path does not say
 // what it binds: encoding/json/v2 binds json, which is exactly the name the
 // last element of the path does not give.
-var imports = []model.Import{
+var imports = []plugin.Import{
 	{Path: "bytes", Name: "bytes"},
 	{Path: "encoding/json/jsontext", Name: "jsontext"},
 	{Path: "encoding/json/v2", Name: "json"},
@@ -53,7 +49,7 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
@@ -62,7 +58,7 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // this decides is which names the subject is moved out of the way of, and one
 // name too many costs an alias nothing needed; one too few costs a file that
 // binds json to two packages and does not build.
-func (Layer) Binds() []model.Import { return slices.Clone(imports) }
+func (Layer) Binds() []plugin.Import { return slices.Clone(imports) }
 
 // Writes names the codec this layer puts on the subject.
 //
@@ -90,10 +86,10 @@ func (Layer) Writes() []string { return []string{marshalMethod, unmarshalMethod}
 // package — so it goes in the declaration's own file while the subject's goes
 // in the package's shared one, which is exactly the division an element layer's
 // kind describes.
-func (Layer) Kind() model.Kind { return model.KindElement }
+func (Layer) Kind() plugin.Kind { return plugin.KindElement }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -101,19 +97,19 @@ func (Layer) Doc() string {
 }
 
 // OptionSchema declares every option the layer accepts.
-func (Layer) OptionSchema() []layer.OptionDef {
-	return []layer.OptionDef{
+func (Layer) OptionSchema() []plugin.OptionDef {
+	return []plugin.OptionDef{
 		{
-			Key: optionNames, Value: layer.ValueEnum,
+			Key: optionNames, Value: plugin.ValueEnum,
 			Values: []string{styleAsIs, styleSnake, styleCamel}, Default: styleAsIs,
 			Doc: "how a field with no json tag is named on the wire",
 		},
 		{
-			Key: optionOmitZero, Value: layer.ValueBool, Default: "false",
+			Key: optionOmitZero, Value: plugin.ValueBool, Default: "false",
 			Doc: "omit zero-valued fields without tagging each one",
 		},
 		{
-			Key: optionFallback, Scope: layer.ScopeField, Value: layer.ValueEnum,
+			Key: optionFallback, Scope: plugin.ScopeField, Value: plugin.ValueEnum,
 			Values: []string{fallbackValue},
 			Doc:    "encode a field forge cannot see through reflectively, and mark that it did",
 		},
@@ -126,10 +122,10 @@ func (Layer) OptionSchema() []layer.OptionDef {
 // nothing to write one from. What is missing is named beside what is there,
 // because a capability list is what the author can act on: it says which layer
 // beneath would supply it.
-func (Layer) Accepts(below shape.Shape) error {
-	if !below.Caps.Has(shape.Structured) {
+func (Layer) Accepts(below plugin.Shape) error {
+	if !below.Caps.Has(plugin.Structured) {
 		return fmt.Errorf("%s needs the stack beneath it to be %s, and it is %s",
-			container, shape.Structured, below.Caps)
+			container, plugin.Structured, below.Caps)
 	}
 	return nil
 }
@@ -154,25 +150,25 @@ func (Layer) Accepts(below shape.Shape) error {
 // the compiler rather than from forge. Closing it needs composition to settle a
 // shape rather than build one in a single pass, which is a change the layers
 // that mask a surface will want anyway.
-func (Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
-	below.Caps = below.Caps.With(shape.Encodable)
+func (Layer) Shape(_ *plugin.Context, below plugin.Shape) plugin.Shape {
+	below.Caps = below.Caps.With(plugin.Encodable)
 	return below
 }
 
 // Generate returns the codec for the subject and everything it reaches.
-func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
+func (l Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and the
 		// declaration is what is missing. Reaching here is forge calling itself
 		// wrongly rather than anybody writing anything.
-		return layer.Unit{}, errors.New("json: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("json: asked to generate without a modelled declaration")
 	}
 
 	held := ctx.Model.Subject
 	if !held.Reachable() {
 		// A subject that cannot be named cannot be given a codec, and saying so
 		// is better than writing a function whose parameter has no spelling.
-		return layer.Unit{}, fmt.Errorf("json: %s cannot be named from the package being generated into", ctx.Model.Name)
+		return plugin.Unit{}, fmt.Errorf("json: %s cannot be named from the package being generated into", ctx.Model.Name)
 	}
 
 	built := &planner{
@@ -186,17 +182,17 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	root := built.plan(held)
 
 	if err := built.diags.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	unit, err := provided(built)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	over, err := streaming(ctx, root)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	return declaring(unit, over)
@@ -210,7 +206,7 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 // is about the subject is handed over for the package to hold once however many
 // declarations asked for it; what is about the container is this declaration's,
 // and goes in this declaration's file.
-func declaring(unit layer.Unit, over stack) (layer.Unit, error) {
+func declaring(unit plugin.Unit, over stack) (plugin.Unit, error) {
 	if !over.writes && !over.reads {
 		// Nothing above this layer offers a walk or a sink, so the declared
 		// type is not something a JSON array can be read into or written out
@@ -223,7 +219,7 @@ func declaring(unit layer.Unit, over stack) (layer.Unit, error) {
 
 	decls, comments, fset, err := parsed(w.String(), over.declared)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	unit.Decls, unit.Comments, unit.Fset = decls, comments, fset
@@ -238,16 +234,14 @@ func declaring(unit layer.Unit, over stack) (layer.Unit, error) {
 // needs, then narrowed to what the declarations name — the same bargain the
 // subject's codec makes, and for the same reason: a file missing an import does
 // not compile, and neither does one carrying an import it never names.
-func spelling(over stack, decls []ast.Decl) []emit.Import {
-	out := make([]emit.Import, 0, len(imports)+len(over.imports))
+func spelling(over stack, decls []ast.Decl) []plugin.Import {
+	out := make([]plugin.Import, 0, len(imports)+len(over.imports))
 	for _, one := range imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name})
+		out = append(out, plugin.Import{Path: one.Path, Name: one.Name})
 	}
-	for _, one := range over.imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+	out = append(out, over.imports...)
 
-	return emit.Reaching(decls, out)
+	return plugin.Reaching(decls, out)
 }
 
 // provided turns a plan into the units the package emits, one per type.
@@ -256,8 +250,8 @@ func spelling(over stack, decls []ast.Decl) []emit.Import {
 // declarations over one subject reach here twice and produce the same codec
 // twice — and a package holding one function twice does not compile. The key is
 // what says the two are the same thing.
-func provided(built *planner) (layer.Unit, error) {
-	out := make(map[string]layer.Unit, len(built.order))
+func provided(built *planner) (plugin.Unit, error) {
+	out := make(map[string]plugin.Unit, len(built.order))
 
 	for _, held := range built.order {
 		one := built.forms[held]
@@ -272,12 +266,12 @@ func provided(built *planner) (layer.Unit, error) {
 
 		unit, err := codecFor(one)
 		if err != nil {
-			return layer.Unit{}, err
+			return plugin.Unit{}, err
 		}
 		out[contribution(held)] = unit
 	}
 
-	return layer.Unit{Provides: out}, nil
+	return plugin.Unit{Provides: out}, nil
 }
 
 // contribution names what a codec for one type is, so that two contributions
@@ -292,7 +286,7 @@ func provided(built *planner) (layer.Unit, error) {
 func contribution(spelled string) string { return markerName + ": " + spelled }
 
 // codecFor builds the declarations for one type's codec.
-func codecFor(of *form) (layer.Unit, error) {
+func codecFor(of *form) (plugin.Unit, error) {
 	w := newWriter()
 	w.encoder(of)
 	w.decoder(of)
@@ -301,15 +295,15 @@ func codecFor(of *form) (layer.Unit, error) {
 	// omission can be written is a question about the sentence that would have
 	// to be written — and the writer is what knows.
 	if len(w.refused) > 0 {
-		return layer.Unit{}, cannotOmit(w.refused[0])
+		return plugin.Unit{}, cannotOmit(w.refused[0])
 	}
 
 	decls, comments, fset, err := parsed(w.String(), of.spelled.Text)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: comments,
 		Fset:     fset,
@@ -344,8 +338,8 @@ func parsed(source, about string) ([]ast.Decl, []*ast.CommentGroup, *token.FileS
 // about output, and output can always be had by producing it: a member nothing
 // can answer for in advance is written into a buffer and dropped if it came
 // back empty.
-func cannotOmit(one member) diag.Diagnostic {
-	return diag.New(codeCannotOmit, one.field.Pos,
+func cannotOmit(one member) plugin.Diagnostic {
+	return plugin.New(codeCannotOmit, one.field.Pos,
 		"%s is asked to be omitted at its zero value, which cannot be tested for here",
 		one.field.Name).
 		WithHint("%s", zeroHint)
@@ -370,16 +364,16 @@ func cannotOmit(one member) diag.Diagnostic {
 // Asked of the written declarations rather than tracked while writing them,
 // because the declarations are what will be in the file and a tally kept
 // alongside is a second account of it that can fall behind.
-func needed(of *form, decls []ast.Decl) []emit.Import {
-	out := make([]emit.Import, 0, len(imports))
+func needed(of *form, decls []ast.Decl) []plugin.Import {
+	out := make([]plugin.Import, 0, len(imports))
 	for _, one := range imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name})
+		out = append(out, plugin.Import{Path: one.Path, Name: one.Name})
 	}
 	for _, one := range reached(of, make(map[*form]bool)) {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
+		out = append(out, plugin.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
 
-	return emit.Reaching(decls, out)
+	return plugin.Reaching(decls, out)
 }
 
 // reached returns the imports of every type one codec's body spells.
@@ -388,13 +382,13 @@ func needed(of *form, decls []ast.Decl) []emit.Import {
 // struct's codec is a function of its own and spells its own types. It does not
 // stop at anything else: a slice, a map, a pointer and an array are all written
 // where they are used, so the types inside them are spelled here.
-func reached(of *form, seen map[*form]bool) []model.Import {
+func reached(of *form, seen map[*form]bool) []plugin.Import {
 	if of == nil || seen[of] {
 		return nil
 	}
 	seen[of] = true
 
-	out := append([]model.Import(nil), of.spelled.Imports...)
+	out := append([]plugin.Import(nil), of.spelled.Imports...)
 
 	for _, one := range of.members {
 		held := one.of
@@ -421,7 +415,7 @@ func reached(of *form, seen map[*form]bool) []model.Import {
 }
 
 // style returns the naming style the declaration asked for.
-func style(options model.Options) string {
+func style(options plugin.Options) string {
 	if written, ok := options.Get(optionNames); ok && written != "" {
 		return written
 	}
@@ -429,7 +423,7 @@ func style(options model.Options) string {
 }
 
 // flag returns whether a boolean option was written as true.
-func flag(options model.Options, key string) bool {
+func flag(options plugin.Options, key string) bool {
 	written, ok := options.Get(key)
 	return ok && written == "true"
 }

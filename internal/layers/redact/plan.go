@@ -4,9 +4,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/tags"
+	"github.com/okian/forge/plugin"
 )
 
 // What can be wrong with a subject asked to say how it may be logged.
@@ -16,8 +14,8 @@ import (
 // places they did not reads as a safe one, and that is worse than no method at
 // all.
 var (
-	codeNothingHidden = diag.Register(2025, "redaction was asked for and nothing is marked secret")
-	codeUnmaskable    = diag.Register(2026, "a secret sits behind something a log value cannot mask")
+	codeNothingHidden = plugin.Register(2025, "redaction was asked for and nothing is marked secret")
+	codeUnmaskable    = plugin.Register(2026, "a secret sits behind something a log value cannot mask")
 )
 
 // tag is what marks a field as one that does not belong in a log.
@@ -35,7 +33,7 @@ const tag = "redact"
 // value a tag earns on its own already honour. Reading it as a request would
 // mask a field somebody said to leave alone — and, worse, would refuse
 // generation over one that could not be masked and did not need to be.
-func hidden(field model.Field) bool {
+func hidden(field plugin.Field) bool {
 	held, carries := field.Tag(tag)
 	return carries && !held.Ignored
 }
@@ -49,7 +47,7 @@ func hiddenBy(held string) bool {
 	// The problems are dropped rather than reported, because a tag this cannot
 	// read is a tag whose field is refused anyway: an in-place struct is never
 	// maskable, so nothing turns on which of its keys parsed.
-	found, _ := tags.Parse(held)
+	found, _ := plugin.ParseTag(held)
 
 	for _, one := range found {
 		if one.Key == tag {
@@ -62,10 +60,10 @@ func hiddenBy(held string) bool {
 // logged is one field and how the value prints it.
 type logged struct {
 	// field is the field itself, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 
 	// spelled is how its type is written in the file being generated into.
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// masked records that the field's own tag asked for it. Nothing below a
 	// masked field is looked at, because nothing below it is printed.
@@ -90,8 +88,8 @@ type logged struct {
 type plan struct {
 	// of is the struct being written for, and spelled how it is written in the
 	// file being generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// fields are the ones the value prints, in declaration order.
 	//
@@ -108,7 +106,7 @@ type planner struct {
 	// into is the package being generated into, which decides how a type is
 	// spelled, and bound what the package's files will bind.
 	into  string
-	bound []model.Import
+	bound []plugin.Import
 
 	// at is where the declaration was written, which is where a refusal about
 	// the subject as a whole points.
@@ -116,7 +114,7 @@ type planner struct {
 
 	// known holds every struct the subject reaches, by the identity that tells
 	// two apart, so that a field whose type is one of them can be looked up.
-	known map[string]*model.Struct
+	known map[string]*plugin.Struct
 
 	// hides records which of them reach a secret, worked out before any of them
 	// is planned. It has to be, because whether a field is printed as itself
@@ -130,27 +128,27 @@ type planner struct {
 	plans map[string]*plan
 	order []string
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // key identifies a type across the whole plan, by the identity that keeps two
 // types of one name in two packages apart.
-func key(t types.Type) string { return model.TypeIdentity(t) }
+func key(t types.Type) string { return plugin.TypeIdentity(t) }
 
 // plan works out what the subject and everything it reaches need.
 //
 // Three passes, and they cannot be folded into one. What a struct is written
 // depends on which of the structs it holds will be written, which depends on
 // what they hold — so everything is gathered, then settled, then planned.
-func (p *planner) plan(held *model.Struct) {
+func (p *planner) plan(held *plugin.Struct) {
 	p.gather(held)
 	p.settle()
 	p.write(held)
 }
 
 // gather records every struct the subject reaches, the subject included.
-func (p *planner) gather(held *model.Struct) {
-	p.known = make(map[string]*model.Struct, len(held.Closure)+1)
+func (p *planner) gather(held *plugin.Struct) {
+	p.known = make(map[string]*plugin.Struct, len(held.Closure)+1)
 	p.hides = make(map[string]bool, len(held.Closure)+1)
 	p.plans = make(map[string]*plan)
 
@@ -197,7 +195,7 @@ func (p *planner) settle() {
 // leaves it out along with every other field slog could not have read. Tagging
 // an unexported field is therefore worth something, and what it is worth is the
 // method existing at all.
-func tagged(held *model.Struct) bool {
+func tagged(held *plugin.Struct) bool {
 	for _, field := range held.Fields {
 		if hidden(field) {
 			return true
@@ -208,7 +206,7 @@ func tagged(held *model.Struct) bool {
 
 // holds reports whether a struct has a field reaching one that hides, against
 // what has been settled so far.
-func (p *planner) holds(held *model.Struct) bool {
+func (p *planner) holds(held *plugin.Struct) bool {
 	for _, field := range held.Fields {
 		// A masked field hides whatever is under it, so what is under it is not
 		// a reason for this struct to be written.
@@ -343,10 +341,10 @@ func (p *planner) route(t types.Type, through bool, seen map[string]bool) (maska
 
 // write plans each struct that has something to hide, and reports the subject
 // that has nothing.
-func (p *planner) write(held *model.Struct) {
+func (p *planner) write(held *plugin.Struct) {
 	// Walked in the order the subject reaches them rather than over the map, so
 	// that what is planned does not depend on the order a map was walked in.
-	for _, one := range append([]*model.Struct{held}, held.Closure...) {
+	for _, one := range append([]*plugin.Struct{held}, held.Closure...) {
 		ref := key(one.Type())
 		if !p.hides[ref] || p.plans[ref] != nil {
 			continue
@@ -399,7 +397,7 @@ func (p *planner) write(held *model.Struct) {
 	// rather than written, because a layer that quietly did nothing would leave
 	// an author believing a value is protected.
 	if len(p.order) == 0 {
-		p.diags.Add(diag.New(codeNothingHidden, p.at,
+		p.diags.Add(plugin.New(codeNothingHidden, p.at,
 			"%s asks for redaction and nothing it reaches carries a %s tag",
 			held.Ref().Name, tag).
 			WithHint("%s", "mark the fields that must not be logged, as in "+
@@ -409,8 +407,8 @@ func (p *planner) write(held *model.Struct) {
 }
 
 // planned works out one struct's log value.
-func (p *planner) planned(held *model.Struct) *plan {
-	out := &plan{of: held, spelled: model.Spell(held.Type(), p.into, p.bound)}
+func (p *planner) planned(held *plugin.Struct) *plan {
+	out := &plan{of: held, spelled: plugin.Spell(held.Type(), p.into, p.bound)}
 
 	for _, field := range held.Fields {
 		if !field.Exported {
@@ -419,7 +417,7 @@ func (p *planner) planned(held *model.Struct) *plan {
 
 		one := logged{
 			field:   field,
-			spelled: model.Spell(field.Type.Type, p.into, p.bound),
+			spelled: plugin.Spell(field.Type.Type, p.into, p.bound),
 			masked:  hidden(field),
 		}
 
@@ -461,7 +459,7 @@ func (p *planner) pointsAt(t types.Type) bool {
 // LogValue and all — so a value that redacted everything else and left that
 // alone would be a value redacted where the author looked and open where they
 // did not.
-func (p *planner) refuse(held *model.Struct, field model.Field) {
+func (p *planner) refuse(held *plugin.Struct, field plugin.Field) {
 	maskable, found := p.beneath(field.Type.Type)
 	if !found || maskable {
 		return
@@ -472,7 +470,7 @@ func (p *planner) refuse(held *model.Struct, field model.Field) {
 		at = p.at
 	}
 
-	p.diags.Add(diag.New(codeUnmaskable, at,
+	p.diags.Add(plugin.New(codeUnmaskable, at,
 		"%s.%s holds a secret %s", held.Ref().Name, field.Name, p.why(field.Type.Type)).
 		WithHint("%s", maskHint))
 }
@@ -506,7 +504,7 @@ func (p *planner) nowhere(t types.Type, seen map[string]bool) string {
 
 		known, modelled := p.known[ref]
 		if p.hides[ref] && modelled && !known.Attachable(p.into) {
-			return "in " + model.TypeString(known.Type()) + ", and " + model.Unattachable(known, p.into)
+			return "in " + plugin.TypeString(known.Type()) + ", and " + plugin.Unattachable(known, p.into)
 		}
 		if modelled {
 			return ""
@@ -518,7 +516,7 @@ func (p *planner) nowhere(t types.Type, seen map[string]bool) string {
 
 	case *types.Struct:
 		// Written in place, so there is no model to name and no name to put a
-		// method on. Said here rather than through [model.Unattachable], which
+		// method on. Said here rather than through [plugin.Unattachable], which
 		// answers for a type that has a name and is only in the wrong place.
 		return "in a struct written in place, which has no name to declare a method on"
 
@@ -543,7 +541,7 @@ const maskHint = "slog resolves a log value for an attribute and for what a poin
 // The subject is what no field points at, so without this it falls through to
 // the complaint about nothing being tagged — which is false, and sends its
 // reader to add a tag that is already there.
-func (p *planner) unattachable(held *model.Struct) {
+func (p *planner) unattachable(held *plugin.Struct) {
 	// The declaration rather than the type, where the type is somebody else's.
 	// A caret in a module cache is one nothing can be done at, and the reader
 	// is the author of the declaration either way — so a position they can open
@@ -553,9 +551,9 @@ func (p *planner) unattachable(held *model.Struct) {
 		at = p.at
 	}
 
-	p.diags.Add(diag.New(codeUnmaskable, at,
-		"%s has something to hide and %s", model.TypeString(held.Type()),
-		model.Unattachable(held, p.into)).
+	p.diags.Add(plugin.New(codeUnmaskable, at,
+		"%s has something to hide and %s", plugin.TypeString(held.Type()),
+		plugin.Unattachable(held, p.into)).
 		WithHint("%s", moving(held)))
 }
 
@@ -567,7 +565,7 @@ func (p *planner) unattachable(held *model.Struct) {
 // taken. What is left in the other case is honest and short: the subject cannot
 // be redacted where it is, and something the author does own has to stand in
 // front of it.
-func moving(held *model.Struct) string {
+func moving(held *plugin.Struct) string {
 	const opening = "a log value has to be a method, and there is nowhere to put one — "
 
 	if held.External {

@@ -7,12 +7,10 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/load"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // The methods a text codec is made of, named here because what these tests do
@@ -155,7 +153,7 @@ func texting(t *testing.T, held, on string, methods ...string) string {
 	}
 
 	return rendering(t, loaded, held, map[string][]string{
-		model.TypeIdentity(obj.Type()): methods,
+		plugin.TypeIdentity(obj.Type()): methods,
 	})
 }
 
@@ -194,14 +192,14 @@ func rendering(t *testing.T, loaded *load.Session, name string, writes map[strin
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	ctx := (&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	ctx := (&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: pkg, Pos: token.Position{Filename: "person.go"},
 		},
 	}).Writing(writes, nil)
 
-	unit, err := jsoncodec.New().Generate(ctx, shape.Shape{})
+	unit, err := jsoncodec.New().Generate(ctx, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("generating a codec for %s: %v", name, err)
 	}

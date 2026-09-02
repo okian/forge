@@ -12,12 +12,10 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/load"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // modelPkg is the fixture package the subjects are declared in.
@@ -99,7 +97,7 @@ func generated(t *testing.T) []byte {
 }
 
 // codec asks the layer for one subject's codec.
-func codec(t *testing.T, builder *subject.Builder, loaded *load.Session, name string) layer.Unit {
+func codec(t *testing.T, builder *subject.Builder, loaded *load.Session, name string) plugin.Unit {
 	t.Helper()
 
 	built, problems := builder.Build(named(t, loaded, name), subject.Site{})
@@ -108,12 +106,12 @@ func codec(t *testing.T, builder *subject.Builder, loaded *load.Session, name st
 	}
 
 	pkg, _ := loaded.Package(modelPkg)
-	unit, err := jsoncodec.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	unit, err := jsoncodec.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: pkg, Pos: token.Position{Filename: "person.go"},
 		},
-	}, shape.Shape{})
+	}, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("generating a codec for %s: %v", name, err)
 	}

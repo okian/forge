@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/model"
 )
@@ -427,9 +426,7 @@ func unit(w *strings.Builder, held model.Spelling, imports ...model.Import) (lay
 	}
 
 	out := layer.Unit{Decls: decls, Comments: comments, Fset: fset}
-	for _, one := range append(imports, held.Imports...) {
-		out.Imports = append(out.Imports, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+	out.Imports = append(out.Imports, append(imports, held.Imports...)...)
 
 	return out, nil
 }

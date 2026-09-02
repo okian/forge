@@ -12,11 +12,10 @@ import (
 	"github.com/okian/forge/internal/discover"
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/generate"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
 	"github.com/okian/forge/internal/merge"
 	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // The package the fixtures are generated into, and where their declarations
@@ -49,13 +48,13 @@ const timestampedSource = "package model\n\n" +
 	"type Person struct {\n\tID int\n\tName string\n\tJoined time.Time\n}\n"
 
 // person is the model of that subject.
-func person() *model.Struct { return declaredIn(local, "model") }
+func person() *plugin.Struct { return declaredIn(local, "model") }
 
 // timestamped is the model of the subject that carries a foreign field.
-func timestamped() *model.Struct {
+func timestamped() *plugin.Struct {
 	held := person()
-	held.Fields = append(held.Fields, model.Field{
-		Name: "Joined", Exported: true, Type: model.Classified{Type: stamp()},
+	held.Fields = append(held.Fields, plugin.Field{
+		Name: "Joined", Exported: true, Type: plugin.Classified{Type: stamp()},
 	})
 
 	return held
@@ -75,15 +74,15 @@ func stamp() types.Type {
 // down. A package of the author's own two directories over is one forge will
 // happily model and one this package has no bare name for, and it is the case
 // that a check asking whether the subject is in this *module* lets through.
-func declaredIn(path, name string) *model.Struct {
+func declaredIn(path, name string) *plugin.Struct {
 	pkg := types.NewPackage(path, name)
 	obj := types.NewTypeName(token.NoPos, pkg, "Person", nil)
 
-	return &model.Struct{
+	return &plugin.Struct{
 		Named: types.NewNamed(obj, types.NewStruct(nil, nil), nil),
-		Fields: []model.Field{
-			{Name: "ID", Exported: true, Type: model.Classified{Type: types.Typ[types.Int]}},
-			{Name: "Name", Exported: true, Type: model.Classified{Type: types.Typ[types.String]}},
+		Fields: []plugin.Field{
+			{Name: "ID", Exported: true, Type: plugin.Classified{Type: types.Typ[types.Int]}},
+			{Name: "Name", Exported: true, Type: plugin.Classified{Type: types.Typ[types.String]}},
 		},
 	}
 }
@@ -95,10 +94,10 @@ func over(declared string, markers []string, directives ...string) generate.Requ
 }
 
 // of is the same, over a subject the caller chooses.
-func of(subject *model.Struct, declared string, markers []string, directives ...string) generate.Request {
-	stack := make([]model.LayerRef, len(markers))
+func of(subject *plugin.Struct, declared string, markers []string, directives ...string) generate.Request {
+	stack := make([]plugin.LayerRef, len(markers))
 	for i, name := range markers {
-		stack[i] = model.LayerRef{Origin: marker(name)}
+		stack[i] = plugin.LayerRef{Origin: marker(name)}
 	}
 
 	written := make([]discover.Directive, len(directives))
@@ -112,8 +111,8 @@ func of(subject *model.Struct, declared string, markers []string, directives ...
 	}
 
 	return generate.Request{
-		Model: &model.Model{
-			Name: declared, Form: model.FormSpec, Subject: subject, Stack: stack,
+		Model: &plugin.Model{
+			Name: declared, Form: plugin.FormSpec, Subject: subject, Stack: stack,
 			Pkg: &packages.Package{PkgPath: local},
 			Pos: declaredAt,
 		},
@@ -138,31 +137,31 @@ func config() generate.Config {
 // would have worked out — the name to declare onto, the shape beneath — is
 // given here instead, so that a test about one answer does not depend on every
 // layer that would have contributed to it.
-func asked(declared string, options ...string) *layer.Context {
+func asked(declared string, options ...string) *plugin.Context {
 	entries := make([]model.Option, 0, len(options))
 	for _, one := range options {
 		key, value, _ := strings.Cut(one, "=")
 		entries = append(entries, model.Option{Key: key, Value: value})
 	}
 
-	return &layer.Context{
-		Model: &model.Model{
-			Name: declared, Form: model.FormSpec, Subject: person(),
+	return &plugin.Context{
+		Model: &plugin.Model{
+			Name: declared, Form: plugin.FormSpec, Subject: person(),
 			Pkg: &packages.Package{PkgPath: local},
 			Pos: declaredAt,
 		},
-		Options: model.Options{Layer: "guarded", Entries: entries, Pos: declaredAt},
+		Options: plugin.Options{Layer: "guarded", Entries: entries, Pos: declaredAt},
 	}
 }
 
 // walking returns what a container beneath a lock offers, so that a test can
 // take one thing away from it and see what the layer makes of the rest.
-func walking(elem string) shape.Shape {
+func walking(elem string) plugin.Shape {
 	owner := marker("Slice")
 
-	return shape.Shape{
-		Caps: shape.Set(shape.Sized, shape.Ordered, shape.Indexed, shape.Streamable, shape.Structured),
-		Surface: []shape.Method{
+	return plugin.Shape{
+		Caps: plugin.Caps(plugin.Sized, plugin.Ordered, plugin.Indexed, plugin.Streamable, plugin.Structured),
+		Surface: []plugin.Method{
 			{Name: "Len", Signature: "() int", Owner: owner, Doc: "how many elements the container holds"},
 			{Name: "All", Signature: "() iter.Seq[" + elem + "]", Owner: owner, Pointer: true, Doc: "walks the elements"},
 			{Name: "Backward", Signature: "() iter.Seq[" + elem + "]", Owner: owner, Pointer: true, Doc: "walks them backwards"},
@@ -173,8 +172,8 @@ func walking(elem string) shape.Shape {
 }
 
 // marker builds a reference to one of the markers forge declares.
-func marker(name string) model.TypeRef {
-	return model.TypeRef{Pkg: model.MarkerPkg, Name: name}
+func marker(name string) plugin.TypeRef {
+	return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: name}
 }
 
 // printed renders what a layer contributed as the file it would go into, so
@@ -182,7 +181,7 @@ func marker(name string) model.TypeRef {
 //
 // Through the same merge and emit steps a run uses. What a layer hands over is
 // syntax, and what anybody reviews is text.
-func printed(t *testing.T, unit layer.Unit) string {
+func printed(t *testing.T, unit plugin.Unit) string {
 	t.Helper()
 
 	merged := merge.Units(unit)

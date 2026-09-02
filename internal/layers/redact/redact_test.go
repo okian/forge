@@ -4,11 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/redact"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // A tagged field logs a fixed string and the rest log themselves.
@@ -164,7 +161,7 @@ func TestASecretBehindSomethingThatCannotBeMasked(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			err := refused(t, name)
 
-			held, is := diag.From(err)
+			held, is := plugin.From(err)
 			if !is {
 				t.Fatalf("the refusal is not a diagnostic: %v", err)
 			}
@@ -216,7 +213,7 @@ func TestASecretBehindSomethingThatCannotCarryAMethod(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			err := refused(t, name)
 
-			held, is := diag.From(err)
+			held, is := plugin.From(err)
 			if !is {
 				t.Fatalf("the refusal is not a diagnostic: %v", err)
 			}
@@ -285,7 +282,7 @@ func TestASubjectWithNowhereToPutAMethod(t *testing.T) {
 		t.Fatal("a subject this package cannot declare on was written for")
 	}
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -358,7 +355,7 @@ func TestAMethodTheAuthorWroteIsKept(t *testing.T) {
 func TestTheIgnoreFormIsNotARequest(t *testing.T) {
 	err := refused(t, "OptedOut")
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -376,7 +373,7 @@ func TestTheIgnoreFormIsNotARequest(t *testing.T) {
 func TestASubjectWithNothingToHide(t *testing.T) {
 	err := refused(t, "Clean")
 
-	held, is := diag.From(err)
+	held, is := plugin.From(err)
 	if !is {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
@@ -403,10 +400,10 @@ func TestWhatTheLayerBinds(t *testing.T) {
 // A stack with nothing structured beneath it is refused, because a log value is
 // written out of the subject's fields.
 func TestWhatTheLayerAcceptsBeneathIt(t *testing.T) {
-	if err := redact.New().Accepts(shape.Shape{}); err == nil {
+	if err := redact.New().Accepts(plugin.Shape{}); err == nil {
 		t.Error("the layer accepted a stack with no subject beneath it")
 	}
-	if err := redact.New().Accepts(shape.Shape{Caps: shape.Set(shape.Structured)}); err != nil {
+	if err := redact.New().Accepts(plugin.Shape{Caps: plugin.Caps(plugin.Structured)}); err != nil {
 		t.Errorf("the layer refused a structured stack: %v", err)
 	}
 }
@@ -414,7 +411,7 @@ func TestWhatTheLayerAcceptsBeneathIt(t *testing.T) {
 // Nothing is added to the shape, because what this layer writes goes on the
 // subject rather than on the declared type.
 func TestTheLayerChangesNothingAboveIt(t *testing.T) {
-	below := shape.Shape{Caps: shape.Set(shape.Structured, shape.Sized)}
+	below := plugin.Shape{Caps: plugin.Caps(plugin.Structured, plugin.Sized)}
 
 	if got := redact.New().Shape(nil, below); got.Caps != below.Caps {
 		t.Errorf("the layer exposes %s, want the shape beneath it unchanged", got.Caps)
@@ -431,13 +428,13 @@ func TestTheLayerChangesNothingAboveIt(t *testing.T) {
 // is what is missing. Reaching it is forge calling itself wrongly rather than
 // anybody writing anything.
 func TestGeneratingWithNoDeclaration(t *testing.T) {
-	for name, ctx := range map[string]*layer.Context{
+	for name, ctx := range map[string]*plugin.Context{
 		"no context":     nil,
 		"no declaration": {},
-		"no subject":     {Model: &model.Model{Name: "Persons"}},
+		"no subject":     {Model: &plugin.Model{Name: "Persons"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := redact.New().Generate(ctx, shape.Shape{}); err == nil {
+			if _, err := redact.New().Generate(ctx, plugin.Shape{}); err == nil {
 				t.Error("the layer generated without a declaration")
 			}
 		})

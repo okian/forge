@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // Source that does not parse is reported against the subject it was assembled
@@ -42,7 +42,7 @@ func TestSourceThatDoesNotParseIsReportedAgainstItsSubject(t *testing.T) {
 // package does not have.
 func TestAFieldWithNoResolvedTypeIsAskedNothing(t *testing.T) {
 	var p planner
-	field := model.Field{Name: "Unresolved"}
+	field := plugin.Field{Name: "Unresolved"}
 
 	if nested, indirect := p.nested(field); nested || indirect {
 		t.Errorf("nested = (%v, %v), want (false, false)", nested, indirect)
@@ -66,7 +66,7 @@ func TestAFieldWithNoResolvedTypeIsAskedNothing(t *testing.T) {
 // has to special-case, so the walk drops it here instead — once, rather than at
 // each of the places that reads what was remembered.
 func TestAStructThatIsNotOneIsNotRemembered(t *testing.T) {
-	cases := map[string]*model.Struct{
+	cases := map[string]*plugin.Struct{
 		"nothing":               nil,
 		"a struct with no type": {},
 	}

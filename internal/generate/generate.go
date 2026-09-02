@@ -378,7 +378,12 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 	// and a claim that cannot be built is not a reason to write the rest.
 	for _, one := range subjects(requests) {
 		claims, imports, was, wrote := synthesise(held, synthesis{
-			declared: model.Spell(one.Type(), path, binds(held.Imports)).Text,
+			// What the file already binds is passed rather than left empty: a
+			// spelling that ignored it would be a spelling for some other
+			// file, writing the element type under forge's own idea of its
+			// package's name in a file where a layer may have bound that path
+			// to something else.
+			declared: model.Spell(one.Type(), path, held.Imports).Text,
 
 			// The subject stands in for its own element, which is not a
 			// mistake and is not meaningful either: an element is what a
@@ -386,7 +391,7 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 			// build the walk's signature, and a subject has no walk — so what
 			// is written here is discarded, and writing the subject is what
 			// keeps the field from being the one thing at hand that is wrong.
-			elem:    model.Spell(one.Type(), path, binds(held.Imports)),
+			elem:    model.Spell(one.Type(), path, held.Imports),
 			pkg:     path,
 			at:      one.Pos,
 			skipped: turned(one, requests),
@@ -736,7 +741,7 @@ func claiming(out merge.Unit, req Request, already declared, diags *diag.Set) (m
 
 	claims, imports, was, made := synthesise(out, synthesis{
 		declared: held.Name,
-		elem:     model.Spell(held.Subject.Type(), held.Pkg.PkgPath, binds(out.Imports)),
+		elem:     model.Spell(held.Subject.Type(), held.Pkg.PkgPath, out.Imports),
 		pkg:      held.Pkg.PkgPath,
 		at:       held.Pos,
 		held:     already,
@@ -758,21 +763,6 @@ func skips(directives []discover.Directive) []discover.Directive {
 		if strings.EqualFold(one.Layer, model.SkipDirective) {
 			out = append(out, one)
 		}
-	}
-	return out
-}
-
-// binds returns what the file already imports, in the form a spelling reads it
-// in.
-//
-// Passed rather than left empty because a spelling that ignores what a file
-// binds is a spelling for some other file: the element type would be written
-// under forge's own idea of its package's name, in a file where a layer may
-// already have bound that path to something else.
-func binds(imports []emit.Import) []model.Import {
-	out := make([]model.Import, 0, len(imports))
-	for _, one := range imports {
-		out = append(out, model.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
 	}
 	return out
 }

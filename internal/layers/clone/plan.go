@@ -4,8 +4,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // codeOpaqueField reports a field nothing can copy without being told what to
@@ -13,14 +12,14 @@ import (
 //
 // A 2xxx, because it is about the subject: the field's type is what cannot be
 // copied, and the author is the one who can say what should happen instead.
-var codeOpaqueField = diag.Register(2015, "field type cannot be copied without being told to share it")
+var codeOpaqueField = plugin.Register(2015, "field type cannot be copied without being told to share it")
 
 // codeCloneOption reports a directive above a field that is not the one option
 // a field takes.
 //
 // A 3xxx, because it is about something somebody wrote in a directive rather
 // than about the type it was written above.
-var codeCloneOption = diag.Register(3018, "clone directive on a field is not one")
+var codeCloneOption = plugin.Register(3018, "clone directive on a field is not one")
 
 // codeNotACopy reports a type that declares something called Clone which is not
 // a copy of itself.
@@ -29,7 +28,7 @@ var codeCloneOption = diag.Register(3018, "clone directive on a field is not one
 // generating it would leave the type without the method every other type in the
 // closure has, and the call sites would not compile either. Saying so is the
 // only answer that leaves them somewhere to go.
-var codeNotACopy = diag.Register(2016, "a type declares a Clone that is not a copy of itself")
+var codeNotACopy = plugin.Register(2016, "a type declares a Clone that is not a copy of itself")
 
 // notACopyHint says what to do about one.
 const notACopyHint = "rename the method, or give it the signature a copy has — " +
@@ -92,7 +91,7 @@ type form struct {
 	// typ is the type itself, and spelled is how it is written in the file
 	// being generated into.
 	typ     types.Type
-	spelled model.Spelling
+	spelled plugin.Spelling
 
 	// how says which shape the copy takes.
 	how how
@@ -110,7 +109,7 @@ type form struct {
 // copied is one field and how it is copied.
 type copied struct {
 	// field is the field itself, which is what a diagnostic points at.
-	field model.Field
+	field plugin.Field
 
 	// path reaches the field from the value being copied.
 	path string
@@ -123,8 +122,8 @@ type copied struct {
 type plan struct {
 	// of is the struct being copied, and spelled how it is written in the file
 	// being generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// fields are the ones that need more than assignment, in declaration
 	// order. A field copied by assignment is not here: the copy starts as the
@@ -152,7 +151,7 @@ type planner struct {
 	// bound is what the file will bind, which every spelling is written
 	// against so that a type from a package called slices is not written under
 	// the name a copy's own import has.
-	bound []model.Import
+	bound []plugin.Import
 
 	// sharing records that the declaration asked for references to be carried
 	// across rather than copied.
@@ -163,7 +162,7 @@ type planner struct {
 	// its own method rather than by inlining what it holds. It is also what
 	// makes the generator terminate: a type that reaches itself produces a
 	// method that calls itself.
-	known map[string]*model.Struct
+	known map[string]*plugin.Struct
 
 	// plans holds what has been worked out, and order the identities in the
 	// order they were reached, which is the order the methods are written.
@@ -174,16 +173,16 @@ type planner struct {
 	// decided once and one that reaches itself terminates.
 	forms map[string]*form
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // key identifies a type across the whole plan, by the spelling that keeps two
 // types of one name in two packages apart.
-func key(t types.Type) string { return model.TypeIdentity(t) }
+func key(t types.Type) string { return plugin.TypeIdentity(t) }
 
 // plan works out what the subject and everything it reaches need copying.
-func (p *planner) plan(held *model.Struct) {
-	p.known = make(map[string]*model.Struct)
+func (p *planner) plan(held *plugin.Struct) {
+	p.known = make(map[string]*plugin.Struct)
 	p.plans = make(map[string]*plan)
 	p.forms = make(map[string]*form)
 
@@ -273,7 +272,7 @@ func (p *planner) delegate() {
 		delete(p.plans, ref)
 
 		if !declares(held.Type()) {
-			p.diags.Add(diag.New(codeNotACopy, held.Pos,
+			p.diags.Add(plugin.New(codeNotACopy, held.Pos,
 				"%s declares %s, which does not answer with a %s",
 				held.Ref().Name, method, held.Ref().Name).
 				WithHint("%s", notACopyHint))
@@ -282,7 +281,7 @@ func (p *planner) delegate() {
 }
 
 // remember records a struct and reserves its plan, in the order reached.
-func (p *planner) remember(held *model.Struct) {
+func (p *planner) remember(held *plugin.Struct) {
 	if held == nil || held.Named == nil {
 		return
 	}
@@ -295,9 +294,9 @@ func (p *planner) remember(held *model.Struct) {
 	p.known[ref] = held
 	p.plans[ref] = &plan{
 		of:      held,
-		spelled: model.Spell(held.Type(), p.into, p.bound),
+		spelled: plugin.Spell(held.Type(), p.into, p.bound),
 		attach:  held.Attachable(p.into),
-		why:     model.Unattachable(held, p.into),
+		why:     plugin.Unattachable(held, p.into),
 	}
 	p.order = append(p.order, ref)
 }
@@ -326,7 +325,7 @@ func (p *planner) fill(held *plan) {
 			continue
 		}
 		if one.of.how == howOpaque {
-			p.diags.Add(diag.New(codeOpaqueField, field.Pos,
+			p.diags.Add(plugin.New(codeOpaqueField, field.Pos,
 				"%s is a %s, which nothing can copy without being told what a copy of it means",
 				field.Name, field.Type).
 				WithHint("%s", shareHint))
@@ -349,18 +348,18 @@ func (p *planner) fill(held *plan) {
 // this layer takes on a field and share is the only value worth writing there,
 // so anything else is a misspelling — and a misspelling that quietly left a
 // field shared would be the one mistake this option exists to make visible.
-func (p *planner) shared(field model.Field) bool {
+func (p *planner) shared(field plugin.Field) bool {
 	held := p.sharing
 
-	for _, directive := range model.Written(field.Directives, verb) {
+	for _, directive := range plugin.Written(field.Directives, verb) {
 		name, value, split := strings.Cut(directive.Args, "=")
 		switch {
 		case strings.TrimSpace(name) != optionAliasing:
-			p.diags.Add(diag.New(codeCloneOption, directive.Pos,
+			p.diags.Add(plugin.New(codeCloneOption, directive.Pos,
 				"%s is not an option this layer takes on a field", strings.TrimSpace(name)).
 				WithHint("a field takes %s=%s and nothing else", optionAliasing, aliasingShare))
 		case !split || strings.TrimSpace(value) != aliasingShare:
-			p.diags.Add(diag.New(codeCloneOption, directive.Pos,
+			p.diags.Add(plugin.New(codeCloneOption, directive.Pos,
 				"%s takes %s on a field and was given %q", optionAliasing, aliasingShare, strings.TrimSpace(value)).
 				WithHint("%s is what a field says; the declaration is where %s is written, since it is the default",
 					aliasingShare, aliasingCopy))
@@ -397,8 +396,8 @@ func (p *planner) decide(t types.Type, share bool) *form {
 }
 
 // spellingOf writes a type as the generated file must spell it.
-func (p *planner) spellingOf(t types.Type) model.Spelling {
-	return model.Spell(t, p.into, p.bound)
+func (p *planner) spellingOf(t types.Type) plugin.Spelling {
+	return plugin.Spell(t, p.into, p.bound)
 }
 
 // fillForm decides one form, having already recorded it.
@@ -416,7 +415,7 @@ func (p *planner) fillForm(out *form) {
 	// copies itself, which is a question about a type forge has never written
 	// anything for.
 	if held, writing := p.plans[key(out.typ)]; writing && !held.attach {
-		out.how, out.call = howThrough, model.Through(held.of, verb, "", p.into)
+		out.how, out.call = howThrough, plugin.Through(held.of, verb, "", p.into)
 		return
 	}
 	if _, reached := p.known[key(out.typ)]; reached || declares(out.typ) {

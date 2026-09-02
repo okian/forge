@@ -3,9 +3,7 @@ package guarded
 import (
 	"fmt"
 
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // container is the marker this layer claims.
@@ -45,10 +43,10 @@ const (
 
 // The packages the generated code names.
 var (
-	stdSync     = model.Import{Path: "sync", Name: "sync"}
-	stdSlices   = model.Import{Path: "slices", Name: "slices"}
-	stdIter     = model.Import{Path: "iter", Name: "iter"}
-	stdJSONText = model.Import{Path: "encoding/json/jsontext", Name: "jsontext"}
+	stdSync     = plugin.Import{Path: "sync", Name: "sync"}
+	stdSlices   = plugin.Import{Path: "slices", Name: "slices"}
+	stdIter     = plugin.Import{Path: "iter", Name: "iter"}
+	stdJSONText = plugin.Import{Path: "encoding/json/jsontext", Name: "jsontext"}
 )
 
 // Layer generates a read-write lock around the stack beneath it.
@@ -62,7 +60,7 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
@@ -79,8 +77,8 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // This is the list, and [imports] is it in the shape a unit carries. [naming]
 // answers a narrower question — what a forwarded signature reaches for — and is
 // a subset on purpose.
-func (Layer) Binds() []model.Import {
-	return []model.Import{stdJSONText, stdIter, stdSlices, stdSync}
+func (Layer) Binds() []plugin.Import {
+	return []plugin.Import{stdJSONText, stdIter, stdSlices, stdSync}
 }
 
 // Writes names nothing, because a lock is about who may reach the container
@@ -91,10 +89,10 @@ func (Layer) Writes() []string { return nil }
 //
 // A decorator: it wraps a representation rather than being one, and what it
 // wraps has to already exist for there to be anything to lock.
-func (Layer) Kind() model.Kind { return model.KindDecorator }
+func (Layer) Kind() plugin.Kind { return plugin.KindDecorator }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -102,15 +100,15 @@ func (Layer) Doc() string {
 }
 
 // OptionSchema declares every option the layer accepts.
-func (Layer) OptionSchema() []layer.OptionDef {
-	return []layer.OptionDef{
+func (Layer) OptionSchema() []plugin.OptionDef {
+	return []plugin.OptionDef{
 		{
-			Key: optionEncode, Value: layer.ValueEnum,
+			Key: optionEncode, Value: plugin.ValueEnum,
 			Values: []string{"snapshot", encodeLocked}, Default: "snapshot",
 			Doc: "whether encoding copies first or holds the lock for the length of the write",
 		},
 		{
-			Key: optionExpose, Value: layer.ValueEnum, Values: []string{exposeLocker},
+			Key: optionExpose, Value: plugin.ValueEnum, Values: []string{exposeLocker},
 			Doc: "expose the lock as a sync.Locker, which the layer exists to make unnecessary",
 		},
 	}
@@ -122,10 +120,10 @@ func (Layer) OptionSchema() []layer.OptionDef {
 // do without: the methods it takes away are replaced by scoped access and by a
 // copy, and a stack that cannot be walked has no copy to give — so the lock
 // would take iteration away and offer nothing back.
-func (Layer) Accepts(below shape.Shape) error {
-	if !below.Caps.Has(shape.Streamable) {
+func (Layer) Accepts(below plugin.Shape) error {
+	if !below.Caps.Has(plugin.Streamable) {
 		return fmt.Errorf("%s needs the stack beneath it to be %s, and it is %s",
-			container, shape.Streamable, below.Caps)
+			container, plugin.Streamable, below.Caps)
 	}
 	return nil
 }
@@ -145,7 +143,7 @@ func (Layer) Encloses(declared string) string {
 	if declared == "" {
 		return ""
 	}
-	return model.Lower(declared) + "Held"
+	return plugin.Lower(declared) + "Held"
 }
 
 // Constructor returns the function that makes one of these, where there is one.
@@ -163,13 +161,13 @@ func (Layer) Encloses(declared string) string {
 // asked. So a second enclosing layer would still find nothing here. What this
 // is is the half that belongs to this layer, written where it belongs, so that
 // whoever adds the second one finds the question already answered on this side.
-func (l Layer) Constructor(ctx *layer.Context) (layer.Constructor, bool) {
+func (l Layer) Constructor(ctx *plugin.Context) (plugin.Constructor, bool) {
 	made, needs := ctx.Holds()
 	if !needs {
-		return layer.Constructor{}, false
+		return plugin.Constructor{}, false
 	}
 
-	return layer.Constructor{
+	return plugin.Constructor{
 		Name:    constructorFor(ctx.Declared()),
 		Params:  made.Params,
 		Args:    made.Args,
@@ -193,19 +191,19 @@ func (l Layer) Constructor(ctx *layer.Context) (layer.Constructor, bool) {
 // What replaces them is scoped access. It is what a caller reaches the whole of
 // what is below through, and it is why taking the surface away is not taking
 // the API away.
-func (l Layer) Shape(ctx *layer.Context, below shape.Shape) shape.Shape {
+func (l Layer) Shape(ctx *plugin.Context, below plugin.Shape) plugin.Shape {
 	held := below
-	held.Caps = held.Caps.With(shape.Concurrent).Without(shape.Streamable, shape.Indexed)
+	held.Caps = held.Caps.With(plugin.Concurrent).Without(plugin.Streamable, plugin.Indexed)
 	held.Surface = nil
 
 	return held.WithMethods(l.methods(ctx, below)...)
 }
 
 // methods is the surface this layer emits, described for the layers above it.
-func (l Layer) methods(ctx *layer.Context, below shape.Shape) []shape.Method {
+func (l Layer) methods(ctx *plugin.Context, below plugin.Shape) []plugin.Method {
 	view := viewName(ctx)
 
-	out := []shape.Method{
+	out := []plugin.Method{
 		{
 			Name: writeScope, Signature: "(f func(v " + view + "))", Owner: l.Origin(), Pointer: true,
 			Doc: "runs a function with the write lock held, over everything beneath the lock",
@@ -223,8 +221,8 @@ func (l Layer) methods(ctx *layer.Context, below shape.Shape) []shape.Method {
 	// A length is one number read and handed back, so it is reached directly
 	// rather than through a scope: there is nothing a caller can hold open, and
 	// a closure for it would teach them that scopes are ceremony.
-	if below.Caps.Has(shape.Sized) {
-		out = append(out, shape.Method{
+	if below.Caps.Has(plugin.Sized) {
+		out = append(out, plugin.Method{
 			Name: length, Signature: "() int", Owner: l.Origin(), Pointer: true,
 			Doc: "how many elements the container holds, read under the read lock",
 		})
@@ -242,7 +240,7 @@ func (l Layer) methods(ctx *layer.Context, below shape.Shape) []shape.Method {
 			how = "with the read lock held for the length of the write"
 		}
 
-		out = append(out, shape.Method{
+		out = append(out, plugin.Method{
 			Name: marshalMethod, Signature: "(enc *jsontext.Encoder) error", Owner: l.Origin(), Pointer: true,
 			Doc: "writes the container as a JSON array, " + how,
 		})
@@ -250,11 +248,11 @@ func (l Layer) methods(ctx *layer.Context, below shape.Shape) []shape.Method {
 
 	if locker(ctx) {
 		out = append(out,
-			shape.Method{
+			plugin.Method{
 				Name: "Lock", Signature: "()", Owner: l.Origin(), Pointer: true,
 				Doc: "takes the write lock, for a caller who asked for the lock to be exposed",
 			},
-			shape.Method{
+			plugin.Method{
 				Name: "Unlock", Signature: "()", Owner: l.Origin(), Pointer: true,
 				Doc: "releases the write lock",
 			},
@@ -271,4 +269,4 @@ func (l Layer) methods(ctx *layer.Context, below shape.Shape) []shape.Method {
 // on the surface beneath this layer names it. What Encodable says is that some
 // layer in the stack gave the elements a codec, and the entry point a codec is
 // written under is the one thing every element layer that claims it agrees on.
-func encodes(below shape.Shape) bool { return below.Caps.Has(shape.Encodable) }
+func encodes(below plugin.Shape) bool { return below.Caps.Has(plugin.Encodable) }

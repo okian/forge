@@ -24,23 +24,43 @@ func TestCodeString(t *testing.T) {
 
 // A code's number places it, so the mapping from range to stage is part of the
 // contract rather than a convention.
+//
+// Forge's own ranges end at 5999 and everything above belongs to a layer forge
+// does not ship — one category rather than a range each, since forge cannot
+// hand out ranges to code it has never seen.
 func TestCodeCategory(t *testing.T) {
 	cases := map[diag.Code]diag.Category{
-		1000: diag.CategoryComposition,
-		1999: diag.CategoryComposition,
-		2000: diag.CategorySubject,
-		3500: diag.CategoryOptions,
-		4001: diag.CategoryEmission,
-		5999: diag.CategoryToolchain,
-		999:  diag.CategoryInvalid,
-		6000: diag.CategoryInvalid,
-		0:    diag.CategoryInvalid,
-		-1:   diag.CategoryInvalid,
+		1000:  diag.CategoryComposition,
+		1999:  diag.CategoryComposition,
+		2000:  diag.CategorySubject,
+		3500:  diag.CategoryOptions,
+		4001:  diag.CategoryEmission,
+		5999:  diag.CategoryToolchain,
+		6000:  diag.CategoryLayer,
+		9999:  diag.CategoryLayer,
+		999:   diag.CategoryInvalid,
+		10000: diag.CategoryInvalid,
+		0:     diag.CategoryInvalid,
+		-1:    diag.CategoryInvalid,
 	}
 
 	for code, want := range cases {
 		if got := code.Category(); got != want {
 			t.Errorf("Code(%d).Category() = %v, want %v", int(code), got, want)
+		}
+	}
+}
+
+// A code says whether it is forge's own, so that a report can send a reader to
+// forge's index or to the layer that raised it.
+func TestWhoseCodeItIs(t *testing.T) {
+	for code, want := range map[diag.Code]bool{
+		1000: true, 5999: true,
+		6000: false, 9999: false,
+		999: false, 10000: false, 0: false,
+	} {
+		if got := code.Ours(); got != want {
+			t.Errorf("Code(%d).Ours() = %v, want %v", int(code), got, want)
 		}
 	}
 }
@@ -73,7 +93,7 @@ func TestRegisterRejectsBadRegistrations(t *testing.T) {
 		wants   string
 	}{
 		"below every range": {999, "too low", "outside the reserved ranges"},
-		"above every range": {6000, "too high", "outside the reserved ranges"},
+		"above every range": {10000, "too high", "outside the reserved ranges"},
 		"no summary":        {1900, "", "without a summary"},
 		"already taken":     {1003, "something else", "already registered"},
 	}

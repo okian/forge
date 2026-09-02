@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/model"
 )
 
 // Diagnostics this package reports.
@@ -30,42 +31,13 @@ var (
 )
 
 // Import is one import a generated file needs.
-type Import struct {
-	// Path is the import path.
-	Path string
-
-	// Name is the name the file binds the package to. It is always filled in,
-	// including where it is the package's own name and the import is written
-	// without it.
-	//
-	// Always, because it is the only thing that says what a qualified
-	// identifier in the file refers to, and that question is asked of a written
-	// file by anything that has to know which imports it still needs. Deriving
-	// it from the path is guessing: a package is free to declare a name that is
-	// not the last element of its path, and a module path ending in a version
-	// or a directory named for its contents rather than its clause both do it
-	// routinely.
-	Name string
-
-	// Aliased records that Name is not the package's own name, so a file
-	// writing this import has to bind it explicitly. It is the one bit that
-	// cannot be recovered from Path and Name together, which look alike for a
-	// package whose name is the last element of its path and for one bound to
-	// exactly that name on purpose.
-	Aliased bool
-}
-
-// String returns the import as it is written in an import block.
 //
-// The name is written only where it had to be invented, so that the ordinary
-// import reads the way somebody would have written it by hand and the one line
-// that binds a name stands out as the thing that needed saying.
-func (i Import) String() string {
-	if !i.Aliased {
-		return strconv.Quote(i.Path)
-	}
-	return i.Name + " " + strconv.Quote(i.Path)
-}
+// The same type a spelling asks for, rather than a second one of the same
+// shape. What a layer is told a type needs is what the file has to bind, and
+// two types spelled alike meant every layer copying one into the other field by
+// field — six of them did, and a seventh would have had to work out that it
+// should.
+type Import = model.Import
 
 // compare orders imports by path, then by the name they are bound to, and last
 // by whether that name is written, so that a file's import block reads the same
@@ -78,7 +50,7 @@ func (i Import) String() string {
 // file would then be a function of something no fingerprint records: the bytes
 // would move while the header stood still, which is the one failure a generated
 // file cannot report about itself.
-func (i Import) compare(other Import) int {
+func ordered(i, other Import) int {
 	if i.Path != other.Path {
 		return strings.Compare(i.Path, other.Path)
 	}
@@ -224,7 +196,7 @@ func (f File) report(code diag.Code, cause error) diag.Diagnostic {
 // hand-edits this file, so nobody adds an import to the wrong group.
 func (f File) renderImports(b *strings.Builder) error {
 	imports := slices.Clone(f.Imports)
-	slices.SortFunc(imports, Import.compare)
+	slices.SortFunc(imports, ordered)
 	imports = slices.CompactFunc(imports, same)
 
 	// One path bound to two names is two imports of it, which does not compile.

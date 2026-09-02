@@ -7,8 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // What can be wrong with a subject asked for the API of a closed set.
@@ -17,10 +16,10 @@ import (
 // an empty one would be written is a Parse that accepts nothing and a String
 // that always fails, which is a type made harder to use in exchange for nothing.
 var (
-	codeNotScalar = diag.Register(2027, "a closed set was asked for over something that is not a named scalar")
-	codeNoMembers = diag.Register(2028, "a closed set was asked for and no constants are declared of the type")
-	codeNotLocal  = diag.Register(2029, "a closed set was asked for over a type another package declares")
-	codeOneName   = diag.Register(2030, "two members of a closed set are called the same thing")
+	codeNotScalar = plugin.Register(2027, "a closed set was asked for over something that is not a named scalar")
+	codeNoMembers = plugin.Register(2028, "a closed set was asked for and no constants are declared of the type")
+	codeNotLocal  = plugin.Register(2029, "a closed set was asked for over a type another package declares")
+	codeOneName   = plugin.Register(2030, "two members of a closed set are called the same thing")
 )
 
 // The methods a set carries, and the prefix its parser is named under.
@@ -68,8 +67,8 @@ type member struct {
 type plan struct {
 	// of is the subject, and spelled how it is written in the file being
 	// generated into.
-	of      *model.Struct
-	spelled model.Spelling
+	of      *plugin.Struct
+	spelled plugin.Spelling
 
 	// members are the constants of it, in declaration order.
 	members []member
@@ -80,18 +79,18 @@ type plan struct {
 	text     bool
 	unsigned bool
 
-	diags diag.Set
+	diags plugin.Diagnostics
 }
 
 // planned works out what a subject's closed set is made of.
-func planned(held *model.Struct, fset *token.FileSet, into string, bound []model.Import, at token.Position) *plan {
-	out := &plan{of: held, spelled: model.Spell(held.Type(), into, bound)}
+func planned(held *plugin.Struct, fset *token.FileSet, into string, bound []plugin.Import, at token.Position) *plan {
+	out := &plan{of: held, spelled: plugin.Spell(held.Type(), into, bound)}
 
 	basic, scalar := underlying(held)
 	if !scalar {
-		out.diags.Add(diag.New(codeNotScalar, at,
+		out.diags.Add(plugin.New(codeNotScalar, at,
 			"%s is not a named scalar, so there are no constants of it to find",
-			model.TypeString(held.Type())).
+			plugin.TypeString(held.Type())).
 			WithHint("%s", "a closed set is a named number or a named string with the constants "+
 				"of it declared alongside, as in `type Status int` and a const block counting from iota"))
 		return out
@@ -103,9 +102,9 @@ func planned(held *model.Struct, fset *token.FileSet, into string, bound []model
 	out.collisions(held, at)
 
 	if len(out.members) == 0 {
-		out.diags.Add(diag.New(codeNoMembers, at,
+		out.diags.Add(plugin.New(codeNoMembers, at,
 			"nothing declares a constant of %s, so there is no set to write the API of",
-			model.TypeString(held.Type())).
+			plugin.TypeString(held.Type())).
 			WithHint("%s", "declare the members as constants of the type, in a const block beside "+
 				"it; what is written here is read from those and from nothing else"))
 	}
@@ -126,7 +125,7 @@ func planned(held *model.Struct, fset *token.FileSet, into string, bound []model
 // It is the shape a rule invites: taking the type's name off the front and
 // lower-casing what is left maps CodedOK and CodedOk onto one word. Almost
 // nobody means that, and a set where it happens is a set with a typo in it.
-func (p *plan) collisions(held *model.Struct, at token.Position) {
+func (p *plan) collisions(held *plugin.Struct, at token.Position) {
 	seen := make(map[string]member, len(p.members))
 
 	for _, one := range p.members {
@@ -139,9 +138,9 @@ func (p *plan) collisions(held *model.Struct, at token.Position) {
 			continue
 		}
 
-		p.diags.Add(diag.New(codeOneName, at,
+		p.diags.Add(plugin.New(codeOneName, at,
 			"%s and %s are both called %q, and they are not the same member of %s",
-			first.name, one.name, one.text, model.TypeString(held.Type())).
+			first.name, one.name, one.text, plugin.TypeString(held.Type())).
 			WithHint("%s", "a member is named after its constant with the type's own name taken "+
 				"off the front, so two constants differing only in how they are capitalised "+
 				"come to one name — rename one of them, or give them the same value if one "+
@@ -156,10 +155,10 @@ func (p *plan) collisions(held *model.Struct, at token.Position) {
 // somewhere else would have to be written in a package that may not declare any
 // of it. Reported against the declaration, which is the thing the author wrote
 // and the thing they can move.
-func elsewhere(held *model.Struct, at token.Position) error {
-	return diag.New(codeNotLocal, at,
+func elsewhere(held *plugin.Struct, at token.Position) error {
+	return plugin.New(codeNotLocal, at,
 		"%s is declared in another package, and every part of a closed set's API belongs to it",
-		model.TypeString(held.Type())).
+		plugin.TypeString(held.Type())).
 		WithHint("%s", "Go lets a method be declared only in the package that declares its type, "+
 			"and the parser and the lister are named after it — so write the declaration in "+
 			"the package that declares "+held.Ref().Name+", or over a type of your own")
@@ -172,7 +171,7 @@ func elsewhere(held *model.Struct, at token.Position) error {
 // compared against a fixed list, so the underlying type has to be one a
 // constant can be written of — which rules out a slice with methods and a
 // struct alike, for the same reason and by the same test.
-func underlying(held *model.Struct) (*types.Basic, bool) {
+func underlying(held *plugin.Struct) (*types.Basic, bool) {
 	if held == nil || held.Named == nil {
 		return nil, false
 	}
@@ -229,7 +228,7 @@ func earlier(a, b token.Position) int {
 // the constant block expects and what a run counted by iota means; the order
 // the scope reports is alphabetical, which would put StatusActive before
 // StatusUnknown and make Values read as somebody's mistake.
-func members(held *model.Struct, fset *token.FileSet, text bool) []member {
+func members(held *plugin.Struct, fset *token.FileSet, text bool) []member {
 	pkg := held.Named.Obj().Pkg()
 	if pkg == nil || pkg.Scope() == nil || fset == nil {
 		return nil
@@ -336,5 +335,5 @@ func called(name, of string, held *types.Const, text bool) string {
 	if !cut || shortened == "" {
 		return name
 	}
-	return model.Camel(shortened)
+	return plugin.Camel(shortened)
 }

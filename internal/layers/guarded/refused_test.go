@@ -4,10 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/guarded"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // A call with no declaration in it is refused rather than generated from.
@@ -16,10 +14,10 @@ import (
 // declaration, and what is missing here is the declaration. Reaching this is
 // forge calling itself wrongly rather than anybody writing anything.
 func TestGeneratingWithNoDeclaration(t *testing.T) {
-	cases := map[string]*layer.Context{
+	cases := map[string]*plugin.Context{
 		"no context": nil,
 		"no model":   {},
-		"no subject": {Model: &model.Model{Name: "Persons"}},
+		"no subject": {Model: &plugin.Model{Name: "Persons"}},
 	}
 
 	for name, ctx := range cases {
@@ -45,7 +43,7 @@ func TestGeneratingWithNoDeclaration(t *testing.T) {
 // this file can spell bare — so a check that asked about the module would let
 // the second through and emit a scope forwarding a name nothing here declares.
 func TestALockOverASubjectThePackageCannotName(t *testing.T) {
-	cases := map[string]*model.Struct{
+	cases := map[string]*plugin.Struct{
 		"another module":  outside(declaredIn("example.org/other", "other")),
 		"another package": declaredIn("example.com/other", "other"),
 	}
@@ -68,7 +66,7 @@ func TestALockOverASubjectThePackageCannotName(t *testing.T) {
 
 // outside marks a subject as belonging to a module other than the one being
 // generated into.
-func outside(held *model.Struct) *model.Struct {
+func outside(held *plugin.Struct) *plugin.Struct {
 	held.External = true
 	return held
 }
@@ -88,7 +86,7 @@ func outside(held *model.Struct) *model.Struct {
 // is written over.
 func TestALockOverAContractItCannotUse(t *testing.T) {
 	cases := map[string]struct {
-		below shape.Shape
+		below plugin.Shape
 		says  string
 	}{
 		"nothing to walk": {
@@ -139,7 +137,7 @@ func TestALockOverAContractItCannotUse(t *testing.T) {
 // refused, because forwarding it is a way back out of the scope.
 func TestAScopeThatCouldReachBackOut(t *testing.T) {
 	below := walking("Person")
-	below.Surface = append(below.Surface, shape.Method{
+	below.Surface = append(below.Surface, plugin.Method{
 		Name: "Clone", Signature: "() Persons", Owner: marker("Clone"),
 		Doc: "returns a copy of the container",
 	})
@@ -154,13 +152,13 @@ func TestAScopeThatCouldReachBackOut(t *testing.T) {
 }
 
 // without returns the shape with one method taken off its surface.
-func without(below shape.Shape, name string) shape.Shape {
+func without(below plugin.Shape, name string) plugin.Shape {
 	return below.Without(name)
 }
 
 // signed returns the shape with one method's signature replaced, which is how a
 // layer beneath is made to disagree with the contract it was admitted under.
-func signed(below shape.Shape, name, signature string) shape.Shape {
+func signed(below plugin.Shape, name, signature string) plugin.Shape {
 	held, has := below.Method(name)
 	if !has {
 		return below

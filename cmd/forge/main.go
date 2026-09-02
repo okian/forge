@@ -10,19 +10,21 @@
 // installed and an editor needs no plugin.
 //
 // Run forge with no arguments for the commands.
+//
+// This binary knows the layers forge ships. A binary that also knows one
+// somebody else wrote is a few lines of its own, over the same commands and the
+// same command line — see [github.com/okian/forge/driver].
 package main
 
 import (
-	"os"
+	"github.com/okian/forge/driver"
 )
 
 // main runs one command line and ends with the status it produced.
 //
-// It holds nothing but that call. A tool whose only entry point ends the
-// process can be tested only by starting a process, and such a suite needs a
-// built binary, cannot tell one stream from the other, and reads back nothing
-// it did not print. Everything worth testing is in run, which returns a status
-// and writes to whatever it is given.
+// It holds nothing but that call, which is also all a plugin binary's main
+// holds: the difference between the two is the catalog, and everything else
+// about a run comes off the command line.
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	driver.Main(driver.Builtins())
 }

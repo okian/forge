@@ -13,12 +13,10 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/enum"
 	"github.com/okian/forge/internal/load"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // modelPkg is the fixture package the closed sets are declared in.
@@ -48,7 +46,7 @@ func loadFixture(t *testing.T) *load.Session {
 
 // generating asks the layer for one fixture subject's set and returns what it
 // produced, and what it said.
-func generating(t *testing.T, name string) (layer.Unit, error) {
+func generating(t *testing.T, name string) (plugin.Unit, error) {
 	t.Helper()
 	return asking(t, name, modelPkg)
 }
@@ -56,7 +54,7 @@ func generating(t *testing.T, name string) (layer.Unit, error) {
 // asking generates for one fixture subject into a package of the caller's
 // choosing, so that a declaration written somewhere other than where the type
 // is declared can be asked about.
-func asking(t *testing.T, name, into string) (layer.Unit, error) {
+func asking(t *testing.T, name, into string) (plugin.Unit, error) {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -91,18 +89,18 @@ func asking(t *testing.T, name, into string) (layer.Unit, error) {
 		written = &packages.Package{PkgPath: into, Name: path.Base(into), Fset: loaded.Fset}
 	}
 
-	ctx := (&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormSpec, Subject: built,
+	ctx := (&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormSpec, Subject: built,
 			Pkg: written, Pos: declaredAt,
 		},
 	}).Binding(enum.New().Binds())
 
-	return enum.New().Generate(ctx, shape.Shape{})
+	return enum.New().Generate(ctx, plugin.Shape{})
 }
 
 // written asks for a subject's set and fails the test if the layer refused.
-func written(t *testing.T, name string) layer.Unit {
+func written(t *testing.T, name string) plugin.Unit {
 	t.Helper()
 
 	unit, err := generating(t, name)
@@ -124,7 +122,7 @@ func refused(t *testing.T, name string) error {
 }
 
 // source renders what a subject's generation contributed, as one file.
-func source(t *testing.T, unit layer.Unit) string {
+func source(t *testing.T, unit plugin.Unit) string {
 	t.Helper()
 
 	file := emit.File{Package: "model"}

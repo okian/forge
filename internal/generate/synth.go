@@ -859,11 +859,7 @@ func shadowing(name string, as binding) bool {
 // importing returns what the element's own spelling binds, which the walk's
 // signature names.
 func importing(held model.Spelling) []emit.Import {
-	out := make([]emit.Import, 0, len(held.Imports))
-	for _, one := range held.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
-	return out
+	return slices.Clone(held.Imports)
 }
 
 // asserted builds the declarations that make the claims.

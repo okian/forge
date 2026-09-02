@@ -32,6 +32,18 @@ type Import struct {
 	Aliased bool
 }
 
+// String returns the import as it is written in an import block.
+//
+// The name is written only where it had to be invented, so that the ordinary
+// import reads the way somebody would have written it by hand and the one line
+// that binds a name stands out as the thing that needed saying.
+func (i Import) String() string {
+	if !i.Aliased {
+		return strconv.Quote(i.Path)
+	}
+	return i.Name + " " + strconv.Quote(i.Path)
+}
+
 // Spelling is a type written the way generated code in one package has to write
 // it, together with what that package must import for the writing to resolve.
 //

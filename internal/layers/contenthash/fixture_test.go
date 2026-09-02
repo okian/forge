@@ -10,12 +10,10 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/contenthash"
 	"github.com/okian/forge/internal/load"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // The fixture packages: the one the subjects are declared in, and the one they
@@ -46,7 +44,7 @@ func loadFixture(t *testing.T) *load.Session {
 
 // generating asks the layer for one fixture subject's hash and returns what it
 // produced, and what it said.
-func generating(t *testing.T, name string) (layer.Unit, error) {
+func generating(t *testing.T, name string) (plugin.Unit, error) {
 	t.Helper()
 	return asking(t, modelPkg, name)
 }
@@ -54,7 +52,7 @@ func generating(t *testing.T, name string) (layer.Unit, error) {
 // asking generates for one subject of one fixture package, into the model
 // package — so that a subject declared somewhere else is asked about from where
 // a declaration over it would be written.
-func asking(t *testing.T, pkgPath, name string) (layer.Unit, error) {
+func asking(t *testing.T, pkgPath, name string) (plugin.Unit, error) {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -89,16 +87,16 @@ func asking(t *testing.T, pkgPath, name string) (layer.Unit, error) {
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	return contenthash.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	return contenthash.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: into, Pos: token.Position{Filename: "model.go"},
 		},
-	}, shape.Shape{})
+	}, plugin.Shape{})
 }
 
 // written asks for a subject's hash and fails the test if the layer refused.
-func written(t *testing.T, name string) layer.Unit {
+func written(t *testing.T, name string) plugin.Unit {
 	t.Helper()
 
 	unit, err := generating(t, name)
@@ -113,7 +111,7 @@ func written(t *testing.T, name string) layer.Unit {
 // Everything rather than the one unit about the subject, because a hash is
 // written for the structs it reaches as well, and what a reader is asking about
 // is the file the package ends up with.
-func source(t *testing.T, unit layer.Unit) string {
+func source(t *testing.T, unit plugin.Unit) string {
 	t.Helper()
 
 	file := emit.File{Package: "model"}

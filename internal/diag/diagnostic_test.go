@@ -136,9 +136,13 @@ func TestDiagnosticBuildersCommute(t *testing.T) {
 }
 
 // A code outside every reserved range places itself nowhere, so it is rejected
-// where it is built rather than printed as FRG9999 to a user.
+// where it is built rather than printed to a user as a number nothing explains.
+//
+// Forge's own ranges end at 5999 and a layer forge does not ship takes a code
+// above that, so what is rejected is a code with no range at all: one too small
+// to be printed as four digits, and one past the last.
 func TestNewRejectsCodesOutsideTheReservedRanges(t *testing.T) {
-	for _, code := range []diag.Code{0, 999, 6000, 9999} {
+	for _, code := range []diag.Code{0, 999, 10000, 99999} {
 		t.Run(code.String(), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {

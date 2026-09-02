@@ -12,12 +12,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/templates"
+	"github.com/okian/forge/plugin"
 )
 
 // bodies is the template this layer emits, embedded from the package beside it.
@@ -46,7 +42,7 @@ const constructorInTemplate = "New"
 
 // templateImports names every package the template imports, and what a file
 // importing it binds that package to. It is what [Layer.Binds] answers with,
-// and [layer.Layer.Binds] says why the names are written down rather than taken
+// and [plugin.Layer.Binds] says why the names are written down rather than taken
 // off the paths.
 //
 // Neither half of it is left to be kept in step by hand. Generate refuses a
@@ -60,13 +56,13 @@ var templateImports = map[string]string{
 
 // taken returns what the template's imports bind, sorted so that a spelling
 // built from them does not depend on a map.
-func taken() []model.Import {
-	out := make([]model.Import, 0, len(templateImports))
+func taken() []plugin.Import {
+	out := make([]plugin.Import, 0, len(templateImports))
 	for path, name := range templateImports {
-		out = append(out, model.Import{Path: path, Name: name})
+		out = append(out, plugin.Import{Path: path, Name: name})
 	}
 
-	slices.SortFunc(out, func(a, b model.Import) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortFunc(out, func(a, b plugin.Import) int { return strings.Compare(a.Path, b.Path) })
 	return out
 }
 
@@ -81,7 +77,7 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
@@ -90,17 +86,17 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // from a package the template already imports — the file would then bind one
 // path twice, which is the mistake the names were passed to prevent, wearing
 // the other face.
-func (Layer) Binds() []model.Import { return taken() }
+func (Layer) Binds() []plugin.Import { return taken() }
 
 // Writes names nothing, because everything this layer writes is about the
 // backing array rather than about what is in it.
 func (Layer) Writes() []string { return nil }
 
 // Kind says where in a stack the layer may appear.
-func (Layer) Kind() model.Kind { return model.KindStorage }
+func (Layer) Kind() plugin.Kind { return plugin.KindStorage }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -117,7 +113,7 @@ func (Layer) Transparent() bool { return true }
 // A slice has nothing to configure. Capacity is a property of one value rather
 // than of the type, so it belongs to whoever builds the value; ordering belongs
 // to the layers above.
-func (Layer) OptionSchema() []layer.OptionDef { return nil }
+func (Layer) OptionSchema() []plugin.OptionDef { return nil }
 
 // Accepts reports whether the layer can sit on the shape beneath it.
 //
@@ -125,7 +121,7 @@ func (Layer) OptionSchema() []layer.OptionDef { return nil }
 // beneath it is the subject and whatever element layers attached to the
 // subject, and none of that is something a container has to be able to do
 // anything with.
-func (Layer) Accepts(shape.Shape) error { return nil }
+func (Layer) Accepts(plugin.Shape) error { return nil }
 
 // Shape returns what the layer exposes to the layer above it.
 //
@@ -133,8 +129,8 @@ func (Layer) Accepts(shape.Shape) error { return nil }
 // underlying type is the slice itself, so reaching an element by position is
 // something the language already does and a method would only be a second way
 // of writing it.
-func (l Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
-	below.Caps = below.Caps.With(shape.Sized, shape.Ordered, shape.Indexed, shape.Streamable)
+func (l Layer) Shape(_ *plugin.Context, below plugin.Shape) plugin.Shape {
+	below.Caps = below.Caps.With(plugin.Sized, plugin.Ordered, plugin.Indexed, plugin.Streamable)
 	return below.WithMethods(l.methods(below.Elem)...)
 }
 
@@ -145,10 +141,10 @@ func (l Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
 // surface derived from a parse would report whatever the template happened to
 // declare, including a helper that is not part of the contract, and the layers
 // above are written against the contract.
-func (l Layer) methods(elem model.TypeRef) []shape.Method {
+func (l Layer) methods(elem plugin.TypeRef) []plugin.Method {
 	seq := "iter.Seq[" + spellElem(elem) + "]"
 
-	return []shape.Method{
+	return []plugin.Method{
 		{Name: "Len", Signature: "() int", Owner: l.Origin(), Doc: "how many elements the container holds"},
 		{Name: "All", Signature: "() " + seq, Owner: l.Origin(), Doc: "walks from the first element to the last"},
 		{Name: "Backward", Signature: "() " + seq, Owner: l.Origin(), Doc: "walks from the last element to the first"},
@@ -170,7 +166,7 @@ func (l Layer) methods(elem model.TypeRef) []shape.Method {
 // stack whose subject could not be modelled has no element at all, and is
 // spelled as the template spells it, which is the honest answer to a question
 // with no answer yet.
-func spellElem(elem model.TypeRef) string {
+func spellElem(elem plugin.TypeRef) string {
 	if elem.Name == "" {
 		return param
 	}
@@ -178,13 +174,13 @@ func spellElem(elem model.TypeRef) string {
 }
 
 // Generate returns the declarations this layer contributes.
-func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
+func (l Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and the
 		// declaration is the thing that is missing. The pipeline never asks a
 		// layer to generate for a model it does not have, so reaching here is
 		// forge calling itself wrongly rather than anybody writing anything.
-		return layer.Unit{}, errors.New("slice: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("slice: asked to generate without a modelled declaration")
 	}
 	if !ctx.Model.Form.Valid() {
 		// Whether the author declared the type decides whether this layer
@@ -192,7 +188,7 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 		// either would be wrong in a package the author cannot edit: guessing
 		// inline leaves methods on a type nothing declares, and guessing spec
 		// declares a type they already have.
-		return layer.Unit{}, fmt.Errorf("slice: asked to generate for %s, which was written in no form", ctx.Model.Name)
+		return plugin.Unit{}, fmt.Errorf("slice: asked to generate for %s, which was written in no form", ctx.Model.Name)
 	}
 
 	// Spelled against what the file will already bind, so that a subject from a
@@ -203,19 +199,19 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 
 	out, diags := l.apply(ctx, subject)
 	if err := diags.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	if wrong := accounted(out.Imports); wrong != "" {
-		return layer.Unit{}, fmt.Errorf("slice: %s", wrong)
+		return plugin.Unit{}, fmt.Errorf("slice: %s", wrong)
 	}
 
 	decls, err := owned(out.Decls, ctx.Model.Form, ctx.Declared())
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: out.Comments,
 		Fset:     out.Fset,
@@ -224,7 +220,7 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 }
 
 // apply specialises the template for one declaration.
-func (Layer) apply(ctx *layer.Context, subject model.Spelling) (templates.Result, diag.Set) {
+func (Layer) apply(ctx *plugin.Context, subject plugin.Spelling) (templates.Result, plugin.Diagnostics) {
 	declared := ctx.Declared()
 
 	return templates.Apply(
@@ -248,7 +244,7 @@ func (Layer) apply(ctx *layer.Context, subject model.Spelling) (templates.Result
 // is the thing that keeps the list from being a comment about a file that has
 // since changed. It fails on the first run of this package's tests, which is
 // where an import added to the template is cheapest to notice.
-func accounted(imports []emit.Import) string {
+func accounted(imports []plugin.Import) string {
 	for _, one := range imports {
 		if _, known := templateImports[one.Path]; !known {
 			return "the template imports " + one.Path + ", which nothing recorded a bound name for"
@@ -263,11 +259,9 @@ func accounted(imports []emit.Import) string {
 // to the name its package already declares is written without it, so that the
 // ordinary case reads the way somebody would have written it by hand and the
 // one line that says domain2 stands out as the thing that needed saying.
-func imported(spelled model.Spelling) []emit.Import {
-	out := make([]emit.Import, 0, len(spelled.Imports))
-	for _, one := range spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+func imported(spelled plugin.Spelling) []plugin.Import {
+	out := make([]plugin.Import, 0, len(spelled.Imports))
+	out = append(out, spelled.Imports...)
 	return out
 }
 
@@ -288,8 +282,8 @@ func imported(spelled model.Spelling) []emit.Import {
 // its documentation both, out of a file whose other declarations still call it.
 // And it must be the last user of no import, since an import nothing names is a
 // file that does not compile.
-func owned(decls []ast.Decl, form model.Form, declared string) ([]ast.Decl, error) {
-	if form != model.FormInline {
+func owned(decls []ast.Decl, form plugin.Form, declared string) ([]ast.Decl, error) {
+	if form != plugin.FormInline {
 		return decls, nil
 	}
 
@@ -324,8 +318,8 @@ func droppable(decl ast.Decl, kept []ast.Decl) string {
 			" types in one group, and the rest are not the author's to leave out"
 	}
 
-	staying := emit.Qualifiers(kept)
-	for named := range emit.Qualifiers([]ast.Decl{decl}) {
+	staying := plugin.Qualifiers(kept)
+	for named := range plugin.Qualifiers([]ast.Decl{decl}) {
 		if !staying[named] {
 			return "it is the only mention of " + named + ", whose import nothing left would use"
 		}
@@ -362,6 +356,6 @@ func constructorFor(declared string) string {
 // lower returns a name with its first letter in lower case, and upper with it
 // in upper case. Between them they turn a declared name into the prefix its
 // helpers take and into the tail of its constructor's name.
-func lower(name string) string { return model.Lower(name) }
+func lower(name string) string { return plugin.Lower(name) }
 
-func upper(name string) string { return model.Upper(name) }
+func upper(name string) string { return plugin.Upper(name) }

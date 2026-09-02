@@ -8,11 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/view"
+	"github.com/okian/forge/plugin"
 )
 
 // The names the generated code gives itself.
@@ -26,11 +23,11 @@ const (
 )
 
 // Generate returns the declarations this layer contributes.
-func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, error) {
+func (l Layer) Generate(ctx *plugin.Context, below plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and a call
 		// with no declaration in it has none to point at.
-		return layer.Unit{}, fmt.Errorf("%s: asked to generate against no declaration", container)
+		return plugin.Unit{}, fmt.Errorf("%s: asked to generate against no declaration", container)
 	}
 
 	// A surface spells its element bare, and the view forwards those spellings
@@ -46,7 +43,7 @@ func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, erro
 	// write down bare, and a check that asked the looser question would pass it
 	// through and emit a scope forwarding a name nothing here declares.
 	if !ctx.Model.Subject.Attachable(local(ctx)) {
-		return layer.Unit{}, fmt.Errorf(
+		return plugin.Unit{}, fmt.Errorf(
 			"%s: %s holds a subject the package being generated into cannot name, and the "+
 				"methods a scope forwards are written with the name the stack below uses",
 			container, ctx.Model.Name)
@@ -58,7 +55,7 @@ func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, erro
 		view:     viewName(ctx),
 		elem:     elem(ctx),
 		below:    below,
-		sized:    below.Caps.Has(shape.Sized),
+		sized:    below.Caps.Has(plugin.Sized),
 		locker:   locker(ctx),
 		locked:   lockedWrite(ctx),
 		encodes:  encodes(below),
@@ -66,12 +63,12 @@ func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, erro
 	}
 
 	if err := offered(held); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	scope, err := scoped(held)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	w := &strings.Builder{}
@@ -114,11 +111,11 @@ type plan struct {
 	elem     string
 
 	// below is the stack beneath the lock, which is what the view forwards to.
-	below shape.Shape
+	below plugin.Shape
 
 	// holds is how the container beneath the lock is made, and is nothing where
 	// its zero value is already one.
-	holds *layer.Constructor
+	holds *plugin.Constructor
 
 	// sized records that the stack beneath can be counted, locker that the
 	// author asked for the lock itself, locked that they asked for encoding to
@@ -169,7 +166,7 @@ func offered(held plan) error {
 //
 // The element is spelled bare on both sides: a surface writes it that way, and
 // this layer refuses a subject the package cannot write that way at all.
-func walked(held plan, one shape.Method) error {
+func walked(held plan, one plugin.Method) error {
 	want := sequenceOpens + held.elem + "]"
 
 	params, results, err := one.Rendered()
@@ -181,7 +178,7 @@ func walked(held plan, one shape.Method) error {
 
 // counted checks the method a count is forwarded to, which is matched whole:
 // there is one spelling of a count, and int64 is not it.
-func counted(held plan, one shape.Method) error {
+func counted(held plan, one plugin.Method) error {
 	params, results, err := one.Rendered()
 	if err != nil || len(params) != 0 || len(results) != 1 || results[0] != countResult {
 		return notTheContract(held, one, length+"() "+countResult)
@@ -197,7 +194,7 @@ func missing(held plan, name, because string) error {
 
 // notTheContract reports a method offered under a name a lock writes over, in a
 // shape it cannot write over.
-func notTheContract(held plan, one shape.Method, want string) error {
+func notTheContract(held plan, one plugin.Method, want string) error {
 	return fmt.Errorf(
 		"%s: %s cannot be locked: the %s layer offers %s%s, and a lock is written over %s",
 		container, held.declared, one.Owner.Name, one.Name, one.Signature, want)
@@ -299,7 +296,7 @@ func constructorFor(declared string) string {
 	if first, _ := utf8.DecodeRuneInString(declared); unicode.IsUpper(first) {
 		return "New" + declared
 	}
-	return "new" + model.Upper(declared)
+	return "new" + plugin.Upper(declared)
 }
 
 // ready says what the zero value of the declared type is good for, which is
@@ -438,20 +435,20 @@ func (p plan) exposing(w *strings.Builder) {
 }
 
 // assembled reads the written declarations back.
-func assembled(source string, held plan) (layer.Unit, error) {
+func assembled(source string, held plan) (plugin.Unit, error) {
 	fset := token.NewFileSet()
 
 	file, err := parser.ParseFile(fset, "guarded.go", "package forge\n\n"+source, parser.ParseComments)
 	if err != nil {
-		return layer.Unit{}, fmt.Errorf("%s: what was written for %s is not valid Go: %w",
+		return plugin.Unit{}, fmt.Errorf("%s: what was written for %s is not valid Go: %w",
 			container, held.declared, err)
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    file.Decls,
 		Comments: file.Comments,
 		Fset:     fset,
-		Imports:  emit.Reaching(file.Decls, imports()),
+		Imports:  plugin.Reaching(file.Decls, imports()),
 	}, nil
 }
 
@@ -469,13 +466,11 @@ func assembled(source string, held plan) (layer.Unit, error) {
 // they were two lists is the day one of them would be missing a path: the
 // spelling would not move a subject out of the way of a name the file went on
 // to bind, and nothing would notice until somebody's package was called slices.
-func imports() []emit.Import {
+func imports() []plugin.Import {
 	held := Layer{}.Binds()
 
-	out := make([]emit.Import, 0, len(held))
-	for _, one := range held {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+	out := make([]plugin.Import, 0, len(held))
+	out = append(out, held...)
 
 	return out
 }
@@ -487,4 +482,4 @@ func imports() []emit.Import {
 // it belongs to — so the only package a forwarded signature can name is the one
 // every walk names. Which is also the reason this layer refuses a subject the
 // file cannot spell that way: see [Layer.Generate].
-func naming() []model.Import { return []model.Import{stdIter} }
+func naming() []plugin.Import { return []plugin.Import{stdIter} }

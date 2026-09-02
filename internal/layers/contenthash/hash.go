@@ -9,11 +9,8 @@ import (
 	"go/token"
 	"slices"
 
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/embedded"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // container is the marker this layer claims.
@@ -43,7 +40,7 @@ var arithmetic []byte
 // Written down rather than read off the file, so that an import added to it is
 // a change somebody makes here as well — and so that a run narrows against a
 // list rather than against a second parse of the same bytes.
-var sharedImports = []model.Import{
+var sharedImports = []plugin.Import{
 	{Path: "math", Name: "math"},
 }
 
@@ -58,13 +55,13 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Binds names what this layer's output imports, so that every layer of the
 // stack spells its types against the same set.
 //
 // What the arithmetic imports, which is what the hash is written in terms of.
-func (Layer) Binds() []model.Import { return slices.Clone(sharedImports) }
+func (Layer) Binds() []plugin.Import { return slices.Clone(sharedImports) }
 
 // Writes names the hash this layer puts on the subject.
 func (Layer) Writes() []string { return []string{method} }
@@ -74,10 +71,10 @@ func (Layer) Writes() []string { return []string{method} }
 // An element layer: a hash is about one value rather than about a container of
 // them, which is why its receiver is the subject and why two declarations over
 // one subject share what it produces.
-func (Layer) Kind() model.Kind { return model.KindElement }
+func (Layer) Kind() plugin.Kind { return plugin.KindElement }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -90,10 +87,10 @@ func (Layer) Doc() string {
 // says is that a field takes no part in the value's identity, and that is a
 // fact about the field — a cached total, a timestamp of when the value was
 // read, a mutex — so it belongs where somebody changing the field will see it.
-func (Layer) OptionSchema() []layer.OptionDef {
-	return []layer.OptionDef{
+func (Layer) OptionSchema() []plugin.OptionDef {
+	return []plugin.OptionDef{
 		{
-			Key: optionIgnore, Scope: layer.ScopeField, Value: layer.ValueNone,
+			Key: optionIgnore, Scope: plugin.ScopeField, Value: plugin.ValueNone,
 			Doc: "leave this field out of the hash, because it is not part of what the value is",
 		},
 	}
@@ -104,7 +101,7 @@ func (Layer) OptionSchema() []layer.OptionDef {
 // It always can. A hash is taken of whatever the subject turns out to be: a
 // struct is its fields, and a name over a number is the number — which is a
 // true answer rather than a missing one, and the one an enumeration will want.
-func (Layer) Accepts(shape.Shape) error { return nil }
+func (Layer) Accepts(plugin.Shape) error { return nil }
 
 // Shape returns what the layer exposes to the layer above it.
 //
@@ -112,23 +109,23 @@ func (Layer) Accepts(shape.Shape) error { return nil }
 // have a stable identity, which is what a set or a lookup map needs to know,
 // and learns no method names that are not its to call: the hash goes on the
 // subject, and a surface describes the declared type.
-func (Layer) Shape(_ *layer.Context, below shape.Shape) shape.Shape {
-	below.Caps = below.Caps.With(shape.Comparable)
+func (Layer) Shape(_ *plugin.Context, below plugin.Shape) plugin.Shape {
+	below.Caps = below.Caps.With(plugin.Comparable)
 	return below
 }
 
 // Generate returns the hash for the subject and everything it reaches.
-func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
+func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
 		// Not a diagnostic: a diagnostic points at a declaration, and the
 		// declaration is what is missing. Reaching here is forge calling itself
 		// wrongly rather than anybody writing anything.
-		return layer.Unit{}, errors.New("hash: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("hash: asked to generate without a modelled declaration")
 	}
 
 	held := ctx.Model.Subject
 	if !held.Reachable() {
-		return layer.Unit{}, fmt.Errorf("hash: %s cannot be named from the package being generated into",
+		return plugin.Unit{}, fmt.Errorf("hash: %s cannot be named from the package being generated into",
 			ctx.Model.Name)
 	}
 
@@ -136,7 +133,7 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	built.plan(held)
 
 	if err := built.diags.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	return provided(built)
@@ -149,38 +146,38 @@ func (Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 // over one subject and each contribute something about it: keyed by the type
 // alone the package would keep whichever arrived first and drop the other,
 // leaving generated code calling a function nothing declares.
-func provided(built *planner) (layer.Unit, error) {
-	out := make(map[string]layer.Unit, len(built.plans)+1)
+func provided(built *planner) (plugin.Unit, error) {
+	out := make(map[string]plugin.Unit, len(built.plans)+1)
 
 	arithmetic, err := shared()
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 	out[sharedKey] = arithmetic
 
 	for _, held := range built.written() {
-		unit, err := hashFor(held, model.Through(held.of, verb, "", built.into))
+		unit, err := hashFor(held, plugin.Through(held.of, verb, "", built.into))
 		if err != nil {
-			return layer.Unit{}, err
+			return plugin.Unit{}, err
 		}
 		out[verb+": "+key(held.of.Type())] = unit
 	}
 
-	return layer.Unit{Provides: out}, nil
+	return plugin.Unit{Provides: out}, nil
 }
 
 // shared returns the arithmetic as a contribution the package holds once.
-func shared() (layer.Unit, error) {
+func shared() (plugin.Unit, error) {
 	unit, err := embedded.Unit("shared.go", arithmetic, sharedImports)
 	if err != nil {
-		return layer.Unit{}, fmt.Errorf("hash: %w", err)
+		return plugin.Unit{}, fmt.Errorf("hash: %w", err)
 	}
 	return unit, nil
 }
 
 // hashFor builds the declarations for one type's hash, under the name
 // everything generated calls it by.
-func hashFor(held *plan, name string) (layer.Unit, error) {
+func hashFor(held *plan, name string) (plugin.Unit, error) {
 	w := &writer{}
 
 	if held.attach {
@@ -190,10 +187,10 @@ func hashFor(held *plan, name string) (layer.Unit, error) {
 
 	decls, comments, fset, err := parsed(w.String(), held.spelled.Text)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: comments,
 		Fset:     fset,
@@ -221,17 +218,15 @@ func parsed(source, about string) ([]ast.Decl, []*ast.CommentGroup, *token.FileS
 // Gathered wide and then narrowed to what the declarations name, which is the
 // bargain every generated file makes: one missing an import does not compile,
 // and neither does one carrying an import it never names.
-func needed(held *plan, decls []ast.Decl) []emit.Import {
-	out := make([]emit.Import, 0, len(held.spelled.Imports))
-	for _, one := range held.spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+func needed(held *plan, decls []ast.Decl) []plugin.Import {
+	out := make([]plugin.Import, 0, len(held.spelled.Imports))
+	out = append(out, held.spelled.Imports...)
 	for _, one := range held.fields {
 		out = append(out, reaching(one.of)...)
 	}
 	out = append(out, reaching(held.value)...)
 
-	return emit.Reaching(decls, out)
+	return plugin.Reaching(decls, out)
 }
 
 // reaching returns the imports one form's own spelling and everything under it
@@ -241,15 +236,13 @@ func needed(held *plan, decls []ast.Decl) []emit.Import {
 // question of what the form turned out to be rather than of what was written —
 // so the candidates are gathered from every form beneath and narrowed against
 // the declarations that were actually written.
-func reaching(of *form) []emit.Import {
+func reaching(of *form) []plugin.Import {
 	if of == nil {
 		return nil
 	}
 
-	out := make([]emit.Import, 0, len(of.spelled.Imports)+1)
-	for _, one := range of.spelled.Imports {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+	out := make([]plugin.Import, 0, len(of.spelled.Imports)+1)
+	out = append(out, of.spelled.Imports...)
 
 	out = append(out, reaching(of.key)...)
 	out = append(out, reaching(of.elem)...)

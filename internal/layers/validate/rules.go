@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // tagKey is the struct tag key the rules are read from.
@@ -201,7 +201,7 @@ var applies = map[string]wants{
 // What is wrong with the tag is not reported here. Whoever asks this is asking
 // which fields are mandatory, and a tag that does not parse is this layer's to
 // complain about — twice over would be twice reported.
-func Demands(field model.Field) bool {
+func Demands(field plugin.Field) bool {
 	tag, tagged := field.Tag(tagKey)
 	if !tagged || tag.Raw == "" {
 		return false

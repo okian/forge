@@ -55,35 +55,48 @@ func (d Declaration) String() string {
 	return strings.TrimSpace(d.Candidate.Name + " " + above + model.TypeString(d.Subject) + strings.Repeat("]", open))
 }
 
-// Declarations resolves every candidate against the markers forge ships,
+// Claims reports whether any layer of the run claims this marker.
+//
+// A predicate rather than the registry, so that following a declaration does
+// not need to know what a layer is: what resolution asks is which of the types
+// in a nested instantiation are markers, and the answer is whoever claimed
+// them.
+type Claims func(model.TypeRef) bool
+
+// Declarations resolves every candidate against the markers the run knows,
 // preserving their order, which discovery has already made deterministic. It
 // returns the candidates that name a stack, together with the diagnostics for
 // those that name a broken one.
+//
+// What counts as a marker is what a layer claims, not what package it came
+// from. Forge's own markers are declared together and claimed by the layers it
+// ships; a layer somebody added declares its marker in its own package and
+// claims that, and a declaration naming it is followed exactly as one naming
+// forge's is. Asking the package instead would make the extension point
+// unreachable: the type would not be recognised, the walk would end at it, and
+// the declaration would be dropped without a word.
 //
 // A candidate that names no marker is dropped without comment: a defined type
 // over a generic type of the author's own is an ordinary Go declaration, and
 // forge has nothing to say about it. That holds however deep the instantiation
 // goes — a marker written inside such a type is not a stack either, because the
 // outermost type is the one that would have to build it.
-func Declarations(candidates []discover.Candidate) ([]Declaration, diag.Set) {
-	return declarations(candidates, model.MarkerPkg)
-}
-
-// declarations resolves against an arbitrary marker package.
-//
-// The package is a parameter rather than the constant because one rule cannot
-// be reached through the markers forge ships: every one of them takes a single
-// type argument, so nothing written against them can break the rule that says
-// so. A package that does break it is the only way to see that diagnostic, and
-// a seam no release uses is cheaper than a marker no release wants.
-func declarations(candidates []discover.Candidate, markers string) ([]Declaration, diag.Set) {
+func Declarations(candidates []discover.Candidate, claims Claims) ([]Declaration, diag.Set) {
 	var (
 		found []Declaration
 		diags diag.Set
 	)
 
+	if claims == nil {
+		// Nothing claims anything, so nothing is a stack. Answered rather than
+		// panicked over: a caller with no registry has asked a question whose
+		// answer is none, and a resolver that crashed on it would be worse than
+		// one that agreed.
+		return nil, diags
+	}
+
 	for _, candidate := range candidates {
-		if decl, ok := resolve(candidate, markers, &diags); ok {
+		if decl, ok := resolve(candidate, claims, &diags); ok {
 			found = append(found, decl)
 		}
 	}
@@ -93,7 +106,7 @@ func declarations(candidates []discover.Candidate, markers string) ([]Declaratio
 
 // resolve follows one candidate, reporting what is wrong with it and returning
 // whether it named a stack at all.
-func resolve(candidate discover.Candidate, markers string, diags *diag.Set) (Declaration, bool) {
+func resolve(candidate discover.Candidate, claims Claims, diags *diag.Set) (Declaration, bool) {
 	if candidate.Pkg == nil || candidate.Pkg.TypesInfo == nil || candidate.Spec == nil {
 		return Declaration{}, false
 	}
@@ -110,7 +123,7 @@ func resolve(candidate discover.Candidate, markers string, diags *diag.Set) (Dec
 	var stack []model.LayerRef
 	for {
 		named, ok := current.(*types.Named)
-		if !ok || !marker(named, markers) {
+		if !ok || !marker(named, claims) {
 			break
 		}
 
@@ -137,11 +150,15 @@ func resolve(candidate discover.Candidate, markers string, diags *diag.Set) (Dec
 	return Declaration{Candidate: candidate, Stack: stack, Subject: current}, true
 }
 
-// marker reports whether a named type comes from the package the markers a
-// stack is written against are declared in.
-func marker(named *types.Named, markers string) bool {
-	pkg := named.Obj().Pkg()
-	return pkg != nil && pkg.Path() == markers
+// marker reports whether a named type is one a layer of this run claims.
+//
+// A type with no package is not one: a marker is a declared type, and the ones
+// without a package are the predeclared identifiers, which nothing claims.
+func marker(named *types.Named, claims Claims) bool {
+	if pkg := named.Obj().Pkg(); pkg == nil {
+		return false
+	}
+	return claims(origin(named))
 }
 
 // arity builds the diagnostic for a marker written with more than the one type

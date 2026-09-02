@@ -36,6 +36,15 @@ const (
 
 	// CategoryToolchain covers input, output and the toolchain: FRG5xxx.
 	CategoryToolchain
+
+	// CategoryLayer covers everything a layer forge does not ship reports:
+	// FRG6xxx and above.
+	//
+	// One category for all of them rather than a range each, because forge
+	// cannot hand out ranges to code it has never seen and a reader placing a
+	// failure by its number wants to know only that it came from a layer
+	// somebody added. Which layer is in the message.
+	CategoryLayer
 )
 
 // categoryNames gives each category the noun used when describing a range.
@@ -46,6 +55,7 @@ var categoryNames = [...]string{
 	CategoryOptions:     "options",
 	CategoryEmission:    "emission",
 	CategoryToolchain:   "toolchain",
+	CategoryLayer:       "layer",
 }
 
 // String returns the category's lower-case name.
@@ -58,19 +68,37 @@ func (c Category) String() string {
 
 // Code range boundaries. Every code lives in exactly one reserved range, which
 // is what lets a reader place a failure from its number alone.
+//
+// Forge's own end at 5999. Everything above belongs to layers forge does not
+// ship, which is why there is a ceiling at all rather than none: a code has to
+// have four digits to be printed as one, and a code of no category could not be
+// placed by a reader or listed beside the others.
 const (
 	minCode Code = 1000
-	maxCode Code = 5999
+	forges  Code = 5999
+	maxCode Code = 9999
 )
 
 // Category returns the reserved range the code falls in, or CategoryInvalid
 // for a code outside every range.
 func (c Code) Category() Category {
-	if c < minCode || c > maxCode {
+	switch {
+	case c < minCode || c > maxCode:
 		return CategoryInvalid
+	case c > forges:
+		return CategoryLayer
+	default:
+		return Category(c / 1000)
 	}
-	return Category(c / 1000)
 }
+
+// Ours reports whether a code is one forge itself reports.
+//
+// What it is for is telling a reader where to look. A failure forge raised is
+// forge's to explain and is documented with the rest; one a layer raised is
+// that layer's, and pointing at forge's index for it would send somebody to the
+// wrong place.
+func (c Code) Ours() bool { return c >= minCode && c <= forges }
 
 // String returns the code as it is printed and referred to, "FRG1003".
 func (c Code) String() string { return fmt.Sprintf("FRG%04d", int(c)) }

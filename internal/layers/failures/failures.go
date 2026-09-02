@@ -18,9 +18,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/embedded"
-	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/plugin"
 )
 
 // The keys the two contributions are made under.
@@ -58,7 +57,7 @@ var (
 // Written down rather than read off the files, so that an import added to one
 // of them is a change somebody makes here as well — and so that what a run
 // narrows against is a list rather than a parse of the same bytes twice.
-var binds = []model.Import{
+var binds = []plugin.Import{
 	{Path: "errors", Name: "errors"},
 	{Path: "strconv", Name: "strconv"},
 	{Path: "strings", Name: "strings"},
@@ -69,24 +68,24 @@ var binds = []model.Import{
 //
 // A copy, because the caller folds it into a union and a shared slice appended
 // to is a shared slice changed for everybody who holds it.
-func Binds() []model.Import { return slices.Clone(binds) }
+func Binds() []plugin.Import { return slices.Clone(binds) }
 
 // Unit returns the failure types as a contribution the package holds once.
-func Unit() (layer.Unit, error) {
+func Unit() (plugin.Unit, error) {
 	return carried("shared.go", reported)
 }
 
 // Nested returns the folding a check needs, which is contributed beside the
 // types rather than with them.
-func Nested() (layer.Unit, error) {
+func Nested() (plugin.Unit, error) {
 	return carried("nested.go", folding)
 }
 
 // carried turns one of the files into a contribution.
-func carried(name string, source []byte) (layer.Unit, error) {
+func carried(name string, source []byte) (plugin.Unit, error) {
 	unit, err := embedded.Unit(name, source, binds)
 	if err != nil {
-		return layer.Unit{}, fmt.Errorf("failures: %w", err)
+		return plugin.Unit{}, fmt.Errorf("failures: %w", err)
 	}
 	return unit, nil
 }

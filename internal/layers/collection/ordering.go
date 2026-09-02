@@ -5,7 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // The two positions Less and Swap are written in terms of.
@@ -26,7 +26,7 @@ const (
 // surface that disagreed with the output would leave a method a decorator does
 // not wrap and a name collision detection does not see.
 func sorts(p plan) bool {
-	return len(p.sorts) == 1 && p.beneath.Caps.Has(shape.Indexed)
+	return len(p.sorts) == 1 && p.beneath.Caps.Has(plugin.Indexed)
 }
 
 // sortable returns the two methods that, with the length the storage already

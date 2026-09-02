@@ -6,12 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/jsoncodec"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // refusedPkg is the fixture package holding what cannot be generated for.
@@ -63,7 +60,7 @@ func TestWhatACodecRefusesToWrite(t *testing.T) {
 			// part of what an error prints — it is rendered beneath the
 			// message, where an author reads it — so checking the string would
 			// pass for a refusal that carried no hint at all.
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}
@@ -89,7 +86,7 @@ func TestWhereARefusalPoints(t *testing.T) {
 		t.Fatal("a codec was written for a field nothing can see through")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}
@@ -144,12 +141,12 @@ func generating(t *testing.T, pkgPath, name string) error {
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	_, err := jsoncodec.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	_, err := jsoncodec.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: pkg, Pos: token.Position{Filename: "refused.go"},
 		},
-	}, shape.Shape{})
+	}, plugin.Shape{})
 
 	return err
 }

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/goldentest"
+	"github.com/okian/forge/plugin"
 )
 
 // Every exported field gets a setter named after it, answering with the builder
@@ -202,7 +202,7 @@ func TestAFieldWhoseTypeHasNoNameHere(t *testing.T) {
 		t.Fatal("a setter was written with a signature nothing here could name")
 	}
 
-	reported, ok := diag.From(err)
+	reported, ok := plugin.From(err)
 	if !ok {
 		t.Fatalf("%v is not a diagnostic", err)
 	}
@@ -251,7 +251,7 @@ func TestWhatABuilderRefuses(t *testing.T) {
 				t.Fatalf("a builder was written for %s", name)
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}

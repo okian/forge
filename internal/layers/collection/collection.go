@@ -9,13 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/shared/seq"
 	"github.com/okian/forge/internal/templates"
+	"github.com/okian/forge/plugin"
 )
 
 // What a declaration can ask for that this layer cannot generate.
@@ -26,14 +22,14 @@ import (
 // field names one; whether the field will do is a question only the layer that
 // would generate from it can answer.
 var (
-	codeSortNotOrdered  = diag.Register(3013, "field cannot be ordered")
-	codeIndexNotKeyable = diag.Register(3014, "field cannot be a map key")
-	codeFieldUnexported = diag.Register(3015, "field cannot be read from the generated package")
+	codeSortNotOrdered  = plugin.Register(3013, "field cannot be ordered")
+	codeIndexNotKeyable = plugin.Register(3014, "field cannot be a map key")
+	codeFieldUnexported = plugin.Register(3015, "field cannot be read from the generated package")
 
 	// The last is not a 3xxx. An option may have named one of the two names and
 	// no option can un-name the other, and what it produces is a package
 	// holding one declaration twice.
-	codeNamesCollide = diag.Register(4101, "two generated names are one")
+	codeNamesCollide = plugin.Register(4101, "two generated names are one")
 )
 
 // bodies is the template this layer emits the field-independent half of.
@@ -82,13 +78,13 @@ type Layer struct{}
 func New() Layer { return Layer{} }
 
 // Origin identifies the marker this layer claims.
-func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: container} }
+func (Layer) Origin() plugin.TypeRef { return plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: container} }
 
 // Kind says where in a stack the layer may appear.
-func (Layer) Kind() model.Kind { return model.KindRefining }
+func (Layer) Kind() plugin.Kind { return plugin.KindRefining }
 
 // Stage says how far along the layer is.
-func (Layer) Stage() layer.Stage { return layer.StageReady }
+func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
@@ -101,11 +97,11 @@ func (Layer) Doc() string {
 func (Layer) Transparent() bool { return true }
 
 // OptionSchema declares every option the layer accepts.
-func (Layer) OptionSchema() []layer.OptionDef {
-	return []layer.OptionDef{
-		{Key: "sort", Value: layer.ValueFields, Doc: "fields to generate a sorted view for"},
-		{Key: "index", Value: layer.ValueFields, Doc: "fields to generate a lookup map for"},
-		{Key: "seq", Value: layer.ValueString, Doc: "name for the generated sequence view, when the default collides"},
+func (Layer) OptionSchema() []plugin.OptionDef {
+	return []plugin.OptionDef{
+		{Key: "sort", Value: plugin.ValueFields, Doc: "fields to generate a sorted view for"},
+		{Key: "index", Value: plugin.ValueFields, Doc: "fields to generate a lookup map for"},
+		{Key: "seq", Value: plugin.ValueString, Doc: "name for the generated sequence view, when the default collides"},
 	}
 }
 
@@ -115,10 +111,10 @@ func (Layer) OptionSchema() []layer.OptionDef {
 // it generates is a question asked of the elements in order, which is what
 // being streamable means — asking for a length as well would narrow it to the
 // storages that count without buying anything the answers need.
-func (Layer) Accepts(below shape.Shape) error {
-	if !below.Caps.Has(shape.Streamable) {
+func (Layer) Accepts(below plugin.Shape) error {
+	if !below.Caps.Has(plugin.Streamable) {
 		return fmt.Errorf("%s needs the stack beneath it to be %s, and it is %s",
-			container, shape.Streamable, below.Caps)
+			container, plugin.Streamable, below.Caps)
 	}
 	return nil
 }
@@ -142,9 +138,9 @@ func (Layer) Accepts(below shape.Shape) error {
 // caller asking what a layer would emit for a declaration that cannot be
 // generated wants the description it can have rather than a second copy of the
 // reason — which the run is about to print anyway.
-func (l Layer) Shape(ctx *layer.Context, below shape.Shape) shape.Shape {
+func (l Layer) Shape(ctx *plugin.Context, below plugin.Shape) plugin.Shape {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
-		return below.WithMethods(shape.Method{
+		return below.WithMethods(plugin.Method{
 			Name:  "Seq",
 			Owner: l.Origin(),
 			Doc:   "Seq returns a lazy view over the elements, named after the declared type.",
@@ -157,9 +153,9 @@ func (l Layer) Shape(ctx *layer.Context, below shape.Shape) shape.Shape {
 }
 
 // Generate returns the declarations this layer contributes.
-func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, error) {
+func (l Layer) Generate(ctx *plugin.Context, below plugin.Shape) (plugin.Unit, error) {
 	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil {
-		return layer.Unit{}, errors.New("collection: asked to generate without a modelled declaration")
+		return plugin.Unit{}, errors.New("collection: asked to generate without a modelled declaration")
 	}
 
 	surface, diags := planned(ctx, below)
@@ -168,43 +164,43 @@ func (l Layer) Generate(ctx *layer.Context, below shape.Shape) (layer.Unit, erro
 	diags.Merge(&clashes)
 
 	if err := diags.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	out, refused := l.apply(ctx, surface)
 	if err := refused.Err(); err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	if wrong := accounted(out.Imports); wrong != "" {
-		return layer.Unit{}, fmt.Errorf("collection: %s", wrong)
+		return plugin.Unit{}, fmt.Errorf("collection: %s", wrong)
 	}
 
 	built, err := surface.build()
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	shared, err := helpers(out.Decls, surface)
 	if err != nil {
-		return layer.Unit{}, err
+		return plugin.Unit{}, err
 	}
 
 	// Built first, then the helpers they call, which is the order a reader
 	// wants: what the declaration gained, and then how it works.
 	decls := slices.Concat(built, shared)
 
-	return layer.Unit{
+	return plugin.Unit{
 		Decls:    decls,
 		Comments: out.Comments,
 		Fset:     out.Fset,
-		Imports:  append(emit.Reaching(decls, out.Imports), imported(surface.imports())...),
-		Requires: []model.TypeRef{seq.Ref(surface.pkg)},
+		Imports:  append(plugin.Reaching(decls, out.Imports), imported(surface.imports())...),
+		Requires: []plugin.TypeRef{seq.Ref(surface.pkg)},
 	}, nil
 }
 
 // apply specialises the template's half of the output.
-func (Layer) apply(ctx *layer.Context, surface plan) (templates.Result, diag.Set) {
+func (Layer) apply(ctx *plugin.Context, surface plan) (templates.Result, plugin.Diagnostics) {
 	return templates.Apply(
 		templates.Template{Name: "collection", Source: bodies},
 		templates.Rewrite{
@@ -258,7 +254,7 @@ func helpers(decls []ast.Decl, surface plan) ([]ast.Decl, error) {
 }
 
 // accounted reports a template import nothing wrote down, or nothing.
-func accounted(imports []emit.Import) string {
+func accounted(imports []plugin.Import) string {
 	for _, one := range imports {
 		if _, known := templateImports[one.Path]; !known {
 			return "the template imports " + one.Path + ", which nothing recorded a bound name for"
@@ -274,7 +270,7 @@ func accounted(imports []emit.Import) string {
 // already has rather than being aliased away from it — an alias there would
 // leave one path bound twice across the file, since the storage layer beneath
 // binds it under its own name.
-func (Layer) Binds() []model.Import { return taken() }
+func (Layer) Binds() []plugin.Import { return taken() }
 
 // Writes names nothing, because everything this layer writes is about the
 // container rather than about what is in it.
@@ -282,13 +278,13 @@ func (Layer) Writes() []string { return nil }
 
 // taken returns what the template's imports bind, sorted so that what is built
 // from them does not depend on the order a map was walked in.
-func taken() []model.Import {
-	out := make([]model.Import, 0, len(templateImports))
+func taken() []plugin.Import {
+	out := make([]plugin.Import, 0, len(templateImports))
 	for path, name := range templateImports {
-		out = append(out, model.Import{Path: path, Name: name})
+		out = append(out, plugin.Import{Path: path, Name: name})
 	}
 
-	slices.SortFunc(out, func(a, b model.Import) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortFunc(out, func(a, b plugin.Import) int { return strings.Compare(a.Path, b.Path) })
 	return out
 }
 
@@ -298,11 +294,9 @@ func taken() []model.Import {
 // decided by Aliased, and the name itself is what says which package a
 // qualified identifier in the file refers to — a question asked of the file
 // later, by anything working out which of its imports it still needs.
-func imported(needed []model.Import) []emit.Import {
-	out := make([]emit.Import, 0, len(needed))
-	for _, one := range needed {
-		out = append(out, emit.Import{Path: one.Path, Name: one.Name, Aliased: one.Aliased})
-	}
+func imported(needed []plugin.Import) []plugin.Import {
+	out := make([]plugin.Import, 0, len(needed))
+	out = append(out, needed...)
 	return out
 }
 

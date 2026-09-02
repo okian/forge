@@ -8,12 +8,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/load"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // agreement is the test that runs inside the generated module, comparing what
@@ -86,7 +84,7 @@ func sortedKeys[V any](held map[string]V) []string {
 }
 
 // codecUnit asks the layer for one fixture subject's codec and returns it.
-func codecUnit(t *testing.T, pkgPath, name string) layer.Unit {
+func codecUnit(t *testing.T, pkgPath, name string) plugin.Unit {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -115,12 +113,12 @@ func codecUnit(t *testing.T, pkgPath, name string) layer.Unit {
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	unit, err := jsoncodec.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: name, Form: model.FormInline, Subject: built,
+	unit, err := jsoncodec.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: name, Form: plugin.FormInline, Subject: built,
 			Pkg: pkg, Pos: token.Position{Filename: "person.go"},
 		},
-	}, shape.Shape{})
+	}, plugin.Shape{})
 	if err != nil {
 		t.Fatalf("generating a codec for %s: %v", name, err)
 	}

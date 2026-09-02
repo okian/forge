@@ -4,10 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/contenthash"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // A subject no method can be attached to is refused, and the refusal says which
@@ -19,9 +17,9 @@ import (
 // itself, and a layer that returned the zero unit and no error here would emit
 // nothing at all and say nothing about why.
 func TestAHashIsRefusedForASubjectItCannotName(t *testing.T) {
-	_, err := contenthash.New().Generate(&layer.Context{
-		Model: &model.Model{Name: "Elsewhere", Subject: &model.Struct{}},
-	}, shape.Shape{})
+	_, err := contenthash.New().Generate(&plugin.Context{
+		Model: &plugin.Model{Name: "Elsewhere", Subject: &plugin.Struct{}},
+	}, plugin.Shape{})
 
 	if err == nil {
 		t.Fatal("generating for a subject with no name of its own: want an error, got none")

@@ -5,7 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 
-	"github.com/okian/forge/internal/emit"
+	"github.com/okian/forge/plugin"
 )
 
 // A generated method of this layer is one expression: it hands one of the
@@ -183,7 +183,7 @@ func comment(text string) *ast.CommentGroup {
 	}
 
 	var lines []*ast.Comment
-	for _, line := range emit.Wrapped(text, emit.CommentWidth) {
+	for _, line := range plugin.Wrapped(text, plugin.CommentWidth) {
 		lines = append(lines, &ast.Comment{Text: "// " + line})
 	}
 	return &ast.CommentGroup{List: lines}

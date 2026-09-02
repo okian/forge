@@ -47,7 +47,7 @@ func candidates(t *testing.T) []discover.Candidate {
 func resolved(t *testing.T) []resolve.Declaration {
 	t.Helper()
 
-	found, diags := resolve.Declarations(candidates(t))
+	found, diags := resolve.Declarations(candidates(t), forges)
 	if !diags.Empty() {
 		t.Fatalf("fixture does not resolve clean:\n%s", diags.Render())
 	}
@@ -163,7 +163,7 @@ func TestTheSubjectIsWhateverWasWrittenInnermost(t *testing.T) {
 // A declaration over a generic type of the author's own is an ordinary Go
 // declaration. Dropping it is right; saying anything about it is not.
 func TestDeclarationsNamingNoMarkerAreDroppedInSilence(t *testing.T) {
-	decls, diags := resolve.Declarations(candidates(t))
+	decls, diags := resolve.Declarations(candidates(t), forges)
 
 	if !diags.Empty() {
 		t.Fatalf("resolution reported something:\n%s", diags.Render())
@@ -220,7 +220,7 @@ func TestStackEntriesCarryOriginsOnly(t *testing.T) {
 // A layer takes exactly one type argument, and a marker package forge does not
 // ship is the only place a second one can come from.
 func TestMarkerWithTwoTypeArgumentsIsReported(t *testing.T) {
-	decls, diags := resolve.DeclarationsAgainst(fixtureMarkers, candidates(t))
+	decls, diags := resolve.Declarations(candidates(t), fixture)
 
 	// The declarations beside it still resolve, so the report is about the one
 	// declaration and not about the package.
@@ -284,8 +284,8 @@ func TestMarkerWithTwoTypeArgumentsIsReported(t *testing.T) {
 func TestTheDefaultIsTheShippedMarkerPackage(t *testing.T) {
 	found := candidates(t)
 
-	implicit, _ := resolve.Declarations(found)
-	explicit, _ := resolve.DeclarationsAgainst(model.MarkerPkg, found)
+	implicit, _ := resolve.Declarations(found, forges)
+	explicit, _ := resolve.Declarations(found, forges)
 
 	if !slices.Equal(names(implicit), names(explicit)) {
 		t.Fatalf("resolving against %s gave %v, want %v", model.MarkerPkg, names(explicit), names(implicit))
@@ -295,7 +295,7 @@ func TestTheDefaultIsTheShippedMarkerPackage(t *testing.T) {
 // A type from the marker package that is not generic was never applied to
 // anything, so it is where a stack ends and not a layer written wrong.
 func TestANonGenericMarkerTypeIsASubject(t *testing.T) {
-	decls, _ := resolve.DeclarationsAgainst(fixtureMarkers, candidates(t))
+	decls, _ := resolve.Declarations(candidates(t), fixture)
 
 	if got, want := find(t, decls, "Opaques").String(), "Opaques Collection[Opaque]"; got != want {
 		t.Errorf("Opaques resolved to %q, want %q", got, want)
@@ -310,7 +310,7 @@ func TestCandidatesWithNothingToFollowAreDropped(t *testing.T) {
 	// broken to type-check leaves behind.
 	unresolvable.Spec = &ast.TypeSpec{Name: ast.NewIdent("People"), Type: ast.NewIdent("Missing")}
 
-	decls, diags := resolve.Declarations([]discover.Candidate{{Name: "Empty"}, unresolvable})
+	decls, diags := resolve.Declarations([]discover.Candidate{{Name: "Empty"}, unresolvable}, forges)
 
 	if len(decls) != 0 {
 		t.Errorf("Declarations() = %v, want none", names(decls))
@@ -327,3 +327,16 @@ func TestTheZeroDeclarationRenders(t *testing.T) {
 		t.Errorf("String() = %q, want %q", got, want)
 	}
 }
+
+// forges claims the markers forge ships, which is what its own registry
+// answers.
+//
+// A predicate rather than a registry, because that is what resolution takes:
+// what it asks is which of the types in a nested instantiation a layer claims,
+// and a test saying "the ones from this package" is saying it exactly.
+func forges(ref model.TypeRef) bool { return ref.Pkg == model.MarkerPkg }
+
+// fixture claims the markers the fixture module declares, which is how a rule
+// no forge marker can break is reached: every one of them takes a single type
+// argument, so a marker that takes two has to come from somewhere else.
+func fixture(ref model.TypeRef) bool { return ref.Pkg == fixtureMarkers }

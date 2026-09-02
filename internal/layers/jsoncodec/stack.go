@@ -5,10 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/okian/forge/internal/diag"
-	"github.com/okian/forge/internal/layer"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/plugin"
 )
 
 // codeNotTheContract reports a layer whose streaming methods are not the ones a
@@ -17,7 +14,7 @@ import (
 // A 4xxx, because it is found while deciding what to emit and is about the
 // output rather than about the declaration: nothing the author wrote is wrong,
 // and nothing they can write would fix it.
-var codeNotTheContract = diag.Register(4009,
+var codeNotTheContract = plugin.Register(4009,
 	"a layer's streaming method is not the one a codec is written against")
 
 // contractHint says what to do about one, which is not much: the layer is
@@ -72,7 +69,7 @@ type stack struct {
 	// does not compile.
 	declared string
 	elem     string
-	imports  []model.Import
+	imports  []plugin.Import
 
 	// encodes and decodes are the calls that write and read one element, each
 	// with one verb left for the value's own name. A subject whose codec this
@@ -135,7 +132,7 @@ func (s stack) binding() string {
 // Named after the declaration and unexported, like every other helper a
 // declaration brings with it: it is plumbing for one type's method rather than
 // something a caller reaches.
-func (s stack) counting() string { return model.Lower(s.declared) + "Counting" }
+func (s stack) counting() string { return plugin.Lower(s.declared) + "Counting" }
 
 // streaming works out what codec the stack the declaration composed to can
 // carry.
@@ -149,7 +146,7 @@ func (s stack) counting() string { return model.Lower(s.declared) + "Counting" }
 // rather than an omission. It is what a decorator that withdrew the walk asked
 // for — a lock hands out no sequence, so nothing may be written that walks one
 // — and the decorator owns whatever replaces it.
-func streaming(ctx *layer.Context, of *form) (stack, error) {
+func streaming(ctx *plugin.Context, of *form) (stack, error) {
 	out := stack{declared: ctx.Declared(), elem: of.spelled.Text, imports: of.spelled.Imports}
 
 	switch of.how {
@@ -198,7 +195,7 @@ func streaming(ctx *layer.Context, of *form) (stack, error) {
 }
 
 // walking checks the method a container is written out through.
-func walking(ctx *layer.Context, one shape.Method) error {
+func walking(ctx *plugin.Context, one plugin.Method) error {
 	want := walkMethod + "() " + sequenceOpens + "E]"
 
 	params, results, err := one.Rendered()
@@ -212,7 +209,7 @@ func walking(ctx *layer.Context, one shape.Method) error {
 }
 
 // measuring checks the method a container says how much it can hold through.
-func measuring(ctx *layer.Context, one shape.Method) error {
+func measuring(ctx *plugin.Context, one plugin.Method) error {
 	params, results, err := one.Rendered()
 	if err != nil || len(params) != 0 || len(results) != 1 || results[0] != countResult {
 		return notTheContract(ctx, one, capMethod+"() "+countResult)
@@ -225,7 +222,7 @@ func measuring(ctx *layer.Context, one shape.Method) error {
 //
 // Both are checked before either is used, so that a layer offering one of them
 // in the wrong shape is reported rather than half-generated against.
-func filling(ctx *layer.Context, add, reset shape.Method) (refuses bool, err error) {
+func filling(ctx *plugin.Context, add, reset plugin.Method) (refuses bool, err error) {
 	params, results, err := reset.Rendered()
 	if err != nil || len(params) != 0 || len(results) != 0 {
 		return false, notTheContract(ctx, reset, resetMethod+"()")
@@ -253,8 +250,8 @@ func filling(ctx *layer.Context, add, reset shape.Method) (refuses bool, err err
 // Against the declaration because that is the only position there is: a layer's
 // surface is described in Go rather than written in it, so there is no file to
 // point at. Naming the layer is what stands in for one.
-func notTheContract(ctx *layer.Context, one shape.Method, want string) error {
-	return diag.New(codeNotTheContract, ctx.Model.Pos,
+func notTheContract(ctx *plugin.Context, one plugin.Method, want string) error {
+	return plugin.New(codeNotTheContract, ctx.Model.Pos,
 		"%s cannot be given a JSON codec: the %s layer offers %s%s, and a codec is written over %s",
 		ctx.Declared(), one.Owner.Name, one.Name, one.Signature, want).
 		WithHint("%s", contractHint)

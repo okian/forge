@@ -6,13 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/emit"
-	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers/jsoncodec"
-	"github.com/okian/forge/internal/model"
-	"github.com/okian/forge/internal/shape"
 	"github.com/okian/forge/internal/subject"
+	"github.com/okian/forge/plugin"
 )
 
 // declaredName is what the container these tests generate for is called, and
@@ -23,29 +20,29 @@ import (
 // one they could go and look up.
 const declaredName = "Persons"
 
-var storage = model.TypeRef{Pkg: model.MarkerPkg, Name: "Slice"}
+var storage = plugin.TypeRef{Pkg: plugin.MarkerPkg, Name: "Slice"}
 
 // The three methods of the streaming contract, in the shapes the contract gives
 // them, as a container beneath the codec would offer them.
-func walks(pointer bool) shape.Method {
-	return shape.Method{Name: "All", Signature: "() iter.Seq[Person]", Owner: storage, Pointer: pointer}
+func walks(pointer bool) plugin.Method {
+	return plugin.Method{Name: "All", Signature: "() iter.Seq[Person]", Owner: storage, Pointer: pointer}
 }
 
-func appends(refuses bool) shape.Method {
+func appends(refuses bool) plugin.Method {
 	signature := "(seq iter.Seq[Person])"
 	if refuses {
 		signature += " error"
 	}
-	return shape.Method{Name: "AppendSeq", Signature: signature, Owner: storage, Pointer: true}
+	return plugin.Method{Name: "AppendSeq", Signature: signature, Owner: storage, Pointer: true}
 }
 
-func resets() shape.Method {
-	return shape.Method{Name: "Reset", Signature: "()", Owner: storage, Pointer: true}
+func resets() plugin.Method {
+	return plugin.Method{Name: "Reset", Signature: "()", Owner: storage, Pointer: true}
 }
 
 // exposing returns the shape a stack offering these methods exposes.
-func exposing(methods ...shape.Method) shape.Shape {
-	return shape.Shape{Caps: shape.Set(shape.Streamable)}.WithMethods(methods...)
+func exposing(methods ...plugin.Method) plugin.Shape {
+	return plugin.Shape{Caps: plugin.Caps(plugin.Streamable)}.WithMethods(methods...)
 }
 
 // A stack that can be walked and filled gets the whole of the byte-level
@@ -177,7 +174,7 @@ func TestAStackThatCannotBeEmptiedIsNotReadInto(t *testing.T) {
 // nothing may be written that walks one, and whatever replaces it belongs to
 // the layer that took it away.
 func TestAStackWithNoWalkGetsNoCodecOfItsOwn(t *testing.T) {
-	unit := declaring(t, modelPkg, "Scalars", shape.Shape{})
+	unit := declaring(t, modelPkg, "Scalars", plugin.Shape{})
 
 	if len(unit.Decls) != 0 {
 		t.Errorf("a stack with nothing to walk was given %d declarations", len(unit.Decls))
@@ -247,34 +244,34 @@ func TestACodecDeclaredOnThePointerIsStillCalled(t *testing.T) {
 // file that does not compile in a package the author cannot edit.
 func TestAMethodThatIsNotTheContractIsRefused(t *testing.T) {
 	cases := map[string]struct {
-		exposed shape.Shape
+		exposed plugin.Shape
 		says    string
 	}{
 		"a walk that returns nothing": {
-			exposed: exposing(shape.Method{Name: "All", Signature: "()", Owner: storage}),
+			exposed: exposing(plugin.Method{Name: "All", Signature: "()", Owner: storage}),
 			says:    "All()",
 		},
 		"a walk that takes something": {
-			exposed: exposing(shape.Method{Name: "All", Signature: "(n int) iter.Seq[Person]", Owner: storage}),
+			exposed: exposing(plugin.Method{Name: "All", Signature: "(n int) iter.Seq[Person]", Owner: storage}),
 			says:    "All(n int)",
 		},
 		"a walk that is not a signature": {
-			exposed: exposing(shape.Method{Name: "All", Signature: "not a signature", Owner: storage}),
+			exposed: exposing(plugin.Method{Name: "All", Signature: "not a signature", Owner: storage}),
 			says:    "All",
 		},
 		"a sink that takes two sequences": {
 			exposed: exposing(walks(false), resets(),
-				shape.Method{Name: "AppendSeq", Signature: "(a, b iter.Seq[Person])", Owner: storage}),
+				plugin.Method{Name: "AppendSeq", Signature: "(a, b iter.Seq[Person])", Owner: storage}),
 			says: "AppendSeq(a, b iter.Seq[Person])",
 		},
 		"a sink that returns two values": {
 			exposed: exposing(walks(false), resets(),
-				shape.Method{Name: "AppendSeq", Signature: "(seq iter.Seq[Person]) (int, error)", Owner: storage}),
+				plugin.Method{Name: "AppendSeq", Signature: "(seq iter.Seq[Person]) (int, error)", Owner: storage}),
 			says: "AppendSeq",
 		},
 		"an emptying that answers something": {
 			exposed: exposing(walks(false), appends(false),
-				shape.Method{Name: "Reset", Signature: "() error", Owner: storage}),
+				plugin.Method{Name: "Reset", Signature: "() error", Owner: storage}),
 			says: "Reset() error",
 		},
 	}
@@ -286,7 +283,7 @@ func TestAMethodThatIsNotTheContractIsRefused(t *testing.T) {
 				t.Fatal("a codec was written over a method that is not the contract")
 			}
 
-			reported, ok := diag.From(err)
+			reported, ok := plugin.From(err)
 			if !ok {
 				t.Fatalf("%v is not a diagnostic", err)
 			}
@@ -316,7 +313,7 @@ func declaredAt() token.Position {
 
 // declaring asks the layer to generate for a declaration over this subject,
 // with the stack exposing this shape, and fails the test if it refuses.
-func declaring(t *testing.T, pkgPath, name string, exposed shape.Shape) layer.Unit {
+func declaring(t *testing.T, pkgPath, name string, exposed plugin.Shape) plugin.Unit {
 	t.Helper()
 
 	unit, err := generate(t, pkgPath, name, exposed)
@@ -327,7 +324,7 @@ func declaring(t *testing.T, pkgPath, name string, exposed shape.Shape) layer.Un
 }
 
 // generate asks the layer for one declaration's unit and returns what it said.
-func generate(t *testing.T, pkgPath, name string, exposed shape.Shape) (layer.Unit, error) {
+func generate(t *testing.T, pkgPath, name string, exposed plugin.Shape) (plugin.Unit, error) {
 	t.Helper()
 
 	return regenerating(t, pkgPath, name, nil, exposed)
@@ -335,7 +332,7 @@ func generate(t *testing.T, pkgPath, name string, exposed shape.Shape) (layer.Un
 
 // regenerating does the same, over a load in which some declarations were written
 // by a previous run rather than by the author.
-func regenerating(t *testing.T, pkgPath, name string, written func(token.Pos) bool, exposed shape.Shape) (layer.Unit, error) {
+func regenerating(t *testing.T, pkgPath, name string, written func(token.Pos) bool, exposed plugin.Shape) (plugin.Unit, error) {
 	t.Helper()
 
 	loaded := loadFixture(t)
@@ -365,13 +362,13 @@ func regenerating(t *testing.T, pkgPath, name string, written func(token.Pos) bo
 		t.Fatalf("modelling %s: %s", name, problems.Render())
 	}
 
-	return jsoncodec.New().Generate(&layer.Context{
-		Model: &model.Model{
-			Name: declaredName, Form: model.FormSpec, Subject: built,
+	return jsoncodec.New().Generate(&plugin.Context{
+		Model: &plugin.Model{
+			Name: declaredName, Form: plugin.FormSpec, Subject: built,
 			Pkg: pkg, Pos: declaredAt(),
 		},
 		Exposed: exposed,
-	}, shape.Shape{})
+	}, plugin.Shape{})
 }
 
 // source renders what a unit puts in the declaration's own file.
@@ -380,7 +377,7 @@ func regenerating(t *testing.T, pkgPath, name string, written func(token.Pos) bo
 // about is the code somebody will open: a method's receiver and the shape of
 // its loop are what a reader sees, and a tree walk asking the same questions
 // would be a second parser to keep in step with the printer.
-func source(t *testing.T, unit layer.Unit) string {
+func source(t *testing.T, unit plugin.Unit) string {
 	t.Helper()
 
 	file := emit.File{
