@@ -217,10 +217,11 @@ func TestADeclarationThatAsksForNothing(t *testing.T) {
 		// Address right where a generator appending one letter gets Addresss.
 		"func (c Persons) Addresses() []string",
 
-		// A field that is already plural is pluralised again, because nothing
-		// tells Tags from Address. It is what the rules cost, and it is written
-		// down here rather than left to be found in somebody's repository.
-		"func (c Persons) Tagses() [][]string",
+		// A field that is already plural is left alone, which is what the
+		// dictionary buys over three suffix rules: the projection is Tags
+		// rather than the Tagses a rule that cannot tell Tags from Address
+		// would have written.
+		"func (c Persons) Tags() [][]string",
 	} {
 		if !bytes.Contains(out, []byte(want)) {
 			t.Errorf("the output does not hold %q:\n%s", want, out)

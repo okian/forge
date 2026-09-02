@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/okian/forge/internal/shared/seq"
+	"github.com/okian/forge/internal/words"
 	"github.com/okian/forge/plugin"
 )
 
@@ -82,7 +83,7 @@ func planned(ctx *plugin.Context, below plugin.Shape) (plan, plugin.Diagnostics)
 		out.pkg = ctx.Model.Pkg.PkgPath
 	}
 
-	out.projections, bound = projections(subject, spelled, bound)
+	out.projections, bound = projections(subject, spelled, bound, &diags)
 	out.sorts, bound = columns(ctx, subject, spelled, bound, sorting, &diags)
 	out.indexes, _ = columns(ctx, subject, spelled, bound, indexing, &diags)
 
@@ -103,7 +104,15 @@ func planned(ctx *plugin.Context, below plugin.Shape) (plan, plugin.Diagnostics)
 // declarations and not others — and a surface that depends on where the
 // declaration happens to live is worse than one that stops at the export
 // boundary everywhere.
-func projections(subject *plugin.Struct, spelled plugin.Spelling, bound []plugin.Import) ([]column, []plugin.Import) {
+//
+// The plural is [words.Plural]'s, which is a real English dictionary rather
+// than three suffix rules: Person projects to People, Child to Children, and a
+// field that is already plural projects to itself rather than to Aliaseses. The
+// last of those is what makes two fields able to reach one name, which is what
+// [share] settles.
+func projections(
+	subject *plugin.Struct, spelled plugin.Spelling, bound []plugin.Import, diags *plugin.Diagnostics,
+) ([]column, []plugin.Import) {
 	var out []column
 
 	for _, field := range subject.Fields {
@@ -114,9 +123,62 @@ func projections(subject *plugin.Struct, spelled plugin.Spelling, bound []plugin
 		typ := plugin.Spell(field.Type.Type, spelled.Local, bound)
 		bound = typ.Bound(bound)
 
-		out = append(out, column{field: field.Name, method: plural(field.Name), typ: typ})
+		out = append(out, column{field: field.Name, method: words.Plural(field.Name), typ: typ})
 	}
-	return out, bound
+
+	return share(out, subject, diags), bound
+}
+
+// share settles two fields whose projections come out with one name.
+//
+// It is possible because a name that is already plural is left alone: a subject
+// with both Alias and Aliases reaches Aliases twice, where the old rules
+// reached Aliases and Aliaseses and were wrong about the second. Doubling the
+// inflection to break the tie is not on the table — that spelling is what this
+// whole arrangement exists to stop writing.
+//
+// So the field whose own spelling is the name keeps it, because that field's
+// projection is the one a reader would guess. The other takes its own name with
+// Values after it, which is a readable name rather than a good one and is what
+// the loser has always had available. Deterministic either way: with no such
+// field, or with two, the one the subject declares first keeps the name, and
+// the subject's field order is the author's own.
+//
+// And it is reported, at the field that lost. The fallback keeps the plan
+// coherent and the output byte-stable; the report is what reaches somebody who
+// can do something about it, because an author with two fields a letter apart
+// has very likely not meant to have both.
+func share(held []column, subject *plugin.Struct, diags *plugin.Diagnostics) []column {
+	for at := 1; at < len(held); at++ {
+		shared := held[at].method
+
+		earlier := slices.IndexFunc(held[:at], func(one column) bool { return one.method == shared })
+		if earlier < 0 {
+			continue
+		}
+
+		loser, kept := at, earlier
+		if held[at].field == shared && held[earlier].field != shared {
+			loser, kept = earlier, at
+		}
+		held[loser].method = words.Join(held[loser].field, "values")
+
+		diags.Add(plugin.New(codeProjectionsShareAName, declaredAt(subject, held[loser].field),
+			"%s and %s both project to %s, which %s keeps; %s is projected as %s",
+			held[kept].field, held[loser].field, shared, held[kept].field,
+			held[loser].field, held[loser].method).
+			WithHint("%s", "rename one of the two fields, so that each projection is named after the field it reads"))
+	}
+	return held
+}
+
+// declaredAt returns where a field was written, so that a report about two of
+// them points at one rather than at the declaration that named neither.
+func declaredAt(subject *plugin.Struct, name string) token.Position {
+	if field, has := subject.Field(name); has {
+		return field.Pos
+	}
+	return subject.Pos
 }
 
 // asked is one option that names fields and what this layer makes of each: the
@@ -181,7 +243,7 @@ func columns(
 		typ := plugin.Spell(field.Type.Type, spelled.Local, bound)
 		bound = typ.Bound(bound)
 
-		out = append(out, column{field: field.Name, method: of.prefix + field.Name, typ: typ})
+		out = append(out, column{field: field.Name, method: words.Join(of.prefix, field.Name), typ: typ})
 	}
 	return out, bound
 }

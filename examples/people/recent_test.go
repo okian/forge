@@ -55,15 +55,15 @@ func TestEveryFieldIsProjectedInOrder(t *testing.T) {
 		t.Errorf("Ages() = %v, want %v", got, want)
 	}
 
-	aliases := r.Aliaseses()
+	aliases := r.Aliases()
 	if len(aliases) != 3 {
-		t.Fatalf("Aliaseses() returned %d rows, want 3", len(aliases))
+		t.Fatalf("Aliases() returned %d rows, want 3", len(aliases))
 	}
 	if !slices.Equal(aliases[2], []string{"AMT", "Prof"}) {
-		t.Errorf("Aliaseses()[2] = %v, want the two aliases the element holds", aliases[2])
+		t.Errorf("Aliases()[2] = %v, want the two aliases the element holds", aliases[2])
 	}
 	if len(aliases[1]) != 0 {
-		t.Errorf("Aliaseses()[1] = %v, want nothing for an element with no aliases", aliases[1])
+		t.Errorf("Aliases()[1] = %v, want nothing for an element with no aliases", aliases[1])
 	}
 }
 

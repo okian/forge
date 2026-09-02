@@ -30,6 +30,13 @@ var (
 	// no option can un-name the other, and what it produces is a package
 	// holding one declaration twice.
 	codeNamesCollide = plugin.Register(4101, "two generated names are one")
+
+	// And the one case of it a rule can settle rather than refuse: two fields
+	// whose projections come out with one name, where the field spelled like
+	// the name keeps it and the other is projected under its own name with
+	// Values after it. Reported all the same, because the fallback is readable
+	// rather than good and the pair is almost never deliberate.
+	codeProjectionsShareAName = plugin.Register(4102, "two fields project to one name")
 )
 
 // bodies is the template this layer emits the field-independent half of.

@@ -2,8 +2,8 @@
 //
 // forge (devel)
 // markers github.com/okian/forge (devel)
-// go go1.27.0
-// inputs 49747c291edebfa4
+// go go1.27.1
+// inputs 3365934a0953619f
 
 //go:build forgespec
 
@@ -37,7 +37,7 @@ func (c Recent) Emails() []string {
 func (c Recent) Ages() []int {
 	panic("forge stub")
 }
-func (c Recent) Aliaseses() [][]string {
+func (c Recent) Aliases() [][]string {
 	panic("forge stub")
 }
 

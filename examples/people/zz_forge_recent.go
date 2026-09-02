@@ -2,8 +2,8 @@
 //
 // forge (devel)
 // markers github.com/okian/forge (devel)
-// go go1.27.0
-// inputs 54ac346e630eb614
+// go go1.27.1
+// inputs 0892784a550a9d81
 
 //go:build !forgespec
 
@@ -57,8 +57,8 @@ func (c Recent) Ages() []int {
 	})
 }
 
-// Aliaseses returns the Aliases of every element, in order.
-func (c Recent) Aliaseses() [][]string {
+// Aliases returns the Aliases of every element, in order.
+func (c Recent) Aliases() [][]string {
 	return c.project(func(v Person) []string {
 		return v.Aliases
 	})

@@ -91,7 +91,7 @@ func TestTheSurfaceFollowsTheDeclaration(t *testing.T) {
 	// One projection per exported field, and nothing else. The subject's
 	// unexported field is not among them.
 	bare := names(exposed(declaration(t)))
-	want := []string{"Seq", "IDs", "Names", "Addresses", "Cities", "Joineds", "Tagses"}
+	want := []string{"Seq", "IDs", "Names", "Addresses", "Cities", "Joineds", "Tags"}
 	if !slices.Equal(bare, want) {
 		t.Errorf("a declaration asking for nothing exposes %v, want %v", bare, want)
 	}

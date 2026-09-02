@@ -11,54 +11,83 @@ import (
 
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shared/seq"
+	"github.com/okian/forge/internal/words"
 	"github.com/okian/forge/plugin"
 )
 
-// Pluralising is where this layer meets English, which has no complete answer —
-// so what is checked is that the part with one is right, including the endings
-// a generator appending a single letter gets wrong.
-func TestHowAFieldIsPluralised(t *testing.T) {
-	cases := map[string]string{
-		// The ordinary case.
-		"Age":  "Ages",
-		"Name": "Names",
-		"ID":   "IDs",
-
-		// A sibilant cannot take a bare s.
+// A projection is named through the shared inflection rather than through a
+// rule this layer keeps, which is what the two ends of the range are for: a
+// word the dictionary knows and one it has never heard of.
+//
+// The rules themselves are held by internal/words and its corpus. What is
+// checked here is that this layer asks it, since a layer that grew a rule of
+// its own back would pass every test in that package.
+func TestAProjectionIsNamedThroughTheSharedInflection(t *testing.T) {
+	for name, want := range map[string]string{
+		"Age":     "Ages",
 		"Address": "Addresses",
-		"Box":     "Boxes",
-		"Buzz":    "Buzzes",
-		"Match":   "Matches",
-		"Wish":    "Wishes",
-
-		// A y after a consonant is a vowel and becomes ies; one after a vowel
-		// is not and takes a bare s.
-		"Category": "Categories",
-		"Day":      "Days",
-		"Key":      "Keys",
-
-		// A y with no letter before it to look at, which is the guard that
-		// keeps the rule from reading past the start of the name.
-		"y": "ys",
-		"Y": "Ys",
-
-		// And the y rule is case-blind like the one above it, which the two
-		// spellings of one word are what shows.
-		"CATEGORY": "CATEGORies",
-		"ADDRESS":  "ADDRESSes",
-
-		// Already plural, and pluralised again, because nothing tells Tags from
-		// Address. Written down because it is what the rules cost.
-		"Tags": "Tagses",
-
-		// Nothing at all, which is a field a subject cannot have and a case the
-		// rules must survive rather than index into.
-		"": "",
+		"Child":   "Children",
+		"Alias":   "Aliases",
+		"Aliases": "Aliases",
+		"ID":      "IDs",
+	} {
+		if got := words.Plural(name); got != want {
+			t.Errorf("the projection of %s is %s, want %s", name, got, want)
+		}
 	}
+}
 
-	for name, want := range cases {
-		if got := plural(name); got != want {
-			t.Errorf("plural(%q) = %q, want %q", name, got, want)
+// Two fields whose projections come out with one name is what a dictionary that
+// leaves a plural alone makes possible, and it is settled rather than refused:
+// the field spelled like the name keeps it, the other is projected under its
+// own name with Values after it, and the pair is reported once.
+func TestTwoFieldsThatProjectToOneName(t *testing.T) {
+	for _, one := range []struct {
+		what   string
+		fields []string
+		want   []string
+	}{
+		{
+			"the plural field is declared second",
+			[]string{"Alias", "Aliases"},
+			[]string{"AliasValues", "Aliases"},
+		},
+		{
+			"and first, which must not change who keeps the name",
+			[]string{"Aliases", "Alias"},
+			[]string{"Aliases", "AliasValues"},
+		},
+		{
+			"neither field is spelled like the name, so the first declared keeps it",
+			[]string{"Address", "Addresse"},
+			[]string{"Addresses", "AddresseValues"},
+		},
+	} {
+		var (
+			diags  plugin.Diagnostics
+			held   []column
+			fields []model.Field
+		)
+		for _, name := range one.fields {
+			held = append(held, column{field: name, method: words.Plural(name)})
+			fields = append(fields, model.Field{Name: name, Exported: true})
+		}
+
+		got := share(held, &model.Struct{Fields: fields}, &diags)
+		for at := range got {
+			if got[at].method != one.want[at] {
+				t.Errorf("%s: %s projects to %s, want %s",
+					one.what, got[at].field, got[at].method, one.want[at])
+			}
+		}
+
+		if diags.Len() != 1 {
+			t.Errorf("%s: the pair produced %d reports, want one", one.what, diags.Len())
+		}
+		for _, want := range one.fields {
+			if !strings.Contains(diags.Render(), want) {
+				t.Errorf("%s: the report does not name %s:\n%s", one.what, want, diags.Render())
+			}
 		}
 	}
 }

@@ -58,14 +58,14 @@ type Person struct {
 // the generator knows the fields rather than taking them as arguments.
 //
 // A projection is spelled the same way, as the plural of its field, which is
-// how [Persons.Names] and [Persons.Ages] get their names. It is also how
-// [Persons.Aliaseses] gets its, from a field whose name was already plural.
-// Nothing in the name says it was: Aliases ends the way Address does, and a
-// projection of Address has to be Addresses. Reading the field's type instead
-// does not settle it either — a field named Alias holding a slice is singular
-// and ends in s just the same, and leaving it alone would name its projection
-// after one alias, so the type would trade a name that is ugly for one that is
-// wrong. It is left as it comes out.
+// how [Persons.Names] and [Persons.Ages] get their names. The plural comes from
+// a real English dictionary compiled into forge, so a subject with a Person in
+// it projects to People rather than to Persons and one with a Child to
+// Children — and a field whose name is already plural is left alone, which is
+// how [Persons.Aliases] is called that rather than Aliaseses.
+//
+// Leaving it alone is what makes a projection able to collide with a sibling
+// field's projection, which is written up in this package's own documentation.
 //
 //forge:collection sort=Name,Age index=ID
 type Persons forge.Collection[Person]

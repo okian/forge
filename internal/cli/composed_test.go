@@ -170,13 +170,16 @@ func TestExplainingSaysWhatGeneratingWouldRefuse(t *testing.T) {
 			code: "FRG3013",
 		},
 
-		// The layer again, later: two methods that want one name.
+		// The layer again, later: two fields whose projections come out with
+		// one name. Settled rather than refused — the first declared keeps the
+		// name and the other is projected under its own with Values after it —
+		// and reported all the same, because the pair is almost never meant.
 		"two projections of one name": {
 			fields: []model.Field{
 				{Name: "Address", Exported: true, Type: model.Classified{Type: types.Typ[types.String]}},
 				{Name: "Addresse", Exported: true, Type: model.Classified{Type: types.Typ[types.String]}},
 			},
-			code: "FRG4101",
+			code: "FRG4102",
 		},
 	}
 

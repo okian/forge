@@ -50,11 +50,32 @@
 //
 // # What is not smooth
 //
-// One thing in this package comes out other than a reader would guess, and it
-// is left as it comes out rather than arranged around. [Persons.Aliaseses] is a
-// projection named by pluralising a field name that was already plural. It is
-// written up on [Persons], with the reason nothing here reads the field's type
-// to settle it, and held down by a test.
+// Two things in this package come out other than a reader would guess, and both
+// are left as they come out rather than arranged around.
+//
+// [Persons.Aliases] is a projection of a field whose name was already plural,
+// so the method and the field are spelled alike. It used to be Aliaseses, from
+// three suffix rules that could not tell Aliases from Address; forge now knows
+// the difference, and what it costs is that the column and the field read the
+// same. They are on different types — the field is a [Person]'s and the method
+// is a [Persons]' — so nothing is ambiguous to the compiler, and something is
+// to a reader.
+//
+// It is also what makes two fields able to reach one projection. A subject with
+// both Alias and Aliases would derive Aliases twice, and there is no spelling
+// that separates them: doubling the inflection is the Aliaseses this change
+// exists to stop writing. So the field spelled like the name keeps it, the
+// other is projected as AliasValues, and forge reports the pair with both names
+// and what each of them got. This package has only the one field, so the report
+// is not in it; the case is written up here because it is the shape of edge a
+// dictionary trades three wrong names for.
+//
+// [Persons] is the second, and it is the author's own doing rather than the
+// tool's. A subject called Person now pluralises to People wherever forge
+// derives a name, so a reader might expect the declaration to be called People
+// too. It is not, because this package is called people and people.People is
+// the stutter every naming guide in Go warns about — the declaration's name is
+// one thing forge never derives, and this is why.
 //
 // An example is worth reading for what a tool really does, and a package shaped
 // to avoid its own edges would be an example of a tool that does not exist.

@@ -114,8 +114,8 @@ func (c Persons) Joineds() []time.Time {
 	})
 }
 
-// Tagses returns the Tags of every element, in order.
-func (c Persons) Tagses() [][]string {
+// Tags returns the Tags of every element, in order.
+func (c Persons) Tags() [][]string {
 	return c.project(func(v Person) []string {
 		return v.Tags
 	})
