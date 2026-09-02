@@ -1,0 +1,28 @@
+# What forge is allowed to weigh.
+#
+#   <what> <bytes>
+#
+# scripts/size.sh measures each and fails if it is over. Two entries and a
+# reason for each.
+#
+# The dictionary is the one forge embeds, and it is here because a tool people
+# `go install` should not quietly grow by a megabyte the day somebody upgrades
+# a wordlist. What the converter keeps is the exceptions, the vocabulary that
+# answers whether a word ending in s is one, and the verbs whose final consonant
+# doubles — tens of kilobytes, deflated. The budget is roughly twice what it
+# holds today, which is room for the dictionary to gain a few thousand entries
+# and not room for it to gain a hundred thousand.
+#
+# The command is the whole binary, and it is here for the same reason read the
+# other way: the dictionary is not the only thing that can grow, and a budget on
+# the asset alone would be satisfied by a run that doubled everything else. It
+# is a ceiling rather than a band — a binary that shrinks is a binary that
+# shrank — with about a megabyte over what a build costs today, which absorbs
+# the difference between toolchains without absorbing a mistake.
+#
+# Measured with `go build`, which is what `make build` runs and what somebody
+# typing `go install` gets. Not stripped: -ldflags=-w would report a smaller
+# number than anybody actually downloads.
+
+internal/words/english.bin   65536
+cmd/forge                 12582912

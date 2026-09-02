@@ -36,6 +36,7 @@ The individual targets are worth knowing when something fails:
 | `make test`       | the suite                                                   |
 | `make race`       | the suite under the race detector                           |
 | `make cover`      | the suite plus the coverage floor (90% of statements)       |
+| `make size`       | the dictionary and the binary, against their size budgets   |
 | `make tidy-check` | fails if `go.mod` or `go.sum` would change under `go mod tidy` |
 | `make vuln`       | govulncheck over reachable code                             |
 

@@ -191,7 +191,14 @@ race-matrix: ## Regenerate the race matrix under internal/racetest/matrix.
 	$(GO) test ./internal/racetest -update
 
 .PHONY: check
-check: fmt-check vet lint cover ## Run every gate CI runs.
+check: fmt-check vet lint cover size ## Run every gate CI runs.
+
+# What the tool weighs, which is a gate rather than a benchmark: the dictionary
+# forge embeds is data somebody may upgrade, and an upgrade that brings a
+# megabyte with it is one every user of the tool pays for without being asked.
+.PHONY: size
+size: ## Hold the embedded dictionary and the forge binary to their size budgets.
+	./scripts/size.sh
 
 .PHONY: tidy
 tidy: ## Reconcile go.mod and go.sum with the imports in the tree.
