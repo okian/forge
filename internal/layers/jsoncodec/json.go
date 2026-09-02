@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"slices"
+	"strconv"
 
 	"github.com/okian/forge/plugin"
 )
@@ -177,7 +178,7 @@ func (l Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error
 		willWrite: ctx.Writes,
 		authored:  ctx.Authored,
 		style:     style(ctx.Options),
-		omitZero:  flag(ctx.Options, optionOmitZero),
+		omitZero:  omitting(ctx.Options),
 	}
 	root := built.plan(held)
 
@@ -422,8 +423,26 @@ func style(options plugin.Options) string {
 	return styleAsIs
 }
 
-// flag returns whether a boolean option was written as true.
-func flag(options plugin.Options, key string) bool {
-	written, ok := options.Get(key)
-	return ok && written == "true"
+// omitting reports whether the declaration asked for a member holding its zero
+// value to be left out of the document.
+//
+// Parsed rather than compared against the word. A boolean option is validated
+// with [strconv.ParseBool], which accepts 1, t, T, TRUE, 0, f, F and FALSE as
+// well as the two spellings anybody writes — so a declaration written
+// omitzero=1 passes validation, and a layer comparing against "true" would
+// read it as off and leave a member in a document that asked for it out.
+//
+// A value this cannot parse is one the option checker refused before this layer
+// was asked anything, so an unparseable value here reads as unwritten. Off is
+// the direction to be wrong in: a member left in says more than was asked for,
+// where one left out is a field nobody knows is missing.
+func omitting(options plugin.Options) bool {
+	written, ok := options.Get(optionOmitZero)
+	if !ok {
+		return false
+	}
+
+	on, err := strconv.ParseBool(written)
+
+	return err == nil && on
 }
