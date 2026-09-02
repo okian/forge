@@ -278,7 +278,7 @@ jobs:
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [lint, test, race, bench, build, tidy, vuln]
+    needs: [lint, test, race, bench, fuzz, build, tidy, vuln]
     runs-on: ubuntu-latest
     steps:
       - name: every job succeeded
