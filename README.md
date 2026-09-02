@@ -261,6 +261,8 @@ way.
 | [`examples/people`](examples/people)                     | five declarations over three subjects, with the generated files committed     |
 | [`x/csv`](x/csv)                                         | a layer in its own module, written against `plugin` and nothing else          |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                     | the gates, the definition of done, and the commit conventions                 |
+| [`CHANGELOG.md`](CHANGELOG.md)                           | what changed, for somebody deciding whether to upgrade                        |
+| [`docs/releasing.md`](docs/releasing.md)                 | what the three versions in a generated header mean, and how a release is cut  |
 
 ## Development
 

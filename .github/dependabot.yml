@@ -31,6 +31,23 @@ updates:
     labels:
       - dependencies
 
+  # The comparison benchmarks, which are a module of their own so that the module
+  # everybody builds keeps its one direct dependency — and which therefore carry
+  # the largest third-party graph here. Nobody imports them, so nothing about a
+  # release depends on this; what does is that `make bench-against` builds them
+  # in CI, and a graph nothing watches is a graph that goes stale and then goes
+  # red for a reason nobody asked for.
+  - package-ecosystem: gomod
+    directory: "/benchmarks/validator"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+    labels:
+      - dependencies
+
   # Actions pinned to a major tag still move underneath a workflow. This makes
   # the move a pull request that CI runs against.
   - package-ecosystem: github-actions

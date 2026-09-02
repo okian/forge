@@ -108,6 +108,13 @@ A `feat:`, `fix:`, `build:`, `ci:`, `docs:`, `test:` or `refactor:` prefix, then
 a lower-case sentence saying what the commit makes possible — not what files it
 touched.
 
+If somebody outside this repository would notice the change, add a line to
+`Unreleased` in [`CHANGELOG.md`](CHANGELOG.md) in the same commit. Writing them
+at release time means writing them from the log, which is how a changelog turns
+into a worse copy of one. A change to what forge *writes* counts, whether or not
+the API moved: it reaches every committed `zz_forge_*.go` in every checkout, and
+the diff arrives in a review that has nothing to do with forge.
+
 ## Comments
 
 The house style is that a comment says *why*, and says it in prose. A comment
