@@ -138,3 +138,30 @@ github.com/okian/forge/examples/people  GuardedLenByHand       0  0
 # caller's writer takes to accept the bytes.
 github.com/okian/forge/examples/people  GuardedSnapshot   1  4866
 github.com/okian/forge/examples/people  GuardedEncode     1  4864
+
+# Deriving a name, which every generated identifier is paid for once.
+#
+# One allocation for a plural of either kind, which is the claim the dictionary
+# had to earn: consulting a real English dictionary must not cost more than the
+# three suffix rules it replaced. Two things buy it. Every lookup folds the word
+# as it compares rather than lower-casing a copy of it first, and a hit answers
+# with a slice of the asset rather than a copy of the word it found — so the one
+# allocation left is the answer itself, which the caller was always going to get
+# a string of.
+#
+# A compound name pays a second, which is the join: only the last word inflects
+# and HomeAddress has to be put back together around Addresses.
+#
+# Spelling a name out of its parts is the eight, and they are the words: a
+# builder growing, and one raised first letter each. Written down rather than
+# tuned, because it is paid once per declaration rather than once per element,
+# and because the number is here to notice a change rather than to be admired.
+#
+# The dictionary is decoded once per process and only if something asks, so
+# every one of these warms it before it measures. A run that did not would
+# divide one decode by however many iterations it did and report a number about
+# the run length.
+github.com/okian/forge/internal/words  PluralFromTheDictionary  1    8
+github.com/okian/forge/internal/words  PluralFromTheRules       1    8
+github.com/okian/forge/internal/words  PluralOfACompoundName    2   32
+github.com/okian/forge/internal/words  SpellAMethodName         8  104

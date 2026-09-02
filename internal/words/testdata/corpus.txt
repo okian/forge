@@ -1,0 +1,90 @@
+# The words the inflection is held to, and what it must make of them.
+#
+#   <word> <plural> <singular>
+#
+# One line per word, blank lines and # comments ignored. Every line is a claim
+# about the answer a reader would give, not about the answer the code currently
+# gives: a row that fails is either a bug in the dictionary or a bug in the
+# rules, and which one it is comes from what forge explain says answered.
+#
+# Two properties are checked over every row rather than written out per row:
+# pluralising twice changes nothing, and the singular of the plural of a word
+# that is not already plural is the word again.
+
+# The four the old three-rule inflection got wrong, and said so.
+Person       People        Person
+Child        Children      Child
+Datum        Data          Datum
+Epoch        Epochs        Epoch
+
+# Irregulars a domain model reaches for without thinking.
+Analysis     Analyses      Analysis
+Matrix       Matrices      Matrix
+Leaf         Leaves        Leaf
+Hero         Heroes        Hero
+Criterion    Criteria      Criterion
+Medium       Media         Medium
+Half         Halves        Half
+Life         Lives         Life
+Mouse        Mice          Mouse
+Foot         Feet          Foot
+Quiz         Quizzes       Quiz
+Axis         Axes          Axis
+
+# The regular rules, which the dictionary must not be reached for at all.
+Category     Categories    Category
+Box          Boxes         Box
+Address      Addresses     Address
+Day          Days          Day
+Status       Statuses      Status
+Alias        Aliases       Alias
+Photo        Photos        Photo
+Node         Nodes         Node
+Index        Indexes       Index
+Schema       Schemas       Schema
+Class        Classes       Class
+Church       Churches      Church
+City         Cities        City
+Journey      Journeys      Journey
+
+# Words already plural, which is what keeps Aliaseses from being written.
+Aliases      Aliases       Alias
+People       People        Person
+Children     Children      Child
+Data         Data          Datum
+Statuses     Statuses      Status
+
+# Words with no plural at all.
+Series       Series        Series
+Metadata     Metadata      Metadata
+Info         Info          Info
+Sheep        Sheep         Sheep
+Police       Police        Police
+
+# Initialisms take a small s and never es. OS is the one that had to be
+# decided: a bare s, so that the singular is an exact inverse and so that the
+# handful of initialisms ending in a sibilant — OS, DNS, TLS, HTTPS — are
+# spelled by one rule rather than by an exception nobody would look up.
+ID           IDs           ID
+IDs          IDs           ID
+URL          URLs          URL
+API          APIs          API
+OS           OSs           OS
+UserID       UserIDs       UserID
+
+# Only the last word inflects, and everything before it is left alone.
+HomeAddress  HomeAddresses HomeAddress
+NodeChild    NodeChildren  NodeChild
+ChildNode    ChildNodes    ChildNode
+LeafValue    LeafValues    LeafValue
+
+# A word the dictionary has never heard of takes the regular rules, which is
+# the right answer for nearly every domain word there is.
+Widget       Widgets       Widget
+Blob         Blobs         Blob
+Frob         Frobs         Frob
+
+# The case a name was written in is the case it comes back in.
+person       people        person
+PERSON       PEOPLE        PERSON
+address      addresses     address

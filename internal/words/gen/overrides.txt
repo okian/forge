@@ -1,0 +1,21 @@
+# Entries forge deliberately disagrees with, applied while converting.
+#
+# One directive per line, then a # and the reason for it. A line with no reason
+# is refused: a disagreement with upstream that nobody wrote down is one nobody
+# can review, and the whole point of this file being short is that a reader can
+# read all of it.
+#
+#   plural       <singular> <plural>   the plural to use instead of upstream's
+#   uncountable  <word>                the word is its own plural
+#   agent        <verb> <noun>         the -er form to use instead
+#   drop         <word>                fall through to the regular rules
+#
+# Anything not in this file came from the dictionary, which is the arrangement
+# that lets the file stay this size.
+
+uncountable series    # upstream gives serieses, marked as a form it is unsure of, and no Go author writes it
+uncountable metadata  # not an upstream lemma at all, so it would take a bare s and become Metadatas
+uncountable info      # upstream gives infos; a field named Info holds one thing however many it describes
+
+plural axis axes      # upstream prefers axises, which is the plural of the deer rather than of the line
+plural schema schemas # upstream prefers schemata, which is correct and is not what a Go author would read
