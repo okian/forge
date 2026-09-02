@@ -401,6 +401,25 @@ func TestWhatIsSaidAboutTheMarkers(t *testing.T) {
 // and a line telling them their files are committed would be a claim forge did
 // not earn — which is worse than the silence it replaces, since it reads as a
 // check that passed.
+// gitting runs git against a directory, and only against that directory.
+//
+// The environment is cleaned the same way the code under test cleans it. These
+// tests build a repository in a temporary directory and assert what is true
+// before it exists, which a GIT_DIR in scope answers for instead — and git sets
+// one for every hook it runs, so under a pre-push hook these two failed while
+// passing everywhere else. A test that reads the ambient repository is a test
+// about the machine it ran on.
+func gitting(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = elsewhere(os.Environ())
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
 func TestWhetherGeneratedFilesAreCommitted(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git to ask")
@@ -421,10 +440,7 @@ func TestWhetherGeneratedFilesAreCommitted(t *testing.T) {
 	}
 
 	for _, args := range [][]string{{"init"}, {"config", "user.email", "t@example.com"}, {"config", "user.name", "t"}} {
-		out, err := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
+		gitting(t, dir, args...)
 	}
 
 	// A repository that knows neither file.
@@ -439,9 +455,7 @@ func TestWhetherGeneratedFilesAreCommitted(t *testing.T) {
 	}
 
 	// And one that knows both.
-	if out, err := exec.CommandContext(t.Context(), "git", "-C", dir, "add", ".").CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v\n%s", err, out)
-	}
+	gitting(t, dir, "add", ".")
 	if said, how := tracked(pkg); !strings.Contains(said, "every generated file") || how != 0 {
 		t.Errorf("tracked files were reported as %q at %v", said, how)
 	}
@@ -458,10 +472,7 @@ func TestTheGitAnswerReachesTheReport(t *testing.T) {
 	checkable(t, dir)
 
 	for _, args := range [][]string{{"init"}, {"config", "user.email", "t@example.com"}, {"config", "user.name", "t"}} {
-		out, err := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
+		gitting(t, dir, args...)
 	}
 
 	shown, _ := diagnosing(t, dir, generating(t, dir, "Persons"))
