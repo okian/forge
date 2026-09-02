@@ -6,10 +6,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/okian/forge/internal/tags"
+	"github.com/okian/forge/internal/words"
 )
 
 // Class is the coarse shape of a field's type: the distinction every layer
@@ -511,69 +510,23 @@ func Through(of *Struct, verb, what, into string) string {
 	var where string
 	if !of.Local(into) {
 		if obj := of.Named.Obj(); obj != nil && obj.Pkg() != nil {
-			where = Upper(obj.Pkg().Name())
+			where = words.Upper(obj.Pkg().Name())
 		}
 	}
 
-	return verb + where + Upper(ref.Name) + identifier(ref.Args) + what
+	return verb + where + words.Upper(ref.Name) + identifier(ref.Args) + what
 }
 
 // identifier turns a type's arguments into something that can be part of a
 // name, keeping every distinct spelling distinct.
 //
-// Letters and digits kept and everything else dropped, with the letter after
-// each run of dropped characters raised. What comes out of [string,int] is
-// StringInt, and out of a qualified argument a longer thing nobody would have
-// chosen — which is the right trade, because the alternative to ugly is two
-// instantiations sharing one function.
-func identifier(args string) string {
-	var (
-		b     strings.Builder
-		start = true
-	)
-
-	for _, r := range args {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			if start {
-				r = unicode.ToUpper(r)
-				start = false
-			}
-			b.WriteRune(r)
-		default:
-			start = true
-		}
-	}
-	return b.String()
-}
-
-// Upper returns a name with its first letter in upper case, and Lower with it
-// in lower case.
-//
-// Between them they are how every name forge builds out of another one is
-// spelled: a constructor named after the type it builds, a helper prefixed with
-// the declaration it belongs to, a function named after a subject. Here rather
-// than in each of those, because four copies of one rule is four places for it
-// to stop being one rule — and this package is beneath all of them.
-//
-// By rune rather than by byte, since a name may begin with one that is not one
-// byte long and cutting it in half produces something that is not a name at
-// all.
-func Upper(name string) string { return recase(name, unicode.ToUpper) }
-
-// Lower returns a name with its first letter in lower case. See [Upper] for why
-// the pair is here.
-func Lower(name string) string { return recase(name, unicode.ToLower) }
-
-// recase applies a case change to a name's first rune.
-func recase(name string, to func(rune) rune) string {
-	if name == "" {
-		return name
-	}
-
-	first, width := utf8.DecodeRuneInString(name)
-	return string(to(first)) + name[width:]
-}
+// Through [words.Join], which is the same splitting and joining every other
+// generated name goes through: everything that is not a letter or a digit
+// separates, and what is left is spelled the way Go spells it. What comes out
+// of [string,int] is StringInt, and out of a qualified argument a longer thing
+// nobody would have chosen — which is the right trade, because the alternative
+// to ugly is two instantiations sharing one function.
+func identifier(args string) string { return words.Join(args) }
 
 // Satisfies reports whether the struct already implements iface.
 func (s *Struct) Satisfies(iface TypeRef) bool {

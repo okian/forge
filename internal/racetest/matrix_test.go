@@ -22,6 +22,7 @@ import (
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/racetest"
 	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/internal/words"
 )
 
 // Where the matrix lives, and what it is generated as.
@@ -188,7 +189,7 @@ func declaring(held []layer.Layer) []racetest.Declared {
 				}
 
 				out = append(out, racetest.Declared{
-					Name:    name + "Persons" + model.Upper(option.Key) + model.Upper(value),
+					Name:    name + "Persons" + words.Upper(option.Key) + words.Upper(value),
 					Layer:   name,
 					Stack:   stack,
 					Subject: "Person",

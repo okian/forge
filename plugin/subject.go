@@ -4,6 +4,7 @@ import (
 	"go/types"
 
 	"github.com/okian/forge/internal/model"
+	"github.com/okian/forge/internal/words"
 )
 
 // MarkerPkg is the import path a marker type is declared in, which is what
@@ -149,14 +150,64 @@ func TypeString(t types.Type) string { return model.TypeString(t) }
 // two, including two of one name from two packages.
 func TypeIdentity(t types.Type) string { return model.TypeIdentity(t) }
 
+// Every question forge answers about an English word or a Go identifier is
+// answered in one place, and these are how a layer asks it.
+//
+// A layer author must not roll their own. That is not a style preference: a
+// codec naming a wire member, an enumeration naming a set member and a
+// collection naming a projection are three layers answering one question, and
+// three answers to it is one library with three opinions about what a Go name
+// looks like. The author of the subject then has to live with all three, in
+// files they cannot edit.
+//
+// What is behind them is a real English dictionary compiled into the forge
+// binary, and the Go initialism set the language's own linters hold each other
+// to. A layer that appended an s would get Persons, Childs and Aliaseses; one
+// that concatenated a prefix would get SortedById in a tree where revive is
+// already refusing it.
+
+// Plural returns the name a collection of these is called: Person is People,
+// Box is Boxes, Data is Data, ID is IDs.
+//
+// Only the last word inflects, so HomeAddress is HomeAddresses. A name that is
+// already plural comes back unchanged, which is what stops Aliaseses.
+func Plural(name string) string { return words.Plural(name) }
+
+// Singular returns the name one of these is called: People is Person, Boxes is
+// Box. A name that is already singular comes back unchanged.
+func Singular(name string) string { return words.Singular(name) }
+
+// IsPlural reports whether a name is already the plural of something, which is
+// the question to ask before deriving a name from a field that may be a slice.
+func IsPlural(name string) bool { return words.IsPlural(name) }
+
+// Words takes an identifier apart into the words a reader would say it in:
+// UserIDToken is User, ID and Token.
+//
+// A run of capitals is one word, and an initialism made plural keeps its s —
+// so UserIDs is User and IDs rather than User, I and Ds.
+func Words(name string) []string { return words.Words(name) }
+
+// Join writes words as one exported Go identifier: Join("user", "id") is
+// UserID, and so is Join("userId").
+//
+// Whole names are as good as single words, because each part is taken apart
+// before it is put back together. An initialism is spelled in full case
+// wherever it falls.
+func Join(parts ...string) string { return words.Join(parts...) }
+
+// Export writes one name as an exported Go identifier, which is [Join] for the
+// case a layer asks for most: userId is UserID, and http_server is HTTPServer.
+func Export(name string) string { return words.Export(name) }
+
 // Camel writes a Go name with its first word lowered, which is what a member of
 // a wire format or a closed set is usually called.
 //
 // A word at a time rather than a letter, because an exported name often opens
 // with an initialism: ID becomes id rather than iD, and JSONValue becomes
-// jsonValue. One rule in one place, so that a layer naming a wire member and a
-// layer naming a set member do not disagree about what a Go name looks like.
-func Camel(name string) string { return model.Camel(name) }
+// jsonValue. Only the case of the first word changes — a name that goes out on
+// a wire keeps every other letter it was written with.
+func Camel(name string) string { return words.Camel(name) }
 
 // Lower writes a name with its first letter lowered, and the rest of it exactly
 // as it was.
@@ -164,8 +215,9 @@ func Camel(name string) string { return model.Camel(name) }
 // A letter and not a word, which is the difference from [Camel]: ID becomes iD
 // here and id there. What it is for is joining fragments into an identifier —
 // the second half of a name whose first half decides the case — rather than
-// naming anything a reader of a document sees. [Camel] is what names those.
-func Lower(name string) string { return model.Lower(name) }
+// naming anything a reader of a document sees. [Camel] is what names those, and
+// [Join] is what builds one out of parts.
+func Lower(name string) string { return words.Lower(name) }
 
 // Upper writes a name with its first letter raised, and the rest of it exactly
 // as it was.
@@ -173,7 +225,7 @@ func Lower(name string) string { return model.Lower(name) }
 // The other half of the same job as [Lower]: a generated identifier is often
 // two names joined, and whichever goes second has to start the way the join
 // needs rather than the way it was declared.
-func Upper(name string) string { return model.Upper(name) }
+func Upper(name string) string { return words.Upper(name) }
 
 // Through returns the sentence a diagnostic uses to say a subject cannot be
 // reached, given the verb and what was being attempted.
