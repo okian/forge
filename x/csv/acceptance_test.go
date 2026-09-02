@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/okian/forge/plugin"
 )
 
 // example names the worked example's directory and the two files of it that a
@@ -66,8 +68,41 @@ func TestTheWorkedExampleIsWhatTheLayerWritesNow(t *testing.T) {
 	}
 }
 
-// fingerprint opens the header line a staleness check reads.
-const fingerprint = "// inputs "
+// fingerprint opens the header line a staleness check reads, and marked the one
+// naming the module a declaration was written against.
+const (
+	fingerprint = "// inputs "
+	marked      = "// markers "
+)
+
+// The committed headers name the markers these declarations were written
+// against, which is forge's module and not this one.
+//
+// The comparison above cannot see this. It compares bodies, deliberately — the
+// fingerprint moves with the Go version, so comparing bytes would fail for two
+// people on different patch releases — and the marker line sits in the half it
+// skips. So a header naming the wrong module survives it, which is not
+// hypothetical: it is what every file here said until the binary that writes
+// them was fixed.
+//
+// Held to a constant rather than checked by regenerating, which is what makes
+// it independent of the toolchain. What the line has to say is which module
+// declares the markers, and that does not move.
+func TestTheCommittedHeadersNameTheMarkersModule(t *testing.T) {
+	const markers = marked + plugin.MarkerPkg + " "
+
+	held := generatedIn(t, example)
+	if len(held) == 0 {
+		t.Fatal("the example holds no generated files, so this checked nothing")
+	}
+
+	for _, one := range held {
+		if !strings.Contains(read(t, filepath.Join(example, one)), markers) {
+			t.Errorf("%s does not record %s as the module its markers come from; "+
+				"regenerate the example", one, plugin.MarkerPkg)
+		}
+	}
+}
 
 // body returns everything after a generated file's header.
 //

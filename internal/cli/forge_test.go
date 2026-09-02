@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/diag"
+	"github.com/okian/forge/internal/model"
 )
 
 // The stand-in stages let a verb be tested without a module on disk, which is
@@ -230,6 +231,10 @@ func TestAVersionNobodyStamped(t *testing.T) {
 
 // And one stamped with nothing in the fields that matter reads the same way,
 // rather than reporting an empty string as a version.
+//
+// The path is not one of those fields. It is the constant a spec file names, so
+// it is right whatever the build recorded; the version beside it is what goes
+// missing.
 func TestAVersionStampedWithNothing(t *testing.T) {
 	was := build
 	build = func() (*debug.BuildInfo, bool) { return &debug.BuildInfo{}, true }
@@ -240,9 +245,7 @@ func TestAVersionStampedWithNothing(t *testing.T) {
 	if self != unknown {
 		t.Errorf("forge reports %q", self)
 	}
-	// The path and the version both, since the version alone already reads as
-	// unknown and would satisfy a test that only looked for the word.
-	if want := unknown + " " + unknown; markers != want {
+	if want := model.MarkerPkg + " " + unknown; markers != want {
 		t.Errorf("markers report %q, want %q", markers, want)
 	}
 	if toolchain == "" {
@@ -256,7 +259,10 @@ func TestAVersionStampedWithNothing(t *testing.T) {
 func TestTheToolchainThatBuiltIt(t *testing.T) {
 	was := build
 	build = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{GoVersion: "go1.99.0", Main: debug.Module{Path: "example.com/forge", Version: "v1.2.3"}}, true
+		return &debug.BuildInfo{
+			GoVersion: "go1.99.0",
+			Main:      debug.Module{Path: model.MarkerPkg, Version: "v1.2.3"},
+		}, true
 	}
 	t.Cleanup(func() { build = was })
 
@@ -265,10 +271,78 @@ func TestTheToolchainThatBuiltIt(t *testing.T) {
 	if self != "v1.2.3" {
 		t.Errorf("forge reports %q", self)
 	}
-	if want := "example.com/forge v1.2.3"; markers != want {
+	if want := model.MarkerPkg + " v1.2.3"; markers != want {
 		t.Errorf("markers report %q, want %q", markers, want)
 	}
 	if toolchain != "go1.99.0" {
 		t.Errorf("the toolchain reports %q, want the one stamped into the binary", toolchain)
+	}
+}
+
+// A binary somebody linked a layer into reports the markers it generates
+// against, not the module it happens to be.
+//
+// The case the marker line exists for and the one it used to get wrong. A
+// plugin binary's own module is the layer's, and the markers a spec file names
+// are still forge's — so a header recording the running module would claim a
+// file was written against markers that module does not declare. The freshness
+// check compares that line, which made every file such a binary wrote look to
+// forge's own command like the work of different tooling.
+func TestAVersionFromABinaryThatLinkedALayer(t *testing.T) {
+	cases := map[string]struct {
+		deps []*debug.Module
+		want string
+	}{
+		"forge as an ordinary requirement": {
+			deps: []*debug.Module{
+				{Path: "example.com/other", Version: "v0.4.0"},
+				{Path: model.MarkerPkg, Version: "v1.2.3"},
+			},
+			want: "v1.2.3",
+		},
+		"forge replaced by a directory, as a development build has it": {
+			deps: []*debug.Module{{
+				Path:    model.MarkerPkg,
+				Version: "v0.0.0",
+				Replace: &debug.Module{Path: model.MarkerPkg},
+			}},
+			want: unknown,
+		},
+		"forge replaced by another version": {
+			deps: []*debug.Module{{
+				Path:    model.MarkerPkg,
+				Version: "v1.0.0",
+				Replace: &debug.Module{Path: model.MarkerPkg, Version: "v1.4.0"},
+			}},
+			want: "v1.4.0",
+		},
+		"a binary that does not link the markers at all": {
+			deps: []*debug.Module{{Path: "example.com/other", Version: "v0.4.0"}},
+			want: unknown,
+		},
+	}
+
+	for name, held := range cases {
+		t.Run(name, func(t *testing.T) {
+			was := build
+			build = func() (*debug.BuildInfo, bool) {
+				return &debug.BuildInfo{
+					Main: debug.Module{Path: "example.com/mylayers", Version: "v0.9.0"},
+					Deps: held.deps,
+				}, true
+			}
+			t.Cleanup(func() { build = was })
+
+			self, markers, _ := versions()
+
+			// The binary is still itself, which is the other half: the two
+			// lines are two facts and only one of them moved.
+			if self != "v0.9.0" {
+				t.Errorf("forge reports %q, want the running binary's own version", self)
+			}
+			if want := model.MarkerPkg + " " + held.want; markers != want {
+				t.Errorf("markers report %q, want %q", markers, want)
+			}
+		})
 	}
 }
