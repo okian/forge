@@ -13,9 +13,18 @@
 #              the same source on the same toolchain allocates the same number
 #              of times — so a budget can be a number and a regression is never
 #              noise.
-#   B/op       gated with a small headroom. The accounting jitters by a few
-#              tens of bytes where a map grows, which is far below any real
-#              regression and far above zero.
+#   B/op       gated with a small headroom, and only where the run allocated
+#              at all. The accounting jitters by a few tens of bytes where a
+#              map grows, which is far below any real regression.
+#
+#              The exception is what makes the gate usable at zero. B/op is a
+#              total divided by the iteration count, so a cost paid once over
+#              a run of two thousand reports as one byte per operation while
+#              allocs/op rounds to none — and a budget of zero bytes has no
+#              proportional headroom to absorb it, so the honest figure fails.
+#              A run that allocated no times cannot have allocated bytes per
+#              operation, so the byte ceiling is not applied there. The count
+#              is what holds that case, and it holds it exactly.
 #   ns/op      printed, never gated. A shared runner's timings vary by more
 #              than most regressions do, and a gate that cries wolf is a gate
 #              somebody switches off.
@@ -134,10 +143,18 @@ awk -v budgetfile="${budget}" -v headroom="${headroom}" '
 			bad = 1
 		}
 
+		# Only where something was allocated. See the note on B/op above: with
+		# no allocations the figure is the run length showing through, and the
+		# count above has already held the run to its budget exactly.
 		ceiling = bytes[key] + (bytes[key] * headroom / 1000)
 		if (gotbytes + 0 > ceiling) {
-			printf "bench: %s %s allocated %s bytes, budget %s\n", pkg, name, gotbytes, bytes[key]
-			bad = 1
+			if (gotallocs + 0 == 0) {
+				printf "bench: %s %s reports %s bytes over %s with no allocations, which is the run length rather than the code\n",
+					pkg, name, gotbytes, bytes[key]
+			} else {
+				printf "bench: %s %s allocated %s bytes, budget %s\n", pkg, name, gotbytes, bytes[key]
+				bad = 1
+			}
 		}
 
 		# The other side of the band. Only where there is room to fall by half:
