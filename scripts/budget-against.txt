@@ -2,30 +2,32 @@
 #
 # Same format and same gate as scripts/budget.txt, for the benchmarks that live
 # in their own module under benchmarks/ so that the module everybody builds
-# keeps the dependencies it has. Run with `make bench-against`.
+# keeps its one direct dependency. Run with `make bench-against`.
 #
 # Measured on go1.27 for a 64-bit word.
 
 # Validation, against go-playground/validator over the same subject with the
 # same rules written both ways.
 #
-# What the figures say, and it is not what the plan predicted. The allocation
-# claim is met outright: the generated check allocates nothing where the
-# reflective one allocates six times, because the generated one compares values
-# and the reflective one builds a description of what it is about to compare.
-# The speed claim is not: about two and a half times rather than the five the
-# plan asked for.
+# The allocation figures are the durable half: the generated check allocates
+# nothing, the reflective one six times. Where those six come from is not
+# reflection, which is worth writing down because it is the obvious guess.
+# Walking the fields reflectively allocates nothing at all. One allocation is
+# the subject copied into the `any` go-playground's entry point takes, and the
+# other five are inside its `email` rule, which parses the address with
+# net/mail before matching its own pattern.
 #
-# The reason is in the rules rather than in either implementation. This subject
-# carries a pattern, and a pattern is run by the same regexp engine on both
-# sides — the example's own benchmarks put that engine at about nine tenths of
-# the work. Neither generation nor reflection can be much better than the other
-# at running somebody else's regexp, so a rule set that is mostly patterns
-# converges on a small constant factor, and one with no pattern at all is where
-# the larger multiple lives.
+# So most of the difference is what the two rules ask for rather than how
+# either check was built, and that is not a gap the benchmark can close. The
+# subject asks for a pattern; go-playground has no pattern rule, and says so
+# deliberately — commas and equals signs can appear in a regex and would
+# collide with its own tag syntax, so it asks for a registered function
+# instead. `email` is the nearest thing in its vocabulary, and it does more
+# work than the pattern does.
 #
-# So the honest claim is the one about memory, and the speed multiple is a
-# property of the rules rather than of forge. prd.md §14 says so with these
-# numbers under it.
+# Read the speed multiple in that light and do not read much into it: it moves
+# with the run length, so it is a figure for the machine it was measured on.
+# The memory claim is the one that travels. See the note beside twin in
+# validator_test.go for the field where the two rules part company.
 github.com/okian/forge/benchmarks/validator  Generated    0     0
 github.com/okian/forge/benchmarks/validator  Reflective   6   136

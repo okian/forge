@@ -1,5 +1,6 @@
 # Development entry points. CI runs these same targets, so a green `make ci`
-# locally means a green pipeline; `make check` is the fast subset of it.
+# locally means a green pipeline; `make check` is the fast pass to run before
+# every commit.
 
 GO ?= go
 COVER_MIN ?= 90
@@ -237,6 +238,9 @@ diagnostics: ## Regenerate the diagnostics index under docs/.
 # Not all of it — see ci below. The two are kept apart deliberately, because a
 # pre-commit gate that takes as long as CI is one people stop running, and the
 # gate nobody runs catches nothing.
+#
+# Neither list contains the other. This one runs size, which the pipeline never
+# does; that one runs the six the pipeline adds.
 .PHONY: check
 check: fmt-check vet lint cover size ## Run the fast gates: formatting, vet, lint, coverage, size.
 

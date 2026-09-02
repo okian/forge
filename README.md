@@ -264,7 +264,7 @@ way.
 
 ## Development
 
-Every gate CI runs is a `make` target. `make check` is the fast subset worth
+Every gate CI runs is a `make` target. `make check` is the fast pass worth
 running before every commit; `make ci` is the whole pipeline, so a green run of
 it locally means a green run there:
 
@@ -288,10 +288,10 @@ make diagnostics     # regenerate docs/diagnostics.md from the registry
 make help            # list every target
 ```
 
-The gates among those — `check`, `ci`, `fmt`, `lint`, `vet`, `test`, `race`,
-`cover`, `tidy-check`, `vuln` — cover `x/csv` as well as this module, because a
-layer written against the published surface is only a promise if the same gates
-hold it. The rest are narrower: `bench`, `fuzz` and `size` are gates over this
+Those that check rather than rewrite — `check`, `ci`, `fmt-check`, `lint`,
+`vet`, `test`, `race`, `cover`, `tidy-check`, `vuln` — cover `x/csv` as well as
+this module, because a layer written against the published surface is only a
+promise if the same gates hold it. So does `fmt`, which rewrites both. The rest are narrower: `bench`, `fuzz` and `size` are gates over this
 module alone, `build` builds `forge` and is not a gate at all, and each worked
 example has its own regeneration target because each is written by a different
 binary.

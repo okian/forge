@@ -18,10 +18,14 @@ import (
 //
 // The exception is Email, and it is not one that can be removed. The subject
 // asks for a pattern, which forge compiles to a match against it.
-// go-playground has no pattern rule in its tag vocabulary, so the nearest
-// thing it offers is `email`, and that parses the address to RFC 5322 with
-// net/mail instead. Those are different amounts of work, and five of the six
-// allocations the reflective check makes are inside that one rule.
+// go-playground has no pattern rule, and the omission is deliberate: a comma
+// or an equals sign can appear in a regex and would collide with its own tag
+// syntax, so it asks for a registered function instead. The nearest thing in
+// its vocabulary is `email`, which parses the address to RFC 5322 with
+// net/mail and then matches a pattern of its own — so it does the pattern as
+// well as the parse, rather than instead of it. Those are different amounts of
+// work, and five of the six allocations the reflective check makes are inside
+// that one rule.
 //
 // So read the figures as two checks over the rules each side can express,
 // which is the comparison somebody choosing between them actually faces —

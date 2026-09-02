@@ -26,8 +26,8 @@ are the whole surface.
 ## The gates
 
 Every gate CI runs is a `make` target. Run `make check` before every commit —
-it is the fast subset. Run `make ci` before pushing something you are unsure
-of; it is the whole pipeline, and a green run of it locally means a green run
+it is the fast pass. Run `make ci` before pushing something you are unsure of;
+it is the whole pipeline, and a green run of it locally means a green run
 there:
 
 ```
@@ -68,9 +68,9 @@ the `go` command.
 
 The rest are narrower. `make bench`, `make fuzz` and `make size` are gates over
 this module alone. `make bench-against` runs in a third module,
-`benchmarks/validator`, which is nested for the same reason and holds the
-comparisons that need somebody else's library. `make build` is not a gate at
-all.
+`benchmarks/validator`, which holds the comparisons that need somebody else's
+library and is nested so that the library stays out of the dependency graph of
+everybody who imports forge. `make build` is not a gate at all.
 
 Three more regenerate committed output rather than checking it, and each is run
 when the thing it is written from changes: `make example` and

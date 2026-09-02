@@ -59,10 +59,11 @@ github.com/okian/forge/examples/people  IndexByHand            5  180304
 # both make the same strings, and about a sixth quicker.
 #
 # So the encoder's claim is memory and the decoder's is time, and neither is the
-# order-of-magnitude the pre-v2 generators had. That is the caveat prd.md §14
-# opens with, now with numbers under it. The reflective figures are held to a
-# budget too, because a baseline that quietly stopped doing the work would make
-# the comparison meaningless while leaving both lines green.
+# order-of-magnitude the pre-v2 generators had. Worth saying plainly, because a
+# generator that oversells itself is one nobody trusts the second time. The
+# reflective figures are held to a budget too, because a baseline that quietly
+# stopped doing the work would make the comparison meaningless while leaving
+# both lines green.
 github.com/okian/forge/examples/people  JSONEncode                0      0
 github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
