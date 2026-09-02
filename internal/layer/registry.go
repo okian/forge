@@ -37,6 +37,10 @@ func New() *Registry {
 // either of them. Rejecting the second registration is the only point at which
 // that can be caught, since by the time a directive is read the ambiguity looks
 // like an ordinary option.
+//
+// The one marker two layers may claim is one forge published and did not
+// implement. A layer that generates takes it over from the placeholder holding
+// it, which is what a staged marker is for: see [supersedes].
 func (r *Registry) Register(l Layer) error {
 	origin := l.Origin()
 
@@ -73,7 +77,12 @@ func (r *Registry) Register(l Layer) error {
 	}
 
 	if existing, ok := r.byOrigin[origin]; ok {
-		return fmt.Errorf("marker %s is claimed by %s and by %s", origin, name(existing), name(l))
+		if !supersedes(l, existing) {
+			return fmt.Errorf("marker %s is claimed by %s and by %s", origin, name(existing), name(l))
+		}
+		r.replace(origin, l)
+
+		return nil
 	}
 
 	directive := directiveFor(origin)
@@ -150,6 +159,55 @@ func (r *Registry) All() []Layer {
 
 // Len returns the number of registered layers.
 func (r *Registry) Len() int { return len(r.registered) }
+
+// supersedes reports whether a layer may take a marker over from the one
+// holding it.
+//
+// One case, and it is the case a staged marker exists for. Forge publishes a
+// marker before its generator is written so that a declaration naming it
+// type-checks and is answered with what is missing rather than with silence —
+// and a marker nobody may ever claim would make that publication a permanent
+// obstacle instead: the name is taken, the directive is taken, and the layer
+// the roadmap promised cannot be written by anybody but forge. So a layer that
+// generates takes over from a placeholder that does not.
+//
+// Only for the same marker. Two markers of one name in two packages both answer
+// to one directive whatever either of them has implemented, and that ambiguity
+// is refused where it is found: replacing one with the other would leave every
+// declaration over the abandoned marker resolving to nothing.
+//
+// Never between two layers that generate. Which of those an author meant is not
+// a question the order of two registration calls should answer, so it is
+// refused and the binary's own main is where it gets decided.
+func supersedes(taking, held Layer) bool {
+	return StageOf(held) != StageReady && StageOf(taking) == StageReady
+}
+
+// replace swaps in the layer now claiming a marker, where the one it takes over
+// from stood.
+//
+// A takeover leaves the catalog the size it was, which is the property worth
+// keeping: a marker is claimed once, and a registry that grew by one every time
+// a placeholder was superseded would report a count nothing in it corresponds
+// to and would walk the same marker twice in the scan for a clashing directive.
+func (r *Registry) replace(origin model.TypeRef, l Layer) {
+	at := slices.IndexFunc(r.registered, func(one Layer) bool { return one.Origin() == origin })
+	if at < 0 {
+		// Unreachable, and not survivable. The two are written together and
+		// cannot come apart: byOrigin is only ever filled beside registered,
+		// and a marker in one and absent from the other means this file has
+		// been changed wrongly or a layer's Origin is not a constant.
+		//
+		// Appending instead would leave the catalog holding two entries for one
+		// marker, which is precisely the state Len and the scan for a clashing
+		// directive are written against — so a defensive path here would break
+		// the invariant it is defending.
+		panic("layer: " + origin.String() + " is claimed in the index and absent from the catalog")
+	}
+
+	r.byOrigin[origin] = l
+	r.registered[at] = l
+}
 
 // name spells a layer for an error message, by the marker it claims.
 func name(l Layer) string { return fmt.Sprintf("%T", l) }

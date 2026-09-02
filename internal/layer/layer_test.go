@@ -347,3 +347,148 @@ func method(pkg *types.Package, at token.Pos, on *types.Named, name string) *typ
 
 	return types.NewFunc(at, pkg, name, sig)
 }
+
+// described is a fake that says how far along it is, which is what forge's own
+// placeholders do and what a layer taking one over is measured against.
+type described struct {
+	fake
+	stage layer.Stage
+}
+
+func (d described) Stage() layer.Stage { return d.stage }
+func (d described) Doc() string        { return "a marker with a stage" }
+
+// A layer that generates takes over a marker forge published and did not
+// implement.
+//
+// It is what a staged marker is for. Forge declares one so that a declaration
+// naming it type-checks and is answered with what is missing rather than with
+// silence about a marker it plainly ships — and a marker nobody else may ever
+// claim would make that publication an obstacle instead: the name is taken, the
+// directive is taken, and the layer the roadmap promised could be written by
+// nobody but forge.
+func TestRegistryLetsALayerTakeOverAPublishedMarker(t *testing.T) {
+	for name, held := range map[string]layer.Stage{
+		"staged": layer.StageStaged,
+		"stub":   layer.StageStub,
+	} {
+		t.Run(name, func(t *testing.T) {
+			registry := layer.New()
+			registry.MustRegister(described{
+				fake:  fake{origin: marker("Csv"), kind: model.KindTransport},
+				stage: held,
+			})
+
+			written := fake{
+				origin: marker("Csv"),
+				kind:   model.KindTransport,
+				adds:   []shape.Cap{shape.Encodable},
+			}
+			if err := registry.Register(written); err != nil {
+				t.Fatalf("a layer could not take over a marker nothing had implemented: %v", err)
+			}
+
+			// The layer that generates is the one a stack resolves to, and the
+			// placeholder is gone rather than shadowed.
+			found, ok := registry.Lookup(marker("Csv"))
+			if !ok {
+				t.Fatal("the marker is claimed by nothing after being taken over")
+			}
+			if _, still := found.(layer.Described); still {
+				t.Error("the placeholder is still what the marker resolves to")
+			}
+
+			// One claim per marker, before and after. A catalog that grew would
+			// report a count nothing in it corresponds to, and would walk the
+			// marker twice in the scan for a clashing directive.
+			if got := registry.Len(); got != 1 {
+				t.Errorf("the catalog holds %d layers for one marker, want 1", got)
+			}
+		})
+	}
+}
+
+// Two layers that both generate are refused, whichever order they arrive in.
+//
+// Which of them the author meant is not a question the order of two
+// registration calls should answer. A binary's own main is where that gets
+// decided, so the refusal happens where it can still be read.
+func TestRegistryRefusesTwoLayersThatBothGenerate(t *testing.T) {
+	registry := layer.New()
+	registry.MustRegister(fake{origin: marker("Csv"), kind: model.KindTransport})
+
+	err := registry.Register(fake{origin: marker("Csv"), kind: model.KindTransport})
+	if err == nil {
+		t.Fatal("a second layer that generates claimed a marker that was taken")
+	}
+	if !strings.Contains(err.Error(), "Csv") {
+		t.Errorf("error %q does not name the marker", err)
+	}
+}
+
+// A placeholder may not displace a layer that generates.
+//
+// The one direction a takeover runs in. A catalog registering forge's own
+// staged markers after a plugin's real one would otherwise replace working
+// generation with a refusal, and the binary that did it would look identical to
+// one that worked.
+func TestRegistryRefusesAPlaceholderOverALayerThatGenerates(t *testing.T) {
+	registry := layer.New()
+	registry.MustRegister(fake{origin: marker("Csv"), kind: model.KindTransport})
+
+	err := registry.Register(described{
+		fake:  fake{origin: marker("Csv"), kind: model.KindTransport},
+		stage: layer.StageStaged,
+	})
+	if err == nil {
+		t.Fatal("a placeholder displaced a layer that generates")
+	}
+}
+
+// Taking a marker over is for the same marker and not for the same name.
+//
+// Two markers of one name in two packages both answer to one directive whatever
+// either has implemented, and a layer's own marker does not become forge's by
+// being spelled alike. Replacing one with the other would leave every
+// declaration over the abandoned marker resolving to nothing.
+func TestRegistryRefusesAnotherPackagesMarkerOfOneName(t *testing.T) {
+	registry := layer.New()
+	registry.MustRegister(described{
+		fake:  fake{origin: marker("Csv"), kind: model.KindTransport},
+		stage: layer.StageStaged,
+	})
+
+	err := registry.Register(fake{
+		origin: model.TypeRef{Pkg: "example.com/mine/csv", Name: "Csv"},
+		kind:   model.KindTransport,
+	})
+	if err == nil {
+		t.Fatal("a layer's own marker took over one of forge's by being spelled alike")
+	}
+	if !strings.Contains(err.Error(), "//forge:csv") {
+		t.Errorf("error %q does not name the directive they share", err)
+	}
+
+	// And the marker forge published still resolves, so a declaration over it
+	// is answered with what is missing rather than with nothing at all.
+	if _, ok := registry.Lookup(marker("Csv")); !ok {
+		t.Error("the refused registration took the published marker with it")
+	}
+}
+
+// A layer that says nothing about how far along it is has finished.
+//
+// How far along a layer is is a question about forge's own roadmap, which a
+// layer written elsewhere cannot answer — so silence is read as a layer
+// somebody finished rather than as one forge has not started.
+func TestStageOfALayerThatSaysNothing(t *testing.T) {
+	written := fake{origin: marker("Csv"), kind: model.KindTransport}
+	if got := layer.StageOf(written); got != layer.StageReady {
+		t.Errorf("a layer that says nothing is %s, want %s", got, layer.StageReady)
+	}
+
+	held := described{fake: written, stage: layer.StageStaged}
+	if got := layer.StageOf(held); got != layer.StageStaged {
+		t.Errorf("a layer that says it is staged is %s, want %s", got, layer.StageStaged)
+	}
+}

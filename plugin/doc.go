@@ -111,6 +111,31 @@
 // storage layer's declarations include the type declaration — a defined slice,
 // a struct holding a buffer — or the package names a type nothing declares.
 //
+// # A marker of your own, or one forge published
+//
+// Most layers declare their own marker: a generic type with one parameter, in
+// the layer's own package, importing nothing. Nothing about a marker needs
+// forge — it is a phantom type a declaration names — so the package holding one
+// is the package your users already import.
+//
+// The other way is to implement a marker forge has published and not written.
+// Forge declares those so that a declaration naming one type-checks and is
+// answered with what is missing rather than with silence about a marker it
+// plainly ships, and each is listed by the list command as staged. Claim one by
+// returning it from Layer.Origin — MarkerPkg is the path they are all declared
+// in — and registering the layer takes the marker over from the placeholder.
+//
+// What that buys is that the declaration does not move. An author writes
+// forge.Csv[Person] against plain forge today and it type-checks; the binary
+// that links your layer generates for it, and the one that does not says the
+// work is pending. Nothing in their tree changes when the layer arrives.
+//
+// What it costs is that forge may write that layer too, and two layers that
+// both generate for one marker are refused at registration rather than resolved
+// by call order. A marker of your own cannot collide that way, so it is the
+// safer of the two — and a name forge has no plans for is not going to be
+// published as staged in the first place.
+//
 // # Diagnostics are the product
 //
 // A layer that fails with a stack trace is worse than one that refuses. Return

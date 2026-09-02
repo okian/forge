@@ -403,8 +403,7 @@ func schemaFor(ref model.LayerRef, registry *layer.Registry) (schema []layer.Opt
 		return nil, true
 	}
 
-	described, says := found.(layer.Described)
-	return found.OptionSchema(), says && described.Stage() == layer.StageStaged
+	return found.OptionSchema(), layer.StageOf(found) == layer.StageStaged
 }
 
 // declared finds an option in a schema.
