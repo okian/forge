@@ -2,10 +2,12 @@
 /forge
 /bin/
 
-# Coverage and profiling artefacts. Anchored to the module root so that test
-# fixtures keep their extensions.
+# Coverage and profiling artefacts. Anchored to a module root so that test
+# fixtures keep their extensions — which is why the nested module needs its own
+# line rather than being covered by the one above.
 /cover.out
 /coverage.out
+/x/csv/cover.out
 /*.prof
 *.test
 

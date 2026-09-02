@@ -42,6 +42,19 @@ The individual targets are worth knowing when something fails:
 
 `make help` lists them all.
 
+Every gate above covers two modules: this one, and the layer under
+[`x/csv`](x/csv) that is written against the published `plugin` surface. The
+layer is a module of its own so that it cannot reach past that surface without
+the go command noticing, and it is held to the same gates so that the surface is
+a promise rather than a paragraph. `go test ./...` at the root does not reach
+it — the go command reads a nested module as not part of the one above it — so
+run the `make` target rather than the `go` command.
+
+The targets that are not gates stay with this module: `make build` builds
+`forge`, `make bench` measures this module's own benchmarks, and each worked
+example has a regeneration target of its own (`make example`,
+`make layers-example`) because each is written by a different binary.
+
 ## Definition of done
 
 The standard every change in this tree is held to:

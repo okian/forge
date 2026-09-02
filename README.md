@@ -118,25 +118,54 @@ built-in layers. The interface is
 what a layer is asked and in what order, where a method goes, and which of
 forge's own machinery is deliberately not published.
 
+[`x/csv`](x/csv) is that arrangement, built and held to every gate in this
+repository. It is a CSV transport — `WriteCSVTo`, `ReadCSVFrom` and `CSVHeader`
+over the subject's own fields — in a module of its own, importing `plugin` and
+the standard library and nothing else. Its
+[worked example](x/csv/ledger) is three declarations over one subject with the
+files it wrote committed beside them.
+
+It also shows the other half of the arrangement. `forge.Csv` is a marker forge
+publishes with no generator behind it, so
+
+```go
+//forge:csv
+type Entries forge.Csv[forge.Collection[Entry]]
+```
+
+type-checks against plain `forge` today, and `forge generate` reports it as work
+that is not done yet. Registering a layer that claims the marker takes it over
+from the placeholder, so nothing in the declaration changes when the layer
+arrives. Every marker `forge list` calls *staged* is open to be claimed that
+way.
+
 ## Development
 
 Every gate CI runs is a `make` target, so a green `make check` locally means a
 green pipeline:
 
 ```
-make check       # formatting, go vet, golangci-lint, tests with the coverage floor
-make test        # tests only
-make race        # tests under the race detector
-make cover       # tests plus the coverage floor (90% of statements)
-make bench       # benchmarks, each held to its budget in scripts/budget.txt
-make fmt         # rewrite sources with gofumpt and gci
-make lint        # golangci-lint on its own
-make vuln        # govulncheck over reachable code
-make tidy-check  # fail if go.mod or go.sum would change under `go mod tidy`
-make build       # build ./cmd/forge into ./bin
-make example     # regenerate the worked example under examples/
-make help        # list every target
+make check           # formatting, go vet, golangci-lint, tests with the coverage floor
+make test            # tests only
+make race            # tests under the race detector
+make cover           # tests plus the coverage floor (90% of statements)
+make bench           # benchmarks, each held to its budget in scripts/budget.txt
+make fmt             # rewrite sources with gofumpt and gci
+make lint            # golangci-lint on its own
+make vuln            # govulncheck over reachable code
+make tidy-check      # fail if go.mod or go.sum would change under `go mod tidy`
+make build           # build ./cmd/forge into ./bin
+make example         # regenerate the worked example under examples/
+make layers-example  # regenerate the worked example under x/csv/
+make help            # list every target
 ```
+
+The gates among those — `check`, `fmt`, `lint`, `vet`, `test`, `race`, `cover`,
+`tidy-check`, `vuln` — cover `x/csv` as well as this module, because a layer
+written against the published surface is only a promise if the same gates hold
+it. The rest are about this module alone: `build` builds `forge`, `bench` runs
+this module's benchmarks, and each worked example has its own regeneration
+target because each is written by a different binary.
 
 `make bench` is a gate rather than a report. Every benchmark declares what it
 may spend in [`scripts/budget.txt`](scripts/budget.txt) and the run fails if one
