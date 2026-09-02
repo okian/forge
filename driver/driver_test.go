@@ -42,7 +42,10 @@ func TestALayerForgeDoesNotShip(t *testing.T) {
 		t.Fatalf("explaining the declaration exited %d:\n%s", status, out)
 	}
 
-	for _, want := range []string{"Tally[Person]", "Slice", "Tally"} {
+	// The stack as written, the storage filled in beneath it, and the layer's
+	// own summary — which is the one thing in the report only the layer could
+	// have supplied.
+	for _, want := range []string{"Tally[Person]", "Slice", "count of the elements"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the explanation does not carry %q:\n%s", want, out)
 		}

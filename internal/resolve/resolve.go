@@ -187,8 +187,12 @@ func arityLayout(stack []model.LayerRef, named *types.Named) (string, model.Span
 }
 
 // origin returns the marker's identity with any instantiation dropped, which is
-// what a layer registry is keyed by. It is only ever called for a type [marker]
-// has accepted, which is how it knows there is a package to name.
+// what a layer registry is keyed by.
+//
+// Called by [marker] to ask the registry, and again once the answer is yes, so
+// it runs for a type that has not been accepted. What it needs is a package to
+// name, and marker has already checked there is one — the nil guard comes
+// first for that reason.
 func origin(named *types.Named) model.TypeRef {
 	obj := named.Obj()
 	return model.TypeRef{Pkg: obj.Pkg().Path(), Name: obj.Name()}

@@ -54,7 +54,7 @@ type Registry = plugin.Registry
 // caller's. The layers themselves hold no state — a layer answers questions
 // about a declaration and keeps nothing between them — so sharing them across
 // catalogs costs nothing and is what makes the copy cheap.
-func Builtins() *plugin.Registry { return layers.Builtins() }
+func Builtins() *Registry { return layers.Builtins() }
 
 // Main runs the command line this process was given and ends the process with
 // the status it produced.
@@ -63,11 +63,13 @@ func Builtins() *plugin.Registry { return layers.Builtins() }
 // else: a tool whose only entry point ends the process can be tested only by
 // starting one, so [Run] is where the work is and this is the two lines around
 // it.
-func Main(catalog *plugin.Registry) {
+func Main(catalog *Registry) {
 	// Ending the process is the whole of what this adds, and it is why the rest
 	// is in Run: a function that exits can be called from a main and tested
 	// from nowhere.
-	os.Exit(Run(catalog, os.Args[1:], os.Stdout, os.Stderr)) //nolint:revive // the exit is the point
+	//
+	//nolint:revive // ending the process is what this function is for
+	os.Exit(Run(catalog, os.Args[1:], os.Stdout, os.Stderr))
 }
 
 // Run dispatches one command line against a catalog and returns the status to
@@ -77,6 +79,6 @@ func Main(catalog *plugin.Registry) {
 // something wrong with the input, or the command line did not name a run. A
 // caller in a shell script can act on all three, and a caller in a test can
 // read both streams and assert on either.
-func Run(catalog *plugin.Registry, args []string, stdout, stderr io.Writer) int {
+func Run(catalog *Registry, args []string, stdout, stderr io.Writer) int {
 	return cli.Run(catalog, args, stdout, stderr)
 }

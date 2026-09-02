@@ -90,35 +90,51 @@ func TestWhichLayersAreWrittenAgainstThePublishedSurface(t *testing.T) {
 func layerPackages(t *testing.T) map[string][]string {
 	t.Helper()
 
-	dirs, err := os.ReadDir("..")
+	held, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatalf("looking for the layers: %v", err)
 	}
 
 	out := make(map[string][]string)
 
-	for _, held := range dirs {
-		if !held.IsDir() || held.Name() != "layers" {
+	for _, one := range held {
+		// A directory holding Go of its own. Anything else beside the layers is
+		// not one of them: testdata is a directory the go command ignores and
+		// this has to ignore too, or a fixture added under it is reported as a
+		// layer nobody wrote.
+		if !one.IsDir() || one.Name() == "testdata" {
 			continue
 		}
 
-		inside, err := os.ReadDir(filepath.Join("..", "layers"))
-		if err != nil {
-			t.Fatalf("reading the layers: %v", err)
+		found := importsOf(t, one.Name())
+		if found == nil && !holds(t, one.Name()) {
+			continue
 		}
-
-		for _, one := range inside {
-			if !one.IsDir() {
-				continue
-			}
-			out[one.Name()] = importsOf(t, filepath.Join("..", "layers", one.Name()))
-		}
+		out[one.Name()] = found
 	}
 
 	if len(out) == 0 {
 		t.Fatal("no layer packages were found, so nothing was checked")
 	}
 	return out
+}
+
+// holds reports whether a directory has Go source of its own, which is what
+// tells a layer from a directory that only holds one.
+func holds(t *testing.T, dir string) bool {
+	t.Helper()
+
+	found, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", dir, err)
+	}
+
+	for _, one := range found {
+		if !one.IsDir() && strings.HasSuffix(one.Name(), ".go") {
+			return true
+		}
+	}
+	return false
 }
 
 // importsOf returns the internal packages a directory's own source imports,
@@ -130,13 +146,13 @@ func layerPackages(t *testing.T) map[string][]string {
 func importsOf(t *testing.T, dir string) []string {
 	t.Helper()
 
-	held, err := os.ReadDir(dir)
+	found, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("reading %s: %v", dir, err)
 	}
 
 	var out []string
-	for _, one := range held {
+	for _, one := range found {
 		name := one.Name()
 		if one.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue

@@ -31,6 +31,18 @@ const tallyPkg = "example.com/mine/tally"
 // contract — an option naming a field, a capability it requires of what is
 // beneath it, a type spelled for the package it lands in, and a method on the
 // declared type.
+//
+// What it does not do is walk the container properly, and the reason is the one
+// the published surface admits to. Its body ranges over the declared type
+// directly, which compiles because the storage filled in beneath it is a
+// defined slice. Over a ring buffer the same stack would type-check — a ring is
+// walkable, so Accepts is satisfied — and then fail to compile, because there
+// is nothing to range over. Walking whatever is beneath it needs the sequence
+// view forge emits and does not publish, so a layer written today either knows
+// which storage it is over or asks for a snapshot.
+//
+// Left as it is rather than worked around, because working around it would hide
+// the gap this test exists partly to measure.
 type tally struct{}
 
 // Origin names the marker this layer claims.

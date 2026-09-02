@@ -152,7 +152,7 @@ func (r *Registry) All() []Layer {
 func (r *Registry) Len() int { return len(r.registered) }
 
 // name spells a layer for an error message, by the marker it claims.
-func name(l Layer) string { return l.Origin().String() }
+func name(l Layer) string { return fmt.Sprintf("%T", l) }
 
 // directiveFor returns the //forge: name a marker answers to.
 func directiveFor(origin model.TypeRef) string {
