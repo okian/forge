@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs 76cc5f31ede511be
+// inputs 2fc1523a70edf109
 
 //go:build forgespec
 
@@ -213,4 +213,17 @@ func guardedPersonsExposeLockerHeldIndexOf(from, i, size int) int { panic("forge
 var (
 	_ json.MarshalerTo = (*GuardedPersonsExposeLocker)(nil)
 	_ sync.Locker      = (*GuardedPersonsExposeLocker)(nil)
+)
+
+func encodeMatrixPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
+
+func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+
+func decodeMatrixPersonJSONFrom(dec *jsontext.Decoder, v *Person) error { panic("forge stub") }
+
+func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+
+var (
+	_ json.MarshalerTo     = *new(Person)
+	_ json.UnmarshalerFrom = (*Person)(nil)
 )

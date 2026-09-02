@@ -157,7 +157,7 @@ func generating(t *testing.T, req generate.Request) string {
 	}
 
 	for _, file := range files {
-		if file.Decl == req.Model.Name {
+		if file.Name == generate.Name() {
 			return string(file.Content)
 		}
 	}

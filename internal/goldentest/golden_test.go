@@ -326,7 +326,7 @@ func TestOnlyGeneratedFilesAreRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the recorded goldens: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "zz_forge_persons.go" {
+	if len(entries) != 1 || entries[0].Name() != "forge.gen.go" {
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
 			names = append(names, entry.Name())

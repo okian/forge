@@ -83,4 +83,10 @@
 // The generated files are committed, so building this package needs no tool
 // installed. That is the arrangement forge is for: generation happens when the
 // declaration changes, not when the code is built.
+//
+// There are two of them and there is one of them, depending on how you count.
+// [Persons] is written inline and the other four in spec form, so the whole of
+// what forge wrote for this package goes in forge.gen.go under //go:build
+// !forgespec, and forge_stubs.gen.go stands in for it under the tag the spec
+// file is written behind. Exactly one is in any build.
 package people

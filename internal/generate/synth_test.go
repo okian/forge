@@ -275,7 +275,7 @@ func claimingWith(t *testing.T, declared, directive string) string {
 	if !diags.Empty() {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
-	return string(written(t, files, generate.Named(declared)))
+	return string(written(t, files, generate.Name()))
 }
 
 // claimingStack generates over a given stack and returns the declaration's
@@ -287,7 +287,7 @@ func claimingStack(t *testing.T, declared string, stack []model.LayerRef) string
 	if !diags.Empty() {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
-	return string(written(t, files, generate.Named(declared)))
+	return string(written(t, files, generate.Name()))
 }
 
 // generating builds one spec declaration over a stack, with whatever directives

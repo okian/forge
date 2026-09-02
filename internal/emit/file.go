@@ -91,12 +91,11 @@ type File struct {
 	// Package is the name in the package clause.
 	Package string
 
-	// Decl is the name of the declaration the file was generated for, and Pos
-	// is where that declaration is written. Everything reported about this file
-	// points there: a mistake in generated code is not a line the author can
-	// edit, and the declaration that asked for it is.
-	Decl string
-	Pos  token.Position
+	// Pos is where the declaration that stands for this file is written.
+	// Everything reported about the file points there: a mistake in generated
+	// code is not a line the author can edit, and a declaration that asked for
+	// it is.
+	Pos token.Position
 
 	// Build is the build constraint the file carries, written without the
 	// "//go:build" that introduces it — "!forgespec" for a file that is part of
@@ -177,14 +176,9 @@ func (f File) Render() ([]byte, error) {
 }
 
 // report turns something that went wrong while writing into a diagnostic
-// pointing at the declaration that asked for the file.
+// pointing at a declaration that asked for the file.
 func (f File) report(code diag.Code, cause error) diag.Diagnostic {
-	what := "a file"
-	if f.Decl != "" {
-		what = f.Decl
-	}
-
-	return diag.New(code, f.Pos, "generating %s for package %s: %v", what, f.Package, cause).
+	return diag.New(code, f.Pos, "generating the file for package %s: %v", f.Package, cause).
 		WithHint("%s", "this is a bug in forge rather than in the declaration; the file was not written")
 }
 

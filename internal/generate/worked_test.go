@@ -31,7 +31,7 @@ func TestARefiningLayerOverAContainerThatIsNotASlice(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	held := written(t, files, generate.Named("Persons"))
+	held := written(t, files, generate.Name())
 
 	for _, want := range []string{
 		// The ring's, including the capacity the directive fixed.
@@ -84,7 +84,7 @@ func TestTheWorkedExampleStreamsThroughEveryLayer(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	held := written(t, files, generate.Named("Persons"))
+	held := written(t, files, generate.Name())
 
 	for _, want := range []string{
 		// The ring's representation and the collection's queries, as the
@@ -111,7 +111,7 @@ func TestTheWorkedExampleStreamsThroughEveryLayer(t *testing.T) {
 
 	// The subject's own codec goes in the file the package shares, since two
 	// declarations over one subject want one copy of it.
-	shared := written(t, files, generate.Shared())
+	shared := written(t, files, generate.Name())
 	for _, want := range []string{
 		"func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {",
 		"func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {",
@@ -171,7 +171,7 @@ func TestACodecOverAContainerThatRefusesElements(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	held := written(t, files, generate.Named("Persons"))
+	held := written(t, files, generate.Name())
 	for _, want := range []string{
 		"refused := c.AppendSeq(func(yield func(Person) bool) {",
 		"if refused != nil {",

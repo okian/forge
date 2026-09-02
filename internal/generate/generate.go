@@ -28,7 +28,10 @@ import (
 // What can go wrong between a declaration that resolved and a file that could
 // be written.
 var (
-	codeFileCollision = diag.Register(4006, "two declarations want one file")
+	// 4006 was "two declarations want one file", which a package writing one
+	// file cannot have. It is not reused: a code is permanent, so that anything
+	// referring to one — a suppression, a runbook, a search — does not come
+	// back with the wrong answer years later.
 	codeNoProvider    = diag.Register(4007, "nothing provides a helper a layer requires")
 	codeLayerFailed   = diag.Register(4008, "layer could not generate")
 	codeNothingGiven  = diag.Register(4014, "a layer handed over nothing where a declaration should be")
@@ -117,11 +120,11 @@ type File struct {
 	// Content is what goes in it, formatted.
 	Content []byte
 
-	// Decl names the declaration it was generated for, and Pos where that
-	// declaration was written. A file with neither is one several declarations
-	// share.
-	Decl string
-	Pos  token.Position
+	// Pos is where the first declaration of the package was written, which is
+	// where anything reported about the file points. A package has no position
+	// of its own and every declaration in it is equally the reason the file is
+	// there.
+	Pos token.Position
 }
 
 // wide is what a declaration is generated against that it cannot answer for
@@ -189,29 +192,42 @@ func widely(requests []Request, cfg Config, diags *diag.Set) wide {
 	}
 }
 
-// Package generates the files one package's declarations ask for.
+// Package generates the file one package's declarations ask for.
+//
+// One file, holding everything: what each declaration's stack wrote, what the
+// declarations share, and what their subjects earned. A package used to get one
+// file per declaration and one more for what they had between them, which read
+// well in a diff and cost more than it was worth everywhere else — a rename
+// left a file behind, two declarations whose names differed only in case wanted
+// one file, and a declaration called Windows wanted a file the compiler leaves
+// out of the build.
+//
+// A second file is written only where the language requires one. A spec-form
+// declaration's type is written by forge under one constraint and by the
+// author's own file under its complement, so the two can never be in scope
+// together; the package's whole output then goes under the first constraint and
+// [Stubs] stands in for it under the second. Exactly one of the two is in any
+// build, so a package still has one generated file however it is compiled.
 //
 // The path and the name are both needed and are different things. The name goes
-// in the package clause of every file written; the path is what the helpers a
-// layer required are identified by, since a helper is emitted into a package
-// rather than imported from one, and two packages of one name hold two of them.
+// in the package clause; the path is what the helpers a layer required are
+// identified by, since a helper is emitted into a package rather than imported
+// from one, and two packages of one name hold two of them.
 //
 // Everything is generated before anything is reported as done, because a
-// package is written whole or not at all: a run that wrote three files and then
-// found the fourth declaration wrong would leave a package holding an answer to
-// a question nobody can see any more.
+// package is written whole or not at all: a run that composed three
+// declarations and then found the fourth wrong would leave a file holding an
+// answer to a question nobody can see any more.
 func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Set) {
 	var diags diag.Set
 
 	var (
-		out      []File
+		units    []merge.Unit
 		required []model.TypeRef
-		standing []emit.Section
-		written  []emit.Section
-		imported []emit.Import
+		names    []string
 		judged   []judgement
 		about    = make(map[string]layer.Unit)
-		taken    = spokenFor(requests)
+		spec     bool
 
 		// What only the package knows, decided before any declaration is
 		// generated for.
@@ -231,34 +247,21 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 			continue
 		}
 
-		file, unit, was, wrote, ok := one(req, name, cfg, taken, known, &diags)
-		if !ok {
+		unit, was, problems, wrote := declaration(req, cfg, known)
+		diags.Merge(&problems)
+
+		if !problems.Empty() {
 			continue
 		}
-		for on, names := range wrote {
-			putting[on] = append(putting[on], names...)
-		}
-		judged = append(judged, judgement{
-			declared: req.Model.Name,
-			subject:  model.TypeIdentity(req.Model.Subject.Type()),
-			skipped:  skips(req.Directives),
-			made:     was,
-		})
 
-		out = append(out, file)
-		required = append(required, unit.Requires...)
-		written = append(written, unit.Sections...)
-
+		gathered(putting, wrote)
 		gather(about, unit.Provides)
+		judged = append(judged, promised(req, was))
 
-		// Only a declaration whose output the tag excludes needs standing in
-		// for. An inline declaration's file carries no constraint, so it is in
-		// every build already, and a second copy of its methods would collide
-		// with the first.
-		if req.Model.Form == model.FormSpec {
-			standing = append(standing, stubs(req.Model, unit)...)
-			imported = append(imported, unit.Imports...)
-		}
+		units = append(units, unit)
+		required = append(required, unit.Requires...)
+		names = append(names, req.Model.Name)
+		spec = spec || req.Model.Form == model.FormSpec
 	}
 
 	// After every declaration, because what a subject earns is a fact about the
@@ -266,30 +269,108 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 	// declarations over one subject would otherwise each contribute a copy.
 	gather(about, earned(requests, putting, path, known, cfg, &diags))
 
-	// And one method written twice across two declarations' files, which
-	// neither file can see and which the compiler sees first.
-	//
-	// A method on the declared type cannot collide this way: two declarations
-	// are two types. A method on the *subject* can, and does the moment a layer
-	// writes one into its own unit rather than into the section a subject
-	// shares — two declarations over one subject then produce two files each
-	// holding it, each internally consistent, and a package that does not
-	// build. Which is a report forge owes rather than a fault the author can
-	// see: the files are generated and the duplicate is between them.
-	claimed(written, policing{at: at(requests)}, &diags)
+	held := merge.Join(units...)
 
-	if file, wrote := standIn(standing, imported, requests, name, cfg, &diags); wrote {
-		out = append(out, file)
+	shared, made, wrote := sharing(path, required, about, requests, cfg, &diags)
+	if wrote {
+		held = merge.Join(held, shared)
+	}
+	answered(judged, made, &diags)
+
+	if held.Empty() {
+		return nil, diags
 	}
 
-	file, shared, ok := sharing(path, name, required, about, requests, cfg, written, &diags)
-	if ok {
-		out = append(out, file)
-	}
+	where := policing{at: at(requests)}
+	checked(held, where, &diags)
 
-	answered(judged, shared, &diags)
+	var sum emit.Digest
+	FingerprintPackage(&sum, requests, name, cfg)
+
+	out, err := written(name, where.at, held, names, spec, cfg, &sum)
+	if err != nil {
+		diags.AddError(err)
+		return nil, diags
+	}
 
 	return out, diags
+}
+
+// claims is what one declaration promised, kept until the run can answer for
+// the skips written on it.
+func promised(req Request, was claimable) judgement {
+	return judgement{
+		declared: req.Model.Name,
+		subject:  model.TypeIdentity(req.Model.Subject.Type()),
+		skipped:  skips(req.Directives),
+		made:     was,
+	}
+}
+
+// gathered records what one declaration's layers put on its subjects, against
+// each subject rather than against the declaration that asked.
+func gathered(into, wrote map[string][]string) {
+	for on, names := range wrote {
+		into[on] = append(into[on], names...)
+	}
+}
+
+// checked holds a package's whole output to the rules a file has to keep.
+//
+// The whole file at once, which is the only granularity that answers now there
+// is one of them. Two methods of one name on one type meet here whether two
+// declarations wrote them or a declaration and a subject's own section did; two
+// package-level declarations of one name meet here, which a fold of a package
+// and a type into one identifier makes possible however carefully the fold is
+// written; and the imports have to agree, which needs every layer of every
+// declaration at once.
+//
+// Reported rather than resolved, because renaming one of two things forge chose
+// the names for would leave a caller unable to guess either — and the case is
+// rare enough that being told to rename a type is a better answer than a scheme
+// nobody can predict.
+func checked(held merge.Unit, of policing, diags *diag.Set) {
+	claimed(held.Sections, of, diags)
+	redeclared(held.Sections, of.at, diags)
+	bound(held.Imports, of, diags)
+}
+
+// written renders what a package's output comes to: the file itself, and the
+// one standing in for it under the tag where the package holds anything the tag
+// excludes.
+//
+// Both carry the same fingerprint, because both are a function of the same
+// inputs. A run that would rewrite one rewrites the other, which is what keeps
+// a package from holding two files disagreeing about which declarations they
+// were written from.
+func written(
+	name string, at token.Position, held merge.Unit, declared []string,
+	spec bool, cfg Config, sum *emit.Digest,
+) ([]File, error) {
+	content, err := render(name, tagged(spec), at, held, cfg, sum)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]File, 0, len(Names()))
+	out = append(out, File{Name: Name(), Content: content, Pos: at})
+	if !spec {
+		return out, nil
+	}
+
+	// Everything the file holds, because everything the file holds is what the
+	// tag excludes. What is stood in for used to be one declaration's methods
+	// and is now the package's whole output, helpers included — a build with
+	// the tag set has to find every name the other build has.
+	standing := stubs(declared, held)
+	if len(standing) == 0 {
+		return out, nil
+	}
+
+	if content, err = renderStubs(name, at, standing, held.Imports, cfg, sum); err != nil {
+		return nil, err
+	}
+	return append(out, File{Name: Stubs(), Content: content, Pos: at}), nil
 }
 
 // answered reports the skips that turned nothing off.
@@ -310,44 +391,6 @@ func answered(judged []judgement, shared map[string]claimable, diags *diag.Set) 
 	}
 }
 
-// spokenFor returns the file names a package has taken before any declaration
-// is generated, so that one named after a reserved file collides with it rather
-// than overwrites it.
-func spokenFor(requests []Request) map[string]string {
-	out := make(map[string]string, len(requests)+len(Reserved()))
-	for _, held := range Reserved() {
-		out[held] = ""
-	}
-	return out
-}
-
-// standIn writes the file that stands in for what the tag excludes, and reports
-// whether there was anything to stand in for.
-//
-// A declaration written in spec form has its methods under a constraint the
-// author's own build does not set, so under that build the type has none — and
-// a spec file that names them would not type-check. This is what puts them back
-// there, with bodies that panic and are never linked.
-func standIn(
-	standing []emit.Section, imported []emit.Import,
-	requests []Request, name string, cfg Config, diags *diag.Set,
-) (File, bool) {
-	if len(standing) == 0 {
-		return File{}, false
-	}
-
-	var sum emit.Digest
-	FingerprintStubs(&sum, requests, name, cfg)
-
-	content, err := renderStubs(name, standing, imported, cfg, &sum)
-	if err != nil {
-		diags.AddError(err)
-		return File{}, false
-	}
-
-	return File{Name: Stubs(), Content: content}, true
-}
-
 // judgement is one declaration's claims, kept until the run can answer for the
 // skips written on it.
 //
@@ -362,16 +405,22 @@ type judgement struct {
 	made     claimable
 }
 
-// sharing writes the file holding what a package's declarations have between
-// them, and reports whether there was anything to write.
+// sharing works out what a package's declarations have between them, and
+// reports whether there was anything at all.
 //
 // Two sources with one destination. The helpers this build knows how to write
 // and the work the layers gave the subjects are the same kind of thing — one
 // copy for the package, however many declarations wanted it — and differ only
 // in who wrote them.
-func sharing(path, name string, required []model.TypeRef, about map[string]layer.Unit,
-	requests []Request, cfg Config, beside []emit.Section, diags *diag.Set,
-) (File, map[string]claimable, bool) {
+//
+// A unit rather than a file, because a package is one file and this is part of
+// it. What it still owns is the check against what the author declared: a
+// subject's companion type — a builder, a patch — is named against nothing any
+// declaration was checked for, so this is the only place a name of the author's
+// it collides with can be found.
+func sharing(path string, required []model.TypeRef, about map[string]layer.Unit,
+	requests []Request, cfg Config, diags *diag.Set,
+) (merge.Unit, map[string]claimable, bool) {
 	built, problems := helpers(path, required, requests)
 	diags.Merge(&problems)
 
@@ -379,15 +428,14 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 
 	held := merge.Units(append(contributed(about), asUnit(built))...)
 	if held.Empty() {
-		redeclared(beside, at(requests), diags)
-		return File{}, made, false
+		return merge.Unit{}, made, false
 	}
 
 	// The subjects earn claims here for the same reason the declarations earn
-	// them in their own files: what is written about a subject is written here,
-	// so this is where a reader looks and where the compiler can be made to
-	// check. Reported into the run's own set, since a package is written whole
-	// and a claim that cannot be built is not a reason to write the rest.
+	// them in their own sections: what is written about a subject is written
+	// here, so this is where a reader looks and where the compiler can be made
+	// to check. Reported into the run's own set, since a package is written
+	// whole and a claim that cannot be built is not a reason to write the rest.
 	for _, one := range subjects(requests) {
 		claims, imports, was, wrote := synthesise(held, synthesis{
 			// What the file already binds is passed rather than left empty: a
@@ -417,43 +465,13 @@ func sharing(path, name string, required []model.TypeRef, about map[string]layer
 		}
 	}
 
-	// Every file of the build at once, which is the only granularity that
-	// answers. What an element layer writes belongs to the subject rather than
-	// to the declaration that asked for it, so two declarations over two
-	// subjects meet here and nowhere else — and a name written into this file
-	// can equally land on one written into a declaration's own.
-	//
-	// The build, rather than every file: what stands in for a spec declaration
-	// is the same names again under the opposite constraint, so a check that
-	// counted both would report every spec declaration as colliding with
-	// itself.
-	redeclared(append(slices.Clone(beside), held.Sections...), at(requests), diags)
-
-	// And against what the author declared, which the declarations' own files
-	// are checked against and this one was not. A subject's companion type — a
-	// builder, a patch — lands here rather than in any declaration's file, so
-	// this is the only place a name of the author's it collides with can be
-	// found. Named against nothing, because no one declaration owns this file:
-	// the exemption a declaration gets for its own type has nothing to apply
-	// to here.
+	// Against what the author declared, which every declaration's own sections
+	// were checked against and these were not. Named against nothing, because
+	// no one declaration owns them: the exemption a declaration gets for its
+	// own type has nothing to apply to here.
 	taken(held.Sections, policing{held: holds(into(requests), cfg.Generated), at: at(requests)}, diags)
 
-	// And two methods of one name on one type, which a declaration's own file
-	// is checked for and this one was not. What an element layer writes lands
-	// here, and so does what a subject earns from its own tags — so two of them
-	// writing one method about one subject meet here and nowhere else.
-	claimed(held.Sections, policing{at: at(requests)}, diags)
-
-	var sum emit.Digest
-	FingerprintShared(&sum, required, name, cfg)
-
-	content, err := render(nil, name, held, cfg, &sum)
-	if err != nil {
-		diags.AddError(err)
-		return File{}, made, false
-	}
-
-	return File{Name: Shared(), Content: content}, made, true
+	return held, made, true
 }
 
 // into returns the package the declarations are generated into, which is the one
@@ -546,71 +564,6 @@ func subjects(requests []Request) []*model.Struct {
 	}
 
 	return out
-}
-
-// one generates the file a single declaration asks for, and hands back what it
-// composed to so that the package can see what several declarations share.
-//
-// The names already taken are read and written, because two declarations
-// wanting one file is a thing only the package can see. Anything reported is
-// added to the run's own set rather than returned, so that a declaration
-// refused here does not need a second path out.
-func one(
-	req Request, name string, cfg Config,
-	taken map[string]string, known wide, diags *diag.Set,
-) (File, merge.Unit, claimable, map[string][]string, bool) {
-	into := Named(req.Model.Name)
-	if first, twice := taken[into]; twice {
-		diags.Add(collision(req.Model, into, first))
-		return File{}, merge.Unit{}, claimable{}, nil, false
-	}
-	taken[into] = req.Model.Name
-
-	// Taken before anything composes, because composing fills in what a
-	// declaration meant and did not say — and a fingerprint of the declaration
-	// as forge understood it, rather than as it was written, would be one this
-	// run could produce and the next could not.
-	var sum emit.Digest
-	Fingerprint(&sum, req, name, cfg)
-
-	unit, was, problems, wrote := declaration(req, cfg, known)
-	diags.Merge(&problems)
-
-	if !problems.Empty() {
-		return File{}, merge.Unit{}, claimable{}, nil, false
-	}
-
-	content, err := render(req.Model, name, unit, cfg, &sum)
-	if err != nil {
-		diags.AddError(err)
-		return File{}, merge.Unit{}, claimable{}, nil, false
-	}
-
-	return File{Name: into, Content: content, Decl: req.Model.Name, Pos: req.Model.Pos}, unit, was, wrote, true
-}
-
-// collision reports a declaration whose file another declaration is already
-// being written to, or which the package keeps for itself.
-//
-// The two are the same failure and read differently. A declaration colliding
-// with another names the other, and the fix is to rename either. A declaration
-// colliding with a file the package writes for itself has nothing to be told
-// about except the name, since what it collided with is not something anybody
-// wrote — and it is the one the author is least likely to guess, because the
-// name looks ordinary and the file it wants has never been mentioned.
-func collision(held *model.Model, into, first string) diag.Diagnostic {
-	if first == "" {
-		return diag.New(codeFileCollision, held.Pos,
-			"%s would be written to %s, which the package writes for itself", held.Name, into).
-			WithHint("%s", "a package writes one file for what its declarations share and one for "+
-				"what a build with the tag needs; rename the declaration")
-	}
-
-	return diag.New(codeFileCollision, held.Pos,
-		"%s and %s are both written to %s", first, held.Name, into).
-		WithHint("%s", "a file is named after the declaration in lower case, so two names that "+
-			"differ only in case, or only by what is added to a name the build reads, "+
-			"want one file; rename one of them")
 }
 
 // gather keeps what the layers contributed to something other than the
@@ -785,7 +738,7 @@ func skips(directives []discover.Directive) []discover.Directive {
 // author wrote and a shape the subject has, neither of which is any layer's
 // business. Gathered in with the layers' contributions rather than kept beside
 // them, so that everything downstream — the collision policy, what a claim
-// reads, what the shared file holds — sees one set of declarations.
+// reads, what the file holds — sees one set of declarations.
 //
 // Once per subject, and for the package rather than for a declaration. What is
 // written here goes on the subject and is keyed by it, so two declarations over
@@ -1255,9 +1208,11 @@ func at(requests []Request) token.Position {
 //
 // The header records what the file was made from, so that asking whether it is
 // current costs a read rather than a regeneration.
-func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emit.Digest) ([]byte, error) {
+func render(pkg, build string, at token.Position, unit merge.Unit, cfg Config, sum *emit.Digest) ([]byte, error) {
 	file := emit.File{
 		Package:  pkg,
+		Build:    build,
+		Pos:      at,
 		Imports:  unit.Imports,
 		Sections: unit.Sections,
 		Header: emit.Header{
@@ -1266,10 +1221,6 @@ func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emi
 			Toolchain: cfg.Toolchain,
 			Inputs:    sum.String(),
 		},
-	}
-	if held != nil {
-		file.Decl, file.Pos = held.Name, held.Pos
-		file.Build = tagged(held.Form)
 	}
 
 	// A unit's assertions are not written. Nothing generates one yet, and where
@@ -1288,10 +1239,11 @@ func render(held *model.Model, pkg string, unit merge.Unit, cfg Config, sum *emi
 // What is reported about a file points at the declaration to edit, and this
 // file has as many of those as the package has spec declarations; the shared
 // file is nameless for the same reason and this is the same kind of file.
-func renderStubs(pkg string, sections []emit.Section, imports []emit.Import, cfg Config, sum *emit.Digest) ([]byte, error) {
+func renderStubs(pkg string, at token.Position, sections []emit.Section, imports []emit.Import, cfg Config, sum *emit.Digest) ([]byte, error) {
 	file := emit.File{
 		Package:  pkg,
 		Build:    load.SpecTag,
+		Pos:      at,
 		Imports:  reaching(sections, imports),
 		Sections: sections,
 		Header: emit.Header{
@@ -1305,30 +1257,7 @@ func renderStubs(pkg string, sections []emit.Section, imports []emit.Import, cfg
 	return file.Render()
 }
 
-// FingerprintStubs records what the file standing in for a package's output is
-// made from.
-//
-// Exported for the reason the other two are: generating and checking have to
-// assemble the same inputs or every check reports staleness for ever.
-//
-// What the file holds is one declaration's output for every spec declaration in
-// the package, so what it is a function of is those declarations — each one
-// exactly as its own file is fingerprinted, since the same inputs decide the
-// signatures here and the bodies there. Inline declarations are left out
-// because nothing of theirs is written here.
-func FingerprintStubs(sum *emit.Digest, requests []Request, pkg string, cfg Config) {
-	versions(sum, cfg)
-	sum.AddString("package name", pkg)
-
-	for _, req := range requests {
-		if req.Model == nil || req.Model.Form != model.FormSpec {
-			continue
-		}
-		Fingerprint(sum, req, pkg, cfg)
-	}
-}
-
-// tagged returns the build constraint a declaration's file carries.
+// tagged returns the build constraint a package's generated file carries.
 //
 // A spec declaration and the file generated for it are two declarations of one
 // name, and exactly one of them may be in scope. The spec is written under a
@@ -1337,12 +1266,13 @@ func FingerprintStubs(sum *emit.Digest, requests []Request, pkg string, cfg Conf
 // what keeps the spec type-checked, and a rename of the subject a compile error
 // rather than a stale comment.
 //
-// An inline declaration carries none. The author's own file holds the type and
-// carries no tag, so the methods have to be readable wherever that file is —
-// which is everywhere. A constraint of any kind would take them out of some
-// build the author already had.
-func tagged(form model.Form) string {
-	if form == model.FormSpec {
+// A package with no spec declaration carries none. The author's own files hold
+// every type and carry no tag, so the methods have to be readable wherever
+// those files are — which is everywhere. A constraint of any kind would take
+// them out of some build the author already had, and buy nothing: there is no
+// second declaration of anything to keep them apart from.
+func tagged(spec bool) string {
+	if spec {
 		return "!" + load.SpecTag
 	}
 	return ""
@@ -1402,28 +1332,38 @@ func Fingerprint(sum *emit.Digest, req Request, pkg string, cfg Config) {
 	fields(sum, held.Subject)
 }
 
-// FingerprintShared records what the file a package's declarations share is
-// made from, which is the helpers they asked for and nothing else.
+// FingerprintPackage records everything a package's generated file is made
+// from, which is every declaration in it.
 //
-// It is the same seam as the one above and is exported for the same reason,
-// with a caveat worth stating: knowing which helpers were asked for means
-// generating every declaration in the package, so this is not the cheap check
-// the per-declaration fingerprint is. What it buys is that the shared file's
-// header cannot disagree with the file, and that a package which merely gained
-// a declaration does not rewrite it.
-func FingerprintShared(sum *emit.Digest, required []model.TypeRef, pkg string, cfg Config) {
+// Exported for the reason [Fingerprint] is: generating and checking must agree
+// about it exactly, or every check reports staleness and nothing anybody does
+// makes it stop.
+//
+// Each declaration goes in under its own name, as one input holding its whole
+// fingerprint. Folding them in flat would let two declarations swap subjects
+// and hash alike — a digest sorts what it is given, so the same field recorded
+// against two declarations is the same pair of inputs whichever way round they
+// were. It also makes the file's own line the thing a reader compares: one
+// declaration changing changes one input.
+//
+// The helpers the declarations asked for are not recorded, and do not need to
+// be. What a package requires is a function of its declarations and of the
+// version of forge that read them, and both of those are here already — so a
+// fingerprint that named the helpers would be recording the same fact twice,
+// and would cost the check verb the whole of a generation run to work out.
+// Which is exactly what used to keep the shared file from being checked at all.
+func FingerprintPackage(sum *emit.Digest, requests []Request, pkg string, cfg Config) {
 	versions(sum, cfg)
 	sum.AddString("package name", pkg)
 
-	// Sorted and without repeats, because what the file holds is the set of
-	// helpers and not how many declarations asked for each. A package that
-	// gained a second declaration requiring the same helper writes the same
-	// bytes, and a fingerprint that counted would say otherwise.
-	held := slices.Clone(required)
-	slices.SortFunc(held, model.TypeRef.Compare)
+	for _, req := range requests {
+		if req.Model == nil {
+			continue
+		}
 
-	for _, ref := range slices.Compact(held) {
-		sum.AddString("helper", ref.String())
+		var one emit.Digest
+		Fingerprint(&one, req, pkg, cfg)
+		sum.AddString("declaration "+req.Model.Name, one.String())
 	}
 }
 

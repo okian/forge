@@ -100,7 +100,6 @@ func generated(t *testing.T, ctx *plugin.Context) []byte {
 
 	out, err := emit.File{
 		Package:  "model",
-		Decl:     ctx.Model.Name,
 		Pos:      ctx.Model.Pos,
 		Imports:  merged.Imports,
 		Sections: merged.Sections,
@@ -120,7 +119,7 @@ func compiles(t *testing.T, out []byte) {
 		Path: "model",
 		Files: []goldentest.Source{
 			{Name: "person.go", Content: []byte(subjectSource)},
-			{Name: "zz_forge_persons.go", Content: out, Generated: true},
+			{Name: "forge.gen.go", Content: out, Generated: true},
 		},
 	})
 }

@@ -7,7 +7,6 @@ import (
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/merge"
-	"github.com/okian/forge/internal/model"
 )
 
 // declaring builds a type declaration of the given names.
@@ -68,7 +67,7 @@ func TestWhatEachDeclarationBecomesInTheStandInFile(t *testing.T) {
 
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
-			got, kept := stubbed(want.decl, "Persons")
+			got, kept := stubbed(want.decl, []string{"Persons"})
 
 			if kept != want.kept {
 				t.Fatalf("kept=%v, wanted %v", kept, want.kept)
@@ -89,7 +88,7 @@ func TestWhatEachDeclarationBecomesInTheStandInFile(t *testing.T) {
 // Dropping the group would take the helpers with it, and the signatures below
 // name them.
 func TestAGroupHoldingTheTypeAndItsHelpers(t *testing.T) {
-	got, kept := stubbed(declaring("Persons", "PersonsSeq"), "Persons")
+	got, kept := stubbed(declaring("Persons", "PersonsSeq"), []string{"Persons"})
 	if !kept {
 		t.Fatal("a group holding a helper beside the type was dropped whole")
 	}
@@ -114,7 +113,7 @@ func TestAGroupHoldingTheTypeAndItsHelpers(t *testing.T) {
 func TestASectionWithNothingToStandInFor(t *testing.T) {
 	unit := merge.Unit{Sections: []emit.Section{{Decls: []ast.Decl{declaring("Persons")}}}}
 
-	if got := stubs(&model.Model{Name: "Persons"}, unit); len(got) != 0 {
+	if got := stubs([]string{"Persons"}, unit); len(got) != 0 {
 		t.Errorf("a section holding only the declaration's own type contributed %d sections", len(got))
 	}
 }

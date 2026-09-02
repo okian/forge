@@ -31,7 +31,6 @@ func rendered(t *testing.T) []byte {
 
 	out, err := emit.File{
 		Package:  "model",
-		Decl:     seq.Name,
 		Pos:      declaredAt,
 		Imports:  merged.Imports,
 		Sections: merged.Sections,
@@ -49,7 +48,7 @@ func TestTheViewIsEmittedAsItIsWritten(t *testing.T) {
 	goldentest.Check(t, goldentest.Package{
 		Path: "model",
 		Files: []goldentest.Source{
-			{Name: "zz_forge_shared.go", Content: rendered(t), Generated: true},
+			{Name: "forge.gen.go", Content: rendered(t), Generated: true},
 		},
 	})
 }

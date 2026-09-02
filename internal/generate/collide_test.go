@@ -61,7 +61,7 @@ func TestAMethodTheAuthorWroteIsTheOneThatIsKept(t *testing.T) {
 		t.Fatalf("an override was reported rather than honoured:\n%s", diags.Render())
 	}
 
-	held := string(written(t, files, generate.Named("Overridden")))
+	held := string(written(t, files, generate.Name()))
 	if strings.Contains(held, ") Len() int {") {
 		t.Errorf("the generated method was written beside the author's:\n%s", held)
 	}
@@ -297,7 +297,7 @@ func TestASubjectFromAPackageOnlyOneLayerBinds(t *testing.T) {
 	// since a spelling that aliased in one method and not in the other is what
 	// the diagnostic was reporting.
 	for _, file := range files {
-		if file.Decl != "People" {
+		if file.Name != generate.Name() {
 			continue
 		}
 
@@ -354,7 +354,7 @@ func TestTwoDeclarationsThatReserveDifferentNames(t *testing.T) {
 	const path = `"collidefixture/cmp"`
 
 	for _, file := range files {
-		if file.Decl != "" || !strings.Contains(file.Name, "stubs") {
+		if file.Name != generate.Stubs() {
 			continue
 		}
 		if got := strings.Count(string(file.Content), path); got != 1 {
@@ -524,7 +524,7 @@ func TestAClaimAboutTheAuthorsOwnMethod(t *testing.T) {
 		t.Fatalf("an author's own walk was reported:\n%s", diags.Render())
 	}
 
-	held := string(written(t, files, generate.Named("Walked")))
+	held := string(written(t, files, generate.Name()))
 	if !strings.Contains(held, "var _ func(*Walked) iter.Seq[Person] = (*Walked).All") {
 		t.Errorf("the author's walk is not claimed as the package spells it:\n%s", claimed(held))
 	}
@@ -551,7 +551,7 @@ func TestAClaimAboutAWalkOverAnotherPackagesElement(t *testing.T) {
 		t.Fatalf("a walk over another package's element was reported:\n%s", diags.Render())
 	}
 
-	held := string(written(t, files, generate.Named("Elsewhere")))
+	held := string(written(t, files, generate.Name()))
 	if !strings.Contains(held, "var _ func(*Elsewhere) iter.Seq[domain.Person] = (*Elsewhere).All") {
 		t.Errorf("the walk is not claimed as the file writes its element:\n%s", claimed(held))
 	}
@@ -577,7 +577,7 @@ func TestAClaimAboutAWalkOverARenamedElement(t *testing.T) {
 		t.Fatalf("a walk over a renamed element was reported:\n%s", diags.Render())
 	}
 
-	held := string(written(t, files, generate.Named("Renamed")))
+	held := string(written(t, files, generate.Name()))
 	if !strings.Contains(held, "var _ func(*Renamed) iter.Seq[slices2.Person] = (*Renamed).All") {
 		t.Errorf("the walk is not claimed under the name the element was bound to:\n%s", claimed(held))
 	}

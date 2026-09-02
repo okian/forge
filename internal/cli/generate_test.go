@@ -97,7 +97,7 @@ func TestARunWritesWhatWasAskedFor(t *testing.T) {
 		t.Fatalf("generating: %v\n%s", err, said)
 	}
 
-	for _, name := range []string{"zz_forge_persons.go", "zz_forge_shared.go"} {
+	for _, name := range []string{"forge.gen.go"} {
 		held, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatalf("%s was not written: %v", name, err)
@@ -107,7 +107,7 @@ func TestARunWritesWhatWasAskedFor(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(said, "wrote 2 files") {
+	if !strings.Contains(said, "wrote 1 file") {
 		t.Errorf("the run said\n%s", said)
 	}
 }
@@ -121,7 +121,7 @@ func TestASecondRunTouchesNothing(t *testing.T) {
 		t.Fatalf("the first run: %v\n%s", err, said)
 	}
 
-	before := modified(t, filepath.Join(dir, "zz_forge_persons.go"))
+	before := modified(t, filepath.Join(dir, "forge.gen.go"))
 
 	_, said, err := running(t, generating(t, dir, "Persons"), "./...")
 	if err != nil {
@@ -130,7 +130,7 @@ func TestASecondRunTouchesNothing(t *testing.T) {
 	if !strings.Contains(said, "wrote 0 files") {
 		t.Errorf("the second run said\n%s", said)
 	}
-	if after := modified(t, filepath.Join(dir, "zz_forge_persons.go")); !after.Equal(before) {
+	if after := modified(t, filepath.Join(dir, "forge.gen.go")); !after.Equal(before) {
 		t.Error("the second run rewrote a file holding what it would have written")
 	}
 }
@@ -147,10 +147,10 @@ func TestTheFlagsThatHoldARunBack(t *testing.T) {
 				t.Fatalf("generating: %v\n%s", err, said)
 			}
 
-			if _, err := os.Stat(filepath.Join(dir, "zz_forge_persons.go")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "forge.gen.go")); err == nil {
 				t.Error("a run that was held back wrote a file")
 			}
-			if !strings.Contains(said, "would write 2 files") {
+			if !strings.Contains(said, "would write 1 file") {
 				t.Errorf("the run said\n%s", said)
 			}
 
@@ -242,7 +242,7 @@ func TestAPackageIsWrittenWholeOrNotAtAll(t *testing.T) {
 		t.Fatalf("reading the package back: %v", err)
 	}
 	for _, entry := range held {
-		if strings.HasPrefix(entry.Name(), "zz_forge_") {
+		if strings.HasSuffix(entry.Name(), ".gen.go") {
 			t.Errorf("%s was written for a package that could not be generated whole", entry.Name())
 		}
 	}
@@ -271,36 +271,72 @@ func TestWhatDryRunSaysWithoutBeingAskedTwice(t *testing.T) {
 	}
 }
 
-// A file forge wrote for a declaration that is gone is what a rename leaves
-// behind, and it is very often why the package no longer builds — so it is
-// named rather than left to be inferred from a dozen errors about generated
-// code, which is the last place an author who has just renamed a type looks.
-func TestAFileLeftBehindByARename(t *testing.T) {
+// Renaming a declaration leaves nothing behind, which is the plainest thing
+// writing one file per package buys.
+//
+// It used to leave the file generated for the old name sitting in the package,
+// still declaring methods on a type that is gone — so the package stopped
+// compiling, and forge then refused everything and reported a dozen build
+// errors about its own output with nothing to say that it wrote them. The file
+// is named after the package now, and a package does not get renamed by
+// renaming something in it.
+func TestARenameLeavesNothingBehind(t *testing.T) {
 	dir := t.TempDir()
 
 	if _, said, err := running(t, generating(t, dir, "Widgets"), "./..."); err != nil {
 		t.Fatalf("the first run: %v\n%s", err, said)
 	}
 
-	// The same package with the declaration renamed, and no longer building —
-	// which is what the file left behind did to it.
-	_, said, err := running(t, broken(generating(t, dir, "Gadgets")), "./...")
-	if err == nil {
-		t.Fatalf("a package that does not build reported success\n%s", said)
+	_, said, err := running(t, generating(t, dir, "Gadgets"), "./...")
+	if err != nil {
+		t.Fatalf("a run after a rename was refused: %v\n%s", err, said)
 	}
 
-	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "zz_forge_widgets.go") {
-		t.Errorf("the report does not name what was left behind:\n%s", said)
-	}
-	if !strings.Contains(said, "delete it") {
-		t.Errorf("the report does not say what to do:\n%s", said)
-	}
-
-	// And the files the package still asks for are not named.
-	for _, held := range []string{"zz_forge_gadgets.go", "zz_forge_shared.go"} {
-		if strings.Contains(said, held+" does not belong") {
-			t.Errorf("a file the package still asks for was named:\n%s", said)
+	for _, code := range []string{"FRG5003", "FRG5008"} {
+		if strings.Contains(said, code) {
+			t.Errorf("a rename left something behind:\n%s", said)
 		}
+	}
+
+	// And there is one file in the package, which is the claim.
+	held, err := filepath.Glob(filepath.Join(dir, "*.gen.go"))
+	if err != nil || len(held) != 1 {
+		t.Errorf("the package holds %v, want one generated file", held)
+	}
+}
+
+// A file an older forge wrote is reported whatever the package's state, and
+// says what to do about it.
+//
+// It is not an orphan and is not staleness. Those files hold the whole of what
+// the one file holds, so the package stops building the moment forge writes it
+// — and the run that would write it is the last chance anybody has to be told
+// why.
+func TestWhatAnOlderForgeLeftBehind(t *testing.T) {
+	dir := t.TempDir()
+
+	const was = "zz_forge_persons.go"
+
+	held := filepath.Join(dir, was)
+	if err := os.WriteFile(held, []byte("// Code generated by forge. DO NOT EDIT.\n\npackage model\n"), 0o600); err != nil {
+		t.Fatalf("making the fixture: %v", err)
+	}
+
+	// Compiled by this run and in a package that builds, which is what the
+	// exemptions below the report are about — and is exactly the state a tree
+	// generated by an older forge is in until the file that replaces it lands.
+	run := generating(t, dir, "Persons")
+	run.session.Packages[0].GoFiles = append(run.session.Packages[0].GoFiles, held)
+
+	_, said, err := running(t, run, "./...")
+	if err == nil {
+		t.Fatalf("a file no forge will write again was not reported\n%s", said)
+	}
+	if !strings.Contains(said, "FRG5008") || !strings.Contains(said, was) {
+		t.Errorf("the report does not name the file:\n%s", said)
+	}
+	if !strings.Contains(said, "forge.gen.go") {
+		t.Errorf("the report does not say what replaced it:\n%s", said)
 	}
 }
 
@@ -311,17 +347,20 @@ func TestAFileLeftBehindByARename(t *testing.T) {
 func TestALeftoverThatBreaksNothing(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_ancient.go")
-	if err := os.WriteFile(held, []byte("// Code generated by forge. DO NOT EDIT.\n\npackage model\n"), 0o600); err != nil {
+	// The file that stands in under the tag, in a package whose declarations are
+	// all inline: nothing asks for it, so nothing accounts for it.
+	held := filepath.Join(dir, "forge_stubs.gen.go")
+	source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build forgespec\n\npackage model\n"
+	if err := os.WriteFile(held, []byte(source), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
 
 	run := generating(t, dir, "Persons")
 
-	// Listed in the package, as a load of a real directory would list it: the
-	// file carries no build constraint, so nothing keeps it out of the build
-	// and the type checker reads it along with everything else. A stand-in that
-	// left it out would be standing in for a package that cannot exist.
+	// Listed in the package, as a load of a real directory would list it: forge
+	// loads with the tag set, so the file is in the build it performs and the
+	// type checker reads it along with everything else. A stand-in that left it
+	// out would be standing in for a package that cannot exist.
 	run.session.Packages[0].GoFiles = append(run.session.Packages[0].GoFiles, held)
 
 	_, said, err := running(t, run, "./...")
@@ -351,7 +390,7 @@ func TestAFileBelongingToARefusedDeclaration(t *testing.T) {
 
 	_, said, _ := running(t, s, "./...")
 
-	if strings.Contains(said, "zz_forge_persons.go does not belong") {
+	if strings.Contains(said, "forge.gen.go does not belong") {
 		t.Errorf("a refused declaration's own file was reported as belonging to nobody:\n%s", said)
 	}
 }
@@ -362,7 +401,7 @@ func TestAFileBelongingToARefusedDeclaration(t *testing.T) {
 func TestAFileThatOnlyLooksGenerated(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_notes.go")
+	held := filepath.Join(dir, "forge_stubs.gen.go")
 	if err := os.WriteFile(held, []byte("package model\n\n// notes\n"), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
@@ -394,10 +433,8 @@ func TestAPackageWhoseLastDeclarationWentAway(t *testing.T) {
 		t.Fatalf("a package that does not build reported success\n%s", said)
 	}
 
-	for _, held := range []string{"zz_forge_items.go", "zz_forge_shared.go"} {
-		if !strings.Contains(said, held) {
-			t.Errorf("%s was left behind and not named:\n%s", held, said)
-		}
+	if !strings.Contains(said, "forge.gen.go") {
+		t.Errorf("the file was left behind and not named:\n%s", said)
 	}
 }
 
@@ -412,13 +449,16 @@ func TestAPackageWhoseLastDeclarationWentAway(t *testing.T) {
 func TestALeftoverTheLoadNeverSaw(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_ancient.go")
+	held := filepath.Join(dir, "forge.gen.go")
 	source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build !forgespec\n\npackage model\n"
 	if err := os.WriteFile(held, []byte(source), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
 
+	// A package with nothing left in it, and still building — which is what a
+	// package holding a file written against the tag looks like from here.
 	run := generating(t, dir, "Persons")
+	run.candidates, run.modelled = nil, nil
 
 	// Listed among the files a constraint kept out, which is where a load of a
 	// real directory puts it — and is the list a run has to read to tell a file
@@ -431,7 +471,7 @@ func TestALeftoverTheLoadNeverSaw(t *testing.T) {
 	if err == nil {
 		t.Fatal("a file nothing in the package accounts for was not reported")
 	}
-	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "zz_forge_ancient.go") {
+	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "forge.gen.go") {
 		t.Errorf("the report does not name the file:\n%s", said)
 	}
 }
@@ -452,7 +492,7 @@ func TestALeftoverTheLoadNeverSaw(t *testing.T) {
 func TestAPackageThisRunOnlyPartlyRead(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_ancient.go")
+	held := filepath.Join(dir, "forge.gen.go")
 	source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build !forgespec\n\npackage model\n"
 	if err := os.WriteFile(held, []byte(source), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
@@ -469,6 +509,7 @@ func TestAPackageThisRunOnlyPartlyRead(t *testing.T) {
 	}
 
 	run := generating(t, dir, "Persons")
+	run.candidates, run.modelled = nil, nil
 	run.session.Packages[0].IgnoredFiles = append(run.session.Packages[0].IgnoredFiles, held, spec)
 
 	_, said, err := running(t, run, "./...")
@@ -491,7 +532,7 @@ func TestAPackageThisRunOnlyPartlyRead(t *testing.T) {
 func TestAPlatformFileIsNotAMissingDeclaration(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_ancient.go")
+	held := filepath.Join(dir, "forge.gen.go")
 	source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build !forgespec\n\npackage model\n"
 	if err := os.WriteFile(held, []byte(source), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
@@ -504,6 +545,7 @@ func TestAPlatformFileIsNotAMissingDeclaration(t *testing.T) {
 	}
 
 	run := generating(t, dir, "Persons")
+	run.candidates, run.modelled = nil, nil
 	run.session.Packages[0].IgnoredFiles = append(run.session.Packages[0].IgnoredFiles, held, elsewhere)
 
 	_, said, err := running(t, run, "./...")
@@ -511,7 +553,7 @@ func TestAPlatformFileIsNotAMissingDeclaration(t *testing.T) {
 	if err == nil {
 		t.Fatal("a leftover went unreported because the package had platform-split source")
 	}
-	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "zz_forge_ancient.go") {
+	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "forge.gen.go") {
 		t.Errorf("the report does not name the file:\n%s", said)
 	}
 }
@@ -528,8 +570,8 @@ func TestAPlatformFileIsNotAMissingDeclaration(t *testing.T) {
 func TestALeftoverBesideADeclarationForAnotherPlatform(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_ancient.go")
-	source := "// Code generated by forge. DO NOT EDIT.\n\npackage model\n"
+	held := filepath.Join(dir, "forge_stubs.gen.go")
+	source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build forgespec\n\npackage model\n"
 	if err := os.WriteFile(held, []byte(source), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
@@ -544,8 +586,8 @@ func TestALeftoverBesideADeclarationForAnotherPlatform(t *testing.T) {
 
 	run := generating(t, dir, "Persons")
 
-	// The leftover is unconstrained, so this run compiled it; only the spec file
-	// was kept out.
+	// The leftover asks for the tag forge loads under, so this run compiled it;
+	// only the spec file was kept out.
 	run.session.Packages[0].GoFiles = append(run.session.Packages[0].GoFiles, held)
 	run.session.Packages[0].IgnoredFiles = append(run.session.Packages[0].IgnoredFiles, spec)
 	run.session.Packages[0].Errors = []packages.Error{{Msg: "undefined: Ancients"}}
@@ -555,7 +597,7 @@ func TestALeftoverBesideADeclarationForAnotherPlatform(t *testing.T) {
 	if err == nil {
 		t.Fatal("a leftover the run compiled went unreported because another platform had a declaration")
 	}
-	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "zz_forge_ancient.go") {
+	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "forge_stubs.gen.go") {
 		t.Errorf("the report does not name the file:\n%s", said)
 	}
 }
@@ -569,20 +611,21 @@ func TestALeftoverBesideADeclarationForAnotherPlatform(t *testing.T) {
 func TestForgesOwnConstrainedOutputIsNotAMissingDeclaration(t *testing.T) {
 	dir := t.TempDir()
 
-	held := filepath.Join(dir, "zz_forge_ancient.go")
+	held := filepath.Join(dir, "forge.gen.go")
 	source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build !forgespec\n\npackage model\n"
 	if err := os.WriteFile(held, []byte(source), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
 
 	// Written under the tag, and forge's own.
-	stub := filepath.Join(dir, "zz_forge_stubs.go")
+	stub := filepath.Join(dir, "forge_stubs.gen.go")
 	stubbed := "// Code generated by forge. DO NOT EDIT.\n\n//go:build forgespec\n\npackage model\n"
 	if err := os.WriteFile(stub, []byte(stubbed), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
 
 	run := generating(t, dir, "Persons")
+	run.candidates, run.modelled = nil, nil
 	run.session.Packages[0].IgnoredFiles = append(run.session.Packages[0].IgnoredFiles, held, stub)
 
 	_, said, err := running(t, run, "./...")
@@ -590,7 +633,7 @@ func TestForgesOwnConstrainedOutputIsNotAMissingDeclaration(t *testing.T) {
 	if err == nil {
 		t.Fatal("a leftover went unreported because forge's own constrained output was in the package")
 	}
-	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "zz_forge_ancient.go") {
+	if !strings.Contains(said, "FRG5003") || !strings.Contains(said, "forge.gen.go") {
 		t.Errorf("the report does not name the file:\n%s", said)
 	}
 }
@@ -617,7 +660,7 @@ func TestWhoTheStandInFileBelongsTo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 
-			stub := filepath.Join(dir, "zz_forge_stubs.go")
+			stub := filepath.Join(dir, "forge_stubs.gen.go")
 			source := "// Code generated by forge. DO NOT EDIT.\n\n//go:build forgespec\n\npackage model\n"
 			if err := os.WriteFile(stub, []byte(source), 0o600); err != nil {
 				t.Fatalf("making the fixture: %v", err)
@@ -634,7 +677,7 @@ func TestWhoTheStandInFileBelongsTo(t *testing.T) {
 
 			_, said, err := running(t, run, "./...")
 
-			named := strings.Contains(said, "FRG5003") && strings.Contains(said, "zz_forge_stubs.go")
+			named := strings.Contains(said, "FRG5003") && strings.Contains(said, "forge_stubs.gen.go")
 			if named != want.reported {
 				t.Errorf("reported=%v, wanted %v:\n%s", named, want.reported, said)
 			}

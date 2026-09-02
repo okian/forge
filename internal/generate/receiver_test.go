@@ -306,13 +306,14 @@ func TestTwoDeclarationsOverOneSubject(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	// Once across the package, wherever it landed.
-	held := 0
+	// Once in the file the ordinary build reads. The file standing in under the
+	// tag holds it again, which is what standing in is: the two are never in
+	// scope together.
 	for _, file := range files {
-		held += bytes.Count(file.Content, []byte("func markPersonText("))
-	}
-	if held != 1 {
-		t.Errorf("the subject's function was written %d times across %d files", held, len(files))
+		held := bytes.Count(file.Content, []byte("func markPersonText("))
+		if held != 1 {
+			t.Errorf("%s holds the subject's function %d times", file.Name, held)
+		}
 	}
 
 	sources := []goldentest.Source{

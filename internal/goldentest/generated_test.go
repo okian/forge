@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/okian/forge/internal/generate"
 )
 
 // A type cannot have a field and a method of one name.
@@ -22,9 +24,10 @@ import (
 // the clash spread across two of them, and a sentence saying which rule was
 // broken rather than a type-checker's line about a redeclaration.
 //
-// Read from the source of every zz_forge file in the repository, generated
-// output and recorded golden alike, since both are files somebody's build would
-// have to compile.
+// Read from the source of every file forge writes in the repository, generated
+// output and recorded golden alike — including the names an older forge used,
+// since a golden recorded under one is still a file somebody's build would have
+// to compile.
 func TestNoGeneratedTypeHasAFieldAndAMethodOfOneName(t *testing.T) {
 	fields, methods := declared(t)
 
@@ -130,7 +133,7 @@ func emitted(t *testing.T) []string {
 			return fs.SkipDir
 		case entry.IsDir():
 			return nil
-		case strings.HasPrefix(entry.Name(), "zz_forge_") && strings.HasSuffix(entry.Name(), ".go"):
+		case generate.Ours(entry.Name()):
 			out = append(out, at)
 		}
 		return nil

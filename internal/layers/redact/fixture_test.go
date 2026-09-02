@@ -171,7 +171,7 @@ func compiles(t *testing.T, out string) {
 		Path: modelPkg,
 		Files: []goldentest.Source{
 			{Name: "model.go", Content: fixtureSource(t)},
-			{Name: "zz_forge_redact.go", Content: []byte(out), Generated: true},
+			{Name: "forge.gen.go", Content: []byte(out), Generated: true},
 		},
 		Requires: []goldentest.Package{beside(t)},
 	})

@@ -188,7 +188,6 @@ func printed(t *testing.T, unit plugin.Unit) string {
 
 	out, err := emit.File{
 		Package:  "model",
-		Decl:     "Persons",
 		Pos:      declaredAt,
 		Imports:  merged.Imports,
 		Sections: merged.Sections,

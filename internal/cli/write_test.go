@@ -26,7 +26,7 @@ func TestWhatWritingAFileDoes(t *testing.T) {
 	// Carrying the line that says forge wrote it, because that is what forge
 	// writes and what deciding to write over one asks about.
 	file := generated.File{
-		Name:    "zz_forge_persons.go",
+		Name:    "forge.gen.go",
 		Content: []byte(emit.Generated + "\n\npackage model\n"),
 	}
 
@@ -74,7 +74,7 @@ func modified(t *testing.T, path string) time.Time {
 // both the flags that hold a run back are for.
 func TestWhatWouldChange(t *testing.T) {
 	dir := t.TempDir()
-	file := generated.File{Name: "zz_forge_persons.go", Content: []byte("package model\n")}
+	file := generated.File{Name: "forge.gen.go", Content: []byte("package model\n")}
 
 	// A file that is not there is arriving whole.
 	text, err := difference(dir, file)
@@ -105,11 +105,11 @@ func TestAFileThatCannotBeRead(t *testing.T) {
 	// A directory where a file should be: readable as an entry and not as a
 	// file, which is the shape of every unreadable path a test can make
 	// without depending on being able to change permissions.
-	if err := os.Mkdir(filepath.Join(dir, "zz_forge_persons.go"), 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(dir, "forge.gen.go"), 0o755); err != nil {
 		t.Fatalf("making the fixture: %v", err)
 	}
 
-	file := generated.File{Name: "zz_forge_persons.go", Content: []byte("package model\n")}
+	file := generated.File{Name: "forge.gen.go", Content: []byte("package model\n")}
 
 	if _, err := place(dir, file); err == nil {
 		t.Error("a path that is not a file was written to without complaint")
@@ -147,7 +147,7 @@ func TestWhatARunSaysItDid(t *testing.T) {
 // somebody's file has done the one thing nothing downstream recovers from.
 func TestAFileThatIsNotForgesIsNotWrittenOver(t *testing.T) {
 	dir := t.TempDir()
-	name := "zz_forge_persons.go"
+	name := "forge.gen.go"
 	path := filepath.Join(dir, name)
 
 	mine := []byte("package model\n\n// Mine.\nconst Mine = 1\n")
@@ -184,7 +184,7 @@ func TestAFileThatIsNotForgesIsNotWrittenOver(t *testing.T) {
 		t.Fatalf("the refusal is not a diagnostic: %v", err)
 	}
 	if got := said.Render(); !strings.Contains(got, "FRG5006") ||
-		!strings.Contains(got, "rename the declaration") {
+		!strings.Contains(got, "move it out of the way") {
 		t.Errorf("the refusal reads:\n%s", got)
 	}
 }
@@ -196,7 +196,7 @@ func TestAFileThatIsNotForgesIsNotWrittenOver(t *testing.T) {
 // to ask it to.
 func TestAnEmptyFileIsWrittenOver(t *testing.T) {
 	dir := t.TempDir()
-	name := "zz_forge_persons.go"
+	name := "forge.gen.go"
 
 	if err := os.WriteFile(filepath.Join(dir, name), []byte("\n\n"), 0o600); err != nil {
 		t.Fatalf("making the fixture: %v", err)

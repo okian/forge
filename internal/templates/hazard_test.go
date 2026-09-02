@@ -52,7 +52,7 @@ func compiles(t *testing.T, source string) {
 		Path: "model",
 		Files: []goldentest.Source{
 			{Name: "person.go", Content: []byte("package model\n\ntype Person struct {\n\tName string\n\tAge  int\n}\n")},
-			{Name: "zz_forge_persons.go", Content: []byte(generated), Generated: true},
+			{Name: "forge.gen.go", Content: []byte(generated), Generated: true},
 		},
 	}); err != nil {
 		t.Errorf("%v\n\n%s", err, generated)

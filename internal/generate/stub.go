@@ -3,10 +3,10 @@ package generate
 import (
 	"go/ast"
 	"go/token"
+	"slices"
 
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/merge"
-	"github.com/okian/forge/internal/model"
 )
 
 // stubs returns what a declaration contributes to the file that stands in for
@@ -23,23 +23,29 @@ import (
 // their bodies replaced. Both configurations then hold the whole API — one
 // implemented and one declared — and a call site is compiled either way.
 //
-// The type the declaration is of is the one thing left out. Under the tag the
-// author's own file declares it, which is the arrangement the two constraints
-// exist to produce, and writing it here as well would put the name in scope
-// twice.
+// The types the declarations are of are the one thing left out. Under the tag
+// the author's own files declare them — a spec file for a spec declaration, an
+// ordinary file for an inline one — which is the arrangement the two
+// constraints exist to produce, and writing them here as well would put those
+// names in scope twice.
+//
+// Everything else goes in, including what the package's declarations share.
+// That is what the whole package moving under one constraint costs: a helper
+// type that used to sit in a file every build read is now in the file the tag
+// excludes, and the stub file is where the tagged build has to find it.
 //
 // One section in, one section out. A section carries the positions its
 // declarations are printed by, and two sections need not share them, so
 // gathering them into one would print a declaration by a file it did not come
 // from.
-func stubs(held *model.Model, unit merge.Unit) []emit.Section {
+func stubs(declared []string, unit merge.Unit) []emit.Section {
 	var out []emit.Section
 
 	for _, section := range unit.Sections {
 		var stubbedSection emit.Section
 
 		for _, decl := range section.Decls {
-			stub, ok := stubbed(decl, held.Name)
+			stub, ok := stubbed(decl, declared)
 			if !ok {
 				continue
 			}
@@ -74,7 +80,7 @@ func stubs(held *model.Model, unit merge.Unit) []emit.Section {
 // describes; repeating it over a panic would double every comment in the
 // package for the benefit of a build nobody ships, and leave two copies to
 // disagree.
-func stubbed(decl ast.Decl, declared string) (ast.Decl, bool) {
+func stubbed(decl ast.Decl, declared []string) (ast.Decl, bool) {
 	switch typed := decl.(type) {
 	case *ast.FuncDecl:
 		if typed == nil || typed.Body == nil {
@@ -110,21 +116,21 @@ func stubbed(decl ast.Decl, declared string) (ast.Decl, bool) {
 
 // kept returns the specifications of a declaration that the stub file holds.
 //
-// Everything but the declaration's own type, which the author's file supplies
-// under the tag. A grouped declaration is filtered rather than dropped, since
-// the type may be written beside the helpers that go with it.
+// Everything but the package's own declared types, which the author's files
+// supply under the tag. A grouped declaration is filtered rather than dropped,
+// since a type may be written beside the helpers that go with it.
 //
 // Left alone otherwise, including the values of variables and constants. A
 // value that calls a stub is a value that panics, which matters to nobody: the
 // build this file belongs to is compiled and never run, and a constant the
 // author's code reads has to be here or the check fails at the call site it
 // exists to check.
-func kept(specs []ast.Spec, declared string) []ast.Spec {
+func kept(specs []ast.Spec, declared []string) []ast.Spec {
 	out := make([]ast.Spec, 0, len(specs))
 
 	for _, spec := range specs {
 		typed, ok := spec.(*ast.TypeSpec)
-		if ok && typed != nil && typed.Name != nil && typed.Name.Name == declared {
+		if ok && typed != nil && typed.Name != nil && slices.Contains(declared, typed.Name.Name) {
 			continue
 		}
 		out = append(out, spec)

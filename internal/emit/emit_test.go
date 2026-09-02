@@ -69,7 +69,7 @@ func parsed(t *testing.T, out []byte) *ast.File {
 	t.Helper()
 
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "zz_forge_persons.go", out, parser.ParseComments|parser.SkipObjectResolution)
+	file, err := parser.ParseFile(fset, "forge.gen.go", out, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		t.Fatalf("rendered output does not parse: %v\n%s", err, out)
 	}
@@ -91,7 +91,7 @@ func TestTheBuildConstraintIsHonoured(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "zz_forge_persons.go"), out, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "forge.gen.go"), out, 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -300,7 +300,6 @@ func TestImportsAreSortedAndDeduplicated(t *testing.T) {
 func TestOnePathImportedTwoWaysIsRefused(t *testing.T) {
 	_, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Imports: []emit.Import{{Path: "iter", Name: "iter"}, {Path: "iter", Name: "it", Aliased: true}},
 	}.Render()
 
@@ -417,7 +416,6 @@ func TestRenderWithoutAFileSet(t *testing.T) {
 func TestUnparsableOutputReportsItsSource(t *testing.T) {
 	_, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Pos:     token.Position{Filename: "model/spec.go", Line: 12, Column: 6},
 		Sections: []emit.Section{{Decls: []ast.Decl{&ast.GenDecl{
 			Tok: token.TYPE,
@@ -433,7 +431,7 @@ func TestUnparsableOutputReportsItsSource(t *testing.T) {
 	if err == nil {
 		t.Fatal("unparsable output rendered without complaint")
 	}
-	for _, want := range []string{"FRG4001", "Persons", "model/spec.go:12:6", "   1 | "} {
+	for _, want := range []string{"FRG4001", "package model", "model/spec.go:12:6", "   1 | "} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %q:\n%v", want, err)
 		}
@@ -445,7 +443,6 @@ func TestUnparsableOutputReportsItsSource(t *testing.T) {
 func TestAMalformedDeclarationIsReportedRatherThanPanicking(t *testing.T) {
 	_, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Sections: []emit.Section{{Decls: []ast.Decl{&ast.GenDecl{
 			Tok: token.TYPE,
 			// A type declared as nothing at all.
@@ -456,7 +453,7 @@ func TestAMalformedDeclarationIsReportedRatherThanPanicking(t *testing.T) {
 	if err == nil {
 		t.Fatal("a malformed declaration rendered without complaint")
 	}
-	for _, want := range []string{"FRG4002", "not well formed", "Persons"} {
+	for _, want := range []string{"FRG4002", "not well formed", "package model"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %q:\n%v", want, err)
 		}
@@ -466,7 +463,7 @@ func TestAMalformedDeclarationIsReportedRatherThanPanicking(t *testing.T) {
 // A constraint that is not a constraint is honoured by nothing and read as a
 // comment by everything, which is a file quietly in every build.
 func TestAnImpossibleBuildConstraintIsRefused(t *testing.T) {
-	_, err := emit.File{Package: "model", Decl: "Persons", Build: "!!! not a constraint"}.Render()
+	_, err := emit.File{Package: "model", Build: "!!! not a constraint"}.Render()
 
 	if err == nil {
 		t.Fatal("a constraint that is not one rendered without complaint")
@@ -482,7 +479,6 @@ func TestAnImpossibleBuildConstraintIsRefused(t *testing.T) {
 func TestAHeaderValueCannotCarryALineBreak(t *testing.T) {
 	_, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Header:  emit.Header{Forge: "v0.1.0\n// markers forged"},
 	}.Render()
 
@@ -501,7 +497,6 @@ func TestAHeaderValueCannotCarryALineBreak(t *testing.T) {
 func TestACommentBelongingToNothingIsLeftOut(t *testing.T) {
 	out, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Sections: []emit.Section{{
 			Decls: []ast.Decl{&ast.GenDecl{
 				Doc: &ast.CommentGroup{List: []*ast.Comment{{Text: "// Persons holds people."}}},

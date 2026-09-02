@@ -135,3 +135,49 @@ func provided(u *Unit, held map[string]layer.Unit) {
 		u.Provides[about] = one
 	}
 }
+
+// Join folds several merged units into one, in the order they are given.
+//
+// What [Units] does for the layers of one stack, this does for the stacks of
+// one package: a package is written as a single file, so everything its
+// declarations produced has to become one unit before it can be rendered.
+//
+// The declarations stay whole and in order, because two of them writing one
+// name is a collision to report rather than a duplicate to drop — and because a
+// reader of the file gets the declarations in the order their declarations were
+// written. Everything else is deduplicated for the reason [Units] deduplicates
+// it: an import, a helper and an assertion are names rather than things, and two
+// stacks asking for one of them ask for one.
+func Join(units ...Unit) Unit {
+	var out Unit
+
+	for _, unit := range units {
+		joined(&out, unit)
+	}
+	return out
+}
+
+// joined folds one merged unit into another.
+func joined(out *Unit, unit Unit) {
+	for _, section := range unit.Sections {
+		if !section.Empty() {
+			out.Sections = append(out.Sections, section)
+		}
+	}
+
+	out.Imports = once(out.Imports, unit.Imports, func(one emit.Import) bool { return one.Path != "" })
+	out.Assertions = once(out.Assertions, unit.Assertions, func(layer.Assertion) bool { return true })
+	out.Requires = once(out.Requires, unit.Requires, func(one model.TypeRef) bool { return !one.IsZero() })
+
+	provided(out, unit.Provides)
+}
+
+// once appends what is worth keeping and is not already held.
+func once[T comparable](held, adding []T, worth func(T) bool) []T {
+	for _, one := range adding {
+		if worth(one) && !slices.Contains(held, one) {
+			held = append(held, one)
+		}
+	}
+	return held
+}

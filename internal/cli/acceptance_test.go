@@ -163,7 +163,7 @@ func TestEveryMethodOnASubjectWasClaimed(t *testing.T) {
 
 	// And what they wrote, read off the file the package shares — which is
 	// where a method on a subject lands, whichever declaration caused it.
-	shared, ok := regenerating(t)["zz_forge_shared.go"]
+	shared, ok := regenerating(t)["forge.gen.go"]
 	if !ok {
 		t.Fatal("the example has no shared file to read")
 	}
@@ -367,7 +367,7 @@ func unwritten(t *testing.T) string {
 	kept := 0
 	for _, path := range sources {
 		name := filepath.Base(path)
-		if strings.HasPrefix(name, "zz_forge_") || strings.HasSuffix(name, "_test.go") {
+		if strings.HasSuffix(name, ".gen.go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
 
@@ -434,7 +434,7 @@ func walking(t *testing.T, dir string) map[string][]byte {
 // the test that reads the headers has to find such a file before it can say the
 // header is missing.
 func ours() ([]string, error) {
-	return filepath.Glob(filepath.Join(example, "zz_forge_*.go"))
+	return filepath.Glob(filepath.Join(example, "*.gen.go"))
 }
 
 // regenerating runs the real pipeline over the example and returns its files.

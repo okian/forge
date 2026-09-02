@@ -536,8 +536,14 @@ func declarations(n int) string {
 // committed. Somebody who has them ignored has a repository that builds for
 // them and for nobody else, and finds out from a colleague.
 func tracked(pkg packaged) (string, verdict) {
-	names, err := filepath.Glob(filepath.Join(pkg.dir, generated.Prefix()+"*.go"))
-	if err != nil || len(names) == 0 {
+	var names []string
+	for _, one := range generated.Names() {
+		at := filepath.Join(pkg.dir, one)
+		if _, err := os.Stat(at); err == nil {
+			names = append(names, at)
+		}
+	}
+	if len(names) == 0 {
 		return "", 0
 	}
 
@@ -609,7 +615,7 @@ func known(dir string) (map[string]bool, bool) {
 
 	// Names separated by a zero byte, which is the only separator a filename
 	// cannot hold, and read as paths rather than as patterns: a file called
-	// zz_forge_[a].go is a file rather than a character class.
+	// forge[a].gen.go is a file rather than a character class.
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "--literal-pathspecs", "ls-files", "-z", "--", ".") //nolint:gosec // a directory the load reported.
 
 	// Without taking the repository's lock, since this only ever reads and a

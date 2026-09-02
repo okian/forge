@@ -3,14 +3,157 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs 66de48c212ca8ba9
+// inputs 3c9cd395501a8720
 
 package model
 
 import (
+	"cmp"
 	"iter"
 	"slices"
+	"sort"
 )
+
+// PersonsSeq is a lazy view over the elements of Persons.
+type PersonsSeq struct {
+	Seq[Person]
+}
+
+// Seq returns a lazy view over the elements. Its combinators are the shared
+// Seq[Person] view's.
+func (c Persons) Seq() PersonsSeq {
+	return PersonsSeq{Seq[Person](c.All())}
+}
+
+// IDs returns the ID of every element, in order.
+func (c Persons) IDs() []int {
+	return c.project(func(v Person) int {
+		return v.ID
+	})
+}
+
+// Names returns the Name of every element, in order.
+func (c Persons) Names() []string {
+	return c.project(func(v Person) string {
+		return v.Name
+	})
+}
+
+// SortedByName returns the elements ordered by Name, leaving equal ones as they
+// were.
+func (c Persons) SortedByName() []Person {
+	return c.ordered(func(v Person) string {
+		return v.Name
+	})
+}
+
+// Less reports whether the element at i sorts before the one at j, by Name. It
+// is one of the three sort.Sort takes: the storage answers the length, and Swap
+// below is the other. The order is Name's because it is the one sort key this
+// declaration names — one naming several has several orders and no reason to
+// prefer any of them, and gets its sorted views without these. Unlike
+// SortedByName, sorting through this rearranges the collection rather than
+// answering with a copy of it in order.
+func (c Persons) Less(i, j int) bool {
+	return c[i].Name < c[j].Name
+}
+
+// Swap exchanges the elements at i and j, which is the last of the three
+// sort.Sort takes.
+func (c Persons) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
+}
+
+// project collects one value from every element, in the order the elements come
+// in.
+//
+// The result is grown rather than sized ahead, because what is walked is not
+// always something that can be counted first — a walk is all this needs of the
+// collection, and needing a length as well would be needing more.
+func (c Persons) project[V any](of func(Person) V) []V {
+	var out []V
+	for v := range c.All() {
+		out = append(out, of(v))
+	}
+	return out
+}
+
+// ordered returns the elements sorted by the key taken from each of them,
+// leaving equal ones in the order they came in.
+//
+// A new slice rather than a sort in place: the collection is what it was, and a
+// method that quietly reordered it would make asking a question change the
+// answer to the next one.
+func (c Persons) ordered[K cmp.Ordered](by func(Person) K) []Person {
+	out := slices.Collect(c.All())
+	slices.SortStableFunc(out, func(a, b Person) int { return cmp.Compare(by(a), by(b)) })
+
+	return out
+}
+
+// NewPersons returns a container holding the given elements, in order.
+//
+// The elements are copied, so the container does not follow the slice they were
+// passed in.
+func NewPersons(elems ...Person) Persons { return slices.Clone(elems) }
+
+// Len reports how many elements the container holds.
+func (s Persons) Len() int { return len(s) }
+
+// All walks the container from the first element to the last.
+//
+// The walk is fixed when All is called, so appending during one does not extend
+// it.
+func (s Persons) All() iter.Seq[Person] { return slices.Values(s) }
+
+// Backward walks the container from the last element to the first. Like All,
+// the walk is fixed when it is called.
+func (s Persons) Backward() iter.Seq[Person] {
+	return func(yield func(Person) bool) {
+		for _, elem := range slices.Backward(s) {
+			if !yield(elem) {
+				return
+			}
+		}
+	}
+}
+
+// AppendSeq adds every element the sequence yields, in the order it yields
+// them.
+//
+// It appends rather than replaces, so several sequences can be gathered into
+// one container by calling it more than once.
+func (s *Persons) AppendSeq(seq iter.Seq[Person]) { *s = slices.AppendSeq(*s, seq) }
+
+// Reset empties the container, keeping the memory it has already taken.
+//
+// It is what makes a container fillable a second time without allocating a
+// second time: reading a document into one that has been reset costs nothing
+// the first read did not already pay for.
+//
+// The elements that were there stay in the memory behind the container until
+// something is appended over them, so a container holding the last reference to
+// something large holds it until then. That is the ordinary bargain of reusing
+// a buffer, and a caller who would rather have the memory back can assign a new
+// container instead.
+func (s *Persons) Reset() { *s = (*s)[:0] }
+
+// Persons satisfies these.
+//
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ sort.Interface = *new(Persons)
+)
+
+// And the walk's own signature, checked without calling it.
+//
+// A method expression is resolved when the package is built and costs nothing
+// at run time, where an interface assertion would have to name a value and
+// initialise it.
+var _ func(*Persons) iter.Seq[Person] = (*Persons).All
 
 // Seq is a lazy view over a sequence of elements.
 //

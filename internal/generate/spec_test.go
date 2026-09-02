@@ -27,7 +27,7 @@ func TestWhatASpecDeclarationBecomes(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	held := written(t, files, generate.Named("Persons"))
+	held := written(t, files, generate.Name())
 
 	// The type itself, which the author's file declares only under the tag:
 	// forge owns it here, and its underlying form comes from the storage layer
@@ -62,8 +62,8 @@ func TestWhatASpecDeclarationBecomes(t *testing.T) {
 			Path: "model", Tags: tags,
 			Files: []goldentest.Source{
 				subject,
-				{Name: generate.Named("Persons"), Content: held, Generated: true},
-				{Name: generate.Shared(), Content: written(t, files, generate.Shared()), Generated: true},
+				{Name: generate.Name(), Content: held, Generated: true},
+				{Name: generate.Stubs(), Content: written(t, files, generate.Stubs()), Generated: true},
 				spec,
 			},
 		}
@@ -87,7 +87,7 @@ func TestWhatAnInlineDeclarationBecomes(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	held := written(t, files, generate.Named("Persons"))
+	held := written(t, files, generate.Name())
 
 	if bytes.Contains(held, []byte("//go:build")) {
 		t.Errorf("the file carries a build constraint:\n%s", held)
@@ -97,25 +97,41 @@ func TestWhatAnInlineDeclarationBecomes(t *testing.T) {
 	}
 }
 
-// The helpers a package shares carry no constraint either.
+// A package carries a build constraint exactly when it holds a spec
+// declaration, and carries none when it does not.
 //
-// The ordinary build needs them, because an inline declaration's file calls
-// them and carries no tag of its own. The tagged build does not need them yet,
-// and will: what mirrors the generated API there is not written, and when it is
-// it will be written against these same helpers. Until then they are a generic
-// type nothing under the tag names, which costs that build nothing — and a
-// helper constrained to one tag would be a helper missing from the other.
-func TestTheSharedFileCarriesNoConstraint(t *testing.T) {
-	asked := request("Persons", "//forge:collection sort=Name")
-	asked.Model.Form = model.FormSpec
+// The constraint is not decoration and is not free. A spec declaration's type
+// is written by forge under one constraint and by the author's own file under
+// its complement, so the package's whole output has to go under the first — and
+// a package with no such declaration must carry none, or its methods would be
+// missing from a build the author already had.
+func TestWhenAPackageCarriesAConstraint(t *testing.T) {
+	for _, one := range []struct {
+		what string
+		form model.Form
+		want bool
+	}{
+		{"a spec declaration", model.FormSpec, true},
+		{"an inline one", model.FormInline, false},
+	} {
+		asked := request("Persons", "//forge:collection sort=Name")
+		asked.Model.Form = one.form
 
-	files, diags := generate.Package(local, "model", []generate.Request{asked}, config())
-	if !diags.Empty() {
-		t.Fatalf("generating was refused:\n%s", diags.Render())
-	}
+		files, diags := generate.Package(local, "model", []generate.Request{asked}, config())
+		if !diags.Empty() {
+			t.Fatalf("%s was refused:\n%s", one.what, diags.Render())
+		}
 
-	if held := written(t, files, generate.Shared()); bytes.Contains(held, []byte("//go:build")) {
-		t.Errorf("the shared file carries a build constraint:\n%s", held)
+		held := written(t, files, generate.Name())
+		if got := bytes.Contains(held, []byte("//go:build !forgespec")); got != one.want {
+			t.Errorf("%s: the file carries a constraint=%v, want %v:\n%s", one.what, got, one.want, held)
+		}
+
+		// And the file standing in for it is written exactly when the file it
+		// stands in for is constrained.
+		if got := len(files) == 2; got != one.want {
+			t.Errorf("%s: wrote %d files, want the stand-in=%v", one.what, len(files), one.want)
+		}
 	}
 }
 
@@ -134,7 +150,7 @@ func TestMovingADeclarationBetweenFormsChangesWhatIsWritten(t *testing.T) {
 	one, _ := generate.Package(local, "model", []generate.Request{inline}, config())
 	two, _ := generate.Package(local, "model", []generate.Request{spec}, config())
 
-	if bytes.Equal(written(t, one, generate.Named("Persons")), written(t, two, generate.Named("Persons"))) {
+	if bytes.Equal(written(t, one, generate.Name()), written(t, two, generate.Name())) {
 		t.Error("a declaration written each way produced one file")
 	}
 }

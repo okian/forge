@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs c63b831487be35a4
+// inputs 58d63021d9424a2e
 
 //go:build forgespec
 
@@ -81,4 +81,17 @@ func personsHeldIndexOf(from, i, size int) int { panic("forge stub") }
 var (
 	_ json.MarshalerTo = (*Persons)(nil)
 	_ sync.Locker      = (*Persons)(nil)
+)
+
+func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
+
+func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+
+func decodeModelPersonJSONFrom(dec *jsontext.Decoder, v *Person) error { panic("forge stub") }
+
+func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+
+var (
+	_ json.MarshalerTo     = *new(Person)
+	_ json.UnmarshalerFrom = (*Person)(nil)
 )

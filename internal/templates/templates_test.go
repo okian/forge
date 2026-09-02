@@ -82,7 +82,7 @@ func TestATemplateBecomesAPackageThatCompiles(t *testing.T) {
 				Content: []byte("package model\n\n" +
 					"type Person struct {\n\tName string\n\tAge  int\n}\n"),
 			},
-			{Name: "zz_forge_persons.go", Content: []byte(generated), Generated: true},
+			{Name: "forge.gen.go", Content: []byte(generated), Generated: true},
 		},
 	})
 }

@@ -3,38 +3,39 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs e70465532630085f
+// inputs 58d63021d9424a2e
 
 //go:build !forgespec
 
-package matrix
+package model
 
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"iter"
 	"slices"
 	"sync"
 )
 
-// GuardedPersonsExposeLocker is Person behind a read-write lock.
+// Persons is Person behind a read-write lock.
 //
-// Everything the stack below offers is on guardedPersonsExposeLockerHeld, which this holds
+// Everything the stack below offers is on personsHeld, which this holds
 // and nothing else can reach. What reaches it is a scope: Do under the
-// write lock, RDo under the read lock, each handed a GuardedPersonsExposeLockerView for
+// write lock, RDo under the read lock, each handed a PersonsView for
 // as long as the call lasts.
 //
 // The zero value holds a container that was never made and can hold
-// nothing, so use NewGuardedPersonsExposeLocker.
+// nothing, so use NewPersons.
 //
 // The lock must not be copied once it has been used, which is why every
 // method here is on the pointer.
-type GuardedPersonsExposeLocker struct {
+type Persons struct {
 	mu   sync.RWMutex
-	held guardedPersonsExposeLockerHeld
+	held personsHeld
 }
 
-// NewGuardedPersonsExposeLocker returns a lock around a new guardedPersonsExposeLockerHeld.
+// NewPersons returns a lock around a new personsHeld.
 //
 // The container beneath a lock is made rather than declared — it has to be
 // told how much it holds — so this is the way in, and the zero value of
@@ -42,8 +43,8 @@ type GuardedPersonsExposeLocker struct {
 //
 // What is made here is reachable through this lock and through nothing
 // else, which is the whole of what the lock is for.
-func NewGuardedPersonsExposeLocker() *GuardedPersonsExposeLocker {
-	return &GuardedPersonsExposeLocker{held: *newGuardedPersonsExposeLockerHeld()}
+func NewPersons() *Persons {
+	return &Persons{held: *newPersonsHeld()}
 }
 
 // Do runs f with the write lock held.
@@ -53,11 +54,11 @@ func NewGuardedPersonsExposeLocker() *GuardedPersonsExposeLocker {
 // with nothing held. The lock is not reentrant, so a call back into this
 // value from inside f deadlocks — which the view cannot be used to write,
 // and the value f closed over still can.
-func (g *GuardedPersonsExposeLocker) Do(f func(v GuardedPersonsExposeLockerView)) {
+func (g *Persons) Do(f func(v PersonsView)) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	f(GuardedPersonsExposeLockerView{held: &g.held})
+	f(PersonsView{held: &g.held})
 }
 
 // RDo runs f with the read lock held.
@@ -78,11 +79,11 @@ func (g *GuardedPersonsExposeLocker) Do(f func(v GuardedPersonsExposeLockerView)
 // contention and pass every test that runs without it. Do from inside f
 // deadlocks outright, since it waits for the read lock f is holding.
 // Read what you need through the view.
-func (g *GuardedPersonsExposeLocker) RDo(f func(v GuardedPersonsExposeLockerView)) {
+func (g *Persons) RDo(f func(v PersonsView)) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	f(GuardedPersonsExposeLockerView{held: &g.held})
+	f(PersonsView{held: &g.held})
 }
 
 // Snapshot returns the elements, copied under the read lock.
@@ -103,7 +104,7 @@ func (g *GuardedPersonsExposeLocker) RDo(f func(v GuardedPersonsExposeLockerView
 // the walk starts. A copy that grew as it went would allocate once per
 // doubling and copy what it had each time — which is what collecting a
 // sequence of unknown length has to do, and is not what this is.
-func (g *GuardedPersonsExposeLocker) Snapshot() []Person {
+func (g *Persons) Snapshot() []Person {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -120,7 +121,7 @@ func (g *GuardedPersonsExposeLocker) Snapshot() []Person {
 //
 // It is a fact about the past by the time it is read, like every count of
 // something another goroutine may be changing.
-func (g *GuardedPersonsExposeLocker) Len() int {
+func (g *Persons) Len() int {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -140,37 +141,34 @@ func (g *GuardedPersonsExposeLocker) Len() int {
 // deadlocks. What these are for is handing this value to something that
 // asks for a sync.Locker and does not otherwise touch it — a sync.Cond is
 // the case worth having them for — and not for reaching the data.
-func (g *GuardedPersonsExposeLocker) Lock() { g.mu.Lock() }
+func (g *Persons) Lock() { g.mu.Lock() }
 
 // Unlock releases the write lock.
-func (g *GuardedPersonsExposeLocker) Unlock() { g.mu.Unlock() }
+func (g *Persons) Unlock() { g.mu.Unlock() }
 
-// MarshalJSONTo writes the container as a JSON array.
+// MarshalJSONTo writes the container as a JSON array, with the read
+// lock held for the length of the write.
 //
-// The elements are copied under the read lock and the copy is what is
-// written, so the lock is held for a copy rather than for a write. That
-// matters because the encoder's writer is the caller's: a socket that
-// stopped reading would otherwise hold this container against every writer
-// for as long as it took to time out.
-//
-// It costs one copy of the elements per document. A caller who owns their
-// writer and would rather not pay it can ask for the lock to be held
-// instead.
-func (g *GuardedPersonsExposeLocker) MarshalJSONTo(enc *jsontext.Encoder) error {
-	held := g.Snapshot()
+// Written this way because the declaration asked for it, and it is the
+// right answer only when the encoder's writer is one the caller controls:
+// nothing is copied, and every writer of this container waits for however
+// long the encoder takes to finish. A writer that blocks blocks them all.
+func (g *Persons) MarshalJSONTo(enc *jsontext.Encoder) error {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	if err := enc.WriteToken(jsontext.BeginArray); err != nil {
 		return err
 	}
-	for i := range held {
-		if err := held[i].MarshalJSONTo(enc); err != nil {
+	for v := range g.held.All() {
+		if err := v.MarshalJSONTo(enc); err != nil {
 			return err
 		}
 	}
 	return enc.WriteToken(jsontext.EndArray)
 }
 
-// GuardedPersonsExposeLockerView is what a scope over GuardedPersonsExposeLocker hands the function it runs.
+// PersonsView is what a scope over Persons hands the function it runs.
 //
 // No method on it names this type or the one it guards, so the call that
 // deadlocks by accident — reaching for the value you were just handed and
@@ -187,68 +185,68 @@ func (g *GuardedPersonsExposeLocker) MarshalJSONTo(enc *jsontext.Encoder) error 
 // is declared in your own package, so its field is reachable by hand and
 // its zero value exists — neither of which any arrangement of methods can
 // prevent.
-type GuardedPersonsExposeLockerView struct {
-	held *guardedPersonsExposeLockerHeld
+type PersonsView struct {
+	held *personsHeld
 }
 
 // Cap how many elements the container can hold
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) Cap() int {
+func (v PersonsView) Cap() int {
 	return v.held.Cap()
 }
 
 // Len how many elements the container holds
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) Len() int {
+func (v PersonsView) Len() int {
 	return v.held.Len()
 }
 
 // All walks from the oldest element to the newest
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) All() iter.Seq[Person] {
+func (v PersonsView) All() iter.Seq[Person] {
 	return v.held.All()
 }
 
 // Backward walks from the newest element to the oldest
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) Backward() iter.Seq[Person] {
+func (v PersonsView) Backward() iter.Seq[Person] {
 	return v.held.Backward()
 }
 
 // Reset empties the container, keeping the buffer it was constructed with
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) Reset() {
+func (v PersonsView) Reset() {
 	v.held.Reset()
 }
 
 // Push adds an element, dropping the oldest to make room
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) Push(a0 Person) {
+func (v PersonsView) Push(a0 Person) {
 	v.held.Push(a0)
 }
 
 // AppendSeq adds every element a sequence yields, dropping older ones as it fills
 //
 // It is the same method the stack below declares, reached through the view.
-func (v GuardedPersonsExposeLockerView) AppendSeq(a0 iter.Seq[Person]) {
+func (v PersonsView) AppendSeq(a0 iter.Seq[Person]) {
 	v.held.AppendSeq(a0)
 }
 
-// guardedPersonsExposeLockerHeldFixedCap is how many elements the buffer holds.
+// personsHeldFixedCap is how many elements the buffer holds.
 //
 // It is a constant rather than a field, so the size is part of the type rather
 // than of a value: every container of this type holds the same number, the
 // compiler knows it, and no caller can be handed one sized differently from the
 // one it expected.
-const guardedPersonsExposeLockerHeldFixedCap = 64
+const personsHeldFixedCap = 8
 
-// guardedPersonsExposeLockerHeld holds a fixed number of the most recent elements.
+// personsHeld holds a fixed number of the most recent elements.
 //
 // The buffer is allocated once and never grows, so a producer that outruns its
 // consumer costs a bounded amount of memory rather than an increasing one. That
@@ -263,40 +261,40 @@ const guardedPersonsExposeLockerHeldFixedCap = 64
 // The zero value has no buffer at all, which is not the same as an empty
 // container and is not something any method can make sense of. Adding to one
 // says so rather than carrying on. Use the constructor.
-type guardedPersonsExposeLockerHeld struct {
+type personsHeld struct {
 	buf  []Person
 	head int
 	n    int
 }
 
-// newGuardedPersonsExposeLockerHeld returns an empty container, whose capacity is the one the
+// newPersonsHeld returns an empty container, whose capacity is the one the
 // declaration fixed.
-func newGuardedPersonsExposeLockerHeld() *guardedPersonsExposeLockerHeld {
-	return &guardedPersonsExposeLockerHeld{buf: make([]Person, guardedPersonsExposeLockerHeldFixedCap)}
+func newPersonsHeld() *personsHeld {
+	return &personsHeld{buf: make([]Person, personsHeldFixedCap)}
 }
 
 // Cap reports how many elements the container can hold, which does not change.
-func (r *guardedPersonsExposeLockerHeld) Cap() int { return len(r.buf) }
+func (r *personsHeld) Cap() int { return len(r.buf) }
 
 // Len reports how many elements the container holds, which is never more than
 // its capacity.
-func (r *guardedPersonsExposeLockerHeld) Len() int { return r.n }
+func (r *personsHeld) Len() int { return r.n }
 
 // Push adds an element, dropping the oldest one if the buffer is full.
 //
 // Dropping rather than growing is the point of the type: the newest elements
 // are the ones kept, and how much memory that costs was decided when the
 // container was made.
-func (r *guardedPersonsExposeLockerHeld) Push(v Person) {
+func (r *personsHeld) Push(v Person) {
 	r.built()
 
 	if r.n == len(r.buf) {
 		r.buf[r.head] = v
-		r.head = guardedPersonsExposeLockerHeldIndexOf(r.head, 1, len(r.buf))
+		r.head = personsHeldIndexOf(r.head, 1, len(r.buf))
 		return
 	}
 
-	r.buf[guardedPersonsExposeLockerHeldIndexOf(r.head, r.n, len(r.buf))] = v
+	r.buf[personsHeldIndexOf(r.head, r.n, len(r.buf))] = v
 	r.n++
 }
 
@@ -311,12 +309,12 @@ func (r *guardedPersonsExposeLockerHeld) Push(v Person) {
 // Fixing that too would mean copying the elements, which is the one thing a
 // container that exists to bound its memory should not do behind a caller's
 // back. Walk it, or push to it, or take a copy and do both.
-func (r *guardedPersonsExposeLockerHeld) All() iter.Seq[Person] {
+func (r *personsHeld) All() iter.Seq[Person] {
 	held, from, size := r.n, r.head, len(r.buf)
 
 	return func(yield func(Person) bool) {
 		for i := range held {
-			if !yield(r.buf[guardedPersonsExposeLockerHeldIndexOf(from, i, size)]) {
+			if !yield(r.buf[personsHeldIndexOf(from, i, size)]) {
 				return
 			}
 		}
@@ -325,12 +323,12 @@ func (r *guardedPersonsExposeLockerHeld) All() iter.Seq[Person] {
 
 // Backward walks the container from the newest element to the oldest. Like All,
 // which slots it covers is fixed when it is called.
-func (r *guardedPersonsExposeLockerHeld) Backward() iter.Seq[Person] {
+func (r *personsHeld) Backward() iter.Seq[Person] {
 	held, from, size := r.n, r.head, len(r.buf)
 
 	return func(yield func(Person) bool) {
 		for i := held - 1; i >= 0; i-- {
-			if !yield(r.buf[guardedPersonsExposeLockerHeldIndexOf(from, i, size)]) {
+			if !yield(r.buf[personsHeldIndexOf(from, i, size)]) {
 				return
 			}
 		}
@@ -342,7 +340,7 @@ func (r *guardedPersonsExposeLockerHeld) Backward() iter.Seq[Person] {
 //
 // A sequence longer than the container leaves the last capacity elements of it,
 // which is what pushing them one at a time would leave.
-func (r *guardedPersonsExposeLockerHeld) AppendSeq(seq iter.Seq[Person]) {
+func (r *personsHeld) AppendSeq(seq iter.Seq[Person]) {
 	for v := range seq {
 		r.Push(v)
 	}
@@ -358,7 +356,7 @@ func (r *guardedPersonsExposeLockerHeld) AppendSeq(seq iter.Seq[Person]) {
 // so a container holding the last reference to something large holds it until
 // then. Nothing can read them: what a walk covers is the count, and the count
 // is what this sets to none.
-func (r *guardedPersonsExposeLockerHeld) Reset() { r.head, r.n = 0, 0 }
+func (r *personsHeld) Reset() { r.head, r.n = 0, 0 }
 
 // built stops a container that was never constructed from being added to.
 //
@@ -368,13 +366,13 @@ func (r *guardedPersonsExposeLockerHeld) Reset() { r.head, r.n = 0, 0 }
 // which is true and useless, since a caller checking for a full container reads
 // that as back-pressure and retries for ever. Saying the same thing both ways
 // makes the mistake one answer rather than two.
-func (r *guardedPersonsExposeLockerHeld) built() {
+func (r *personsHeld) built() {
 	if len(r.buf) == 0 {
 		panic("forge: this container was never constructed; use the constructor")
 	}
 }
 
-// guardedPersonsExposeLockerHeldIndexOf returns where the element i places after the one at from is kept.
+// personsHeldIndexOf returns where the element i places after the one at from is kept.
 //
 // Given the buffer's own head and size it answers for the container as it is;
 // given a head a walk took when it started, it answers for the container as it
@@ -383,20 +381,150 @@ func (r *guardedPersonsExposeLockerHeld) built() {
 // One subtraction rather than a remainder: i is never more than the number of
 // elements held, which is never more than the size, so the sum passes the end
 // of the buffer at most once.
-func guardedPersonsExposeLockerHeldIndexOf(from, i, size int) int {
+func personsHeldIndexOf(from, i, size int) int {
 	if slot := from + i; slot < size {
 		return slot
 	}
 	return from + i - size
 }
 
-// GuardedPersonsExposeLocker satisfies these.
+// Persons satisfies these.
 //
 // The claim is checked when the package is built rather than when a caller
 // first tries, so a stack that stops satisfying one of these fails here
 // rather than at somebody's call site. And a reader who is not going to read
 // forty methods can see what they add up to.
 var (
-	_ json.MarshalerTo = (*GuardedPersonsExposeLocker)(nil)
-	_ sync.Locker      = (*GuardedPersonsExposeLocker)(nil)
+	_ json.MarshalerTo = (*Persons)(nil)
+	_ sync.Locker      = (*Persons)(nil)
+)
+
+// encodeModelPersonJSONTo writes a Person as JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error {
+	return v.MarshalJSONTo(enc)
+}
+
+// MarshalJSONTo writes the Person as a JSON object.
+//
+// Members are written in the order the fields are declared, an embedded
+// struct's where the embedded field is. A field that takes a name from a
+// shallower one keeps its own place rather than the excluded one's.
+func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {
+	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("ID")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.Int(int64(v.ID))); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String("Name")); err != nil {
+		return err
+	}
+	if err := enc.WriteToken(jsontext.String(string(v.Name))); err != nil {
+		return err
+	}
+	return enc.WriteToken(jsontext.EndObject)
+}
+
+// decodeModelPersonJSONFrom reads a Person from JSON.
+//
+// The value's own method holds the body; this is what generated code
+// calls, so that a caller names one function whether or not the type
+// is one a method could be declared on.
+func decodeModelPersonJSONFrom(dec *jsontext.Decoder, v *Person) error {
+	return v.UnmarshalJSONFrom(dec)
+}
+
+// UnmarshalJSONFrom reads a JSON object into the Person.
+//
+// A member the object holds and the type does not is skipped, which is
+// what keeps a reader working against a writer that has since added one.
+func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if dec.PeekKind() == 'n' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		var zero Person
+		*v = zero
+		return nil
+	}
+	if kind := dec.PeekKind(); kind != '{' {
+		if _, err := dec.ReadToken(); err != nil {
+			return err
+		}
+		return fmt.Errorf("cannot read Person from a JSON %s", kind)
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return err
+	}
+	for dec.PeekKind() != '}' {
+		name, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		switch name.String() {
+		case "ID":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero int
+					v.ID = zero
+				case '0':
+					number, err := raw.Int()
+					if err != nil {
+						return err
+					}
+					if int64(int(number)) != number {
+						return fmt.Errorf("%d is out of range for int", number)
+					}
+					v.ID = int(number)
+				default:
+					return fmt.Errorf("cannot read int from a JSON %s", raw.Kind())
+				}
+			}
+		case "Name":
+			{
+				raw, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				switch raw.Kind() {
+				case 'n':
+					var zero string
+					v.Name = zero
+				case '"':
+					v.Name = string(raw.String())
+				default:
+					return fmt.Errorf("cannot read string from a JSON %s", raw.Kind())
+				}
+			}
+		default:
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := dec.ReadToken()
+	return err
+}
+
+// Person satisfies these.
+//
+// The claim is checked when the package is built rather than when a caller
+// first tries, so a stack that stops satisfying one of these fails here
+// rather than at somebody's call site. And a reader who is not going to read
+// forty methods can see what they add up to.
+var (
+	_ json.MarshalerTo     = *new(Person)
+	_ json.UnmarshalerFrom = (*Person)(nil)
 )

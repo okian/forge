@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs 3fa375ff490f1b5c
+// inputs 013993914a2a960c
 
 //go:build forgespec
 
@@ -11,10 +11,13 @@ package model
 
 import (
 	"cmp"
+	"encoding"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"sort"
 	"sync"
 )
@@ -159,4 +162,62 @@ func (s *lockedHeld) Reset() { panic("forge stub") }
 
 var (
 	_ sync.Locker = (*Locked)(nil)
+)
+
+func (v Code) String() string { panic("forge stub") }
+
+func (v Person) String() string { panic("forge stub") }
+
+func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
+
+func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+
+func decodeModelPersonJSONFrom(dec *jsontext.Decoder, v *Person) error { panic("forge stub") }
+
+func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+
+func (v Person) LogValue() slog.Value { panic("forge stub") }
+
+func (v Code) AppendText(b []byte) ([]byte, error) { panic("forge stub") }
+
+func (v Code) MarshalText() ([]byte, error) { panic("forge stub") }
+
+func (v *Code) UnmarshalText(b []byte) error { panic("forge stub") }
+
+type Seq[U any] iter.Seq[U]
+
+func (s Seq[U]) All() iter.Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Filter(keep func(U) bool) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Map[V any](to func(U) V) Seq[V] { panic("forge stub") }
+
+func (s Seq[U]) Take(n int) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Skip(n int) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Dedup(same func(a, b U) bool) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Chunk(n int) iter.Seq[[]U] { panic("forge stub") }
+
+func (s Seq[U]) Collect() []U { panic("forge stub") }
+
+func (s Seq[U]) Into(dst []U) []U { panic("forge stub") }
+
+func (s Seq[U]) First() (U, bool) { panic("forge stub") }
+
+func (s Seq[U]) Reduce[A any](initial A, combine func(A, U) A) A { panic("forge stub") }
+
+var (
+	_ json.MarshalerTo     = *new(Person)
+	_ json.UnmarshalerFrom = (*Person)(nil)
+	_ fmt.Stringer         = *new(Person)
+	_ slog.LogValuer       = *new(Person)
+)
+
+var (
+	_ fmt.Stringer             = *new(Code)
+	_ encoding.TextAppender    = *new(Code)
+	_ encoding.TextMarshaler   = *new(Code)
+	_ encoding.TextUnmarshaler = (*Code)(nil)
 )

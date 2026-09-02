@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs f350d8fc230ee0dc
+// inputs 1e9ba9d4893c1a45
 
 //go:build !forgespec
 
@@ -13,7 +13,6 @@ import (
 	"iter"
 	"slices"
 	"sync"
-	"time"
 )
 
 // Persons is Person behind a read-write lock.
@@ -168,80 +167,6 @@ func (v PersonsView) AppendSeq(a0 iter.Seq[Person]) {
 // It is the same method the stack below declares, reached through the view.
 func (v PersonsView) Reset() {
 	v.held.Reset()
-}
-
-// Seq Seq returns a lazy view over the elements, as personsHeldSeq.
-//
-// It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Seq() personsHeldSeq {
-	return v.held.Seq()
-}
-
-// IDs IDs returns the ID of every element, in order.
-//
-// It is the same method the stack below declares, reached through the view.
-func (v PersonsView) IDs() []int {
-	return v.held.IDs()
-}
-
-// Names Names returns the Name of every element, in order.
-//
-// It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Names() []string {
-	return v.held.Names()
-}
-
-// Joineds Joineds returns the Joined of every element, in order.
-//
-// It is the same method the stack below declares, reached through the view.
-func (v PersonsView) Joineds() []time.Time {
-	return v.held.Joineds()
-}
-
-// personsHeldSeq is a lazy view over the elements of personsHeld.
-type personsHeldSeq struct {
-	Seq[Person]
-}
-
-// Seq returns a lazy view over the elements. Its combinators are the shared
-// Seq[Person] view's.
-func (c personsHeld) Seq() personsHeldSeq {
-	return personsHeldSeq{Seq[Person](c.All())}
-}
-
-// IDs returns the ID of every element, in order.
-func (c personsHeld) IDs() []int {
-	return c.project(func(v Person) int {
-		return v.ID
-	})
-}
-
-// Names returns the Name of every element, in order.
-func (c personsHeld) Names() []string {
-	return c.project(func(v Person) string {
-		return v.Name
-	})
-}
-
-// Joineds returns the Joined of every element, in order.
-func (c personsHeld) Joineds() []time.Time {
-	return c.project(func(v Person) time.Time {
-		return v.Joined
-	})
-}
-
-// project collects one value from every element, in the order the elements come
-// in.
-//
-// The result is grown rather than sized ahead, because what is walked is not
-// always something that can be counted first — a walk is all this needs of the
-// collection, and needing a length as well would be needing more.
-func (c personsHeld) project[V any](of func(Person) V) []V {
-	var out []V
-	for v := range c.All() {
-		out = append(out, of(v))
-	}
-	return out
 }
 
 // personsHeld holds elements in the order they were appended.

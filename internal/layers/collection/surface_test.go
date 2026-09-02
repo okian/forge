@@ -194,7 +194,7 @@ func signatures(t *testing.T, source []byte, receiver string) map[string]declare
 	t.Helper()
 
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "zz_forge_persons.go", source, parser.ParseComments)
+	file, err := parser.ParseFile(fset, "forge.gen.go", source, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("parsing the output: %v", err)
 	}

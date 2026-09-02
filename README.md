@@ -59,8 +59,11 @@ forge doctor                      # diagnose toolchain and editor configuration
 forge version                     # version and build info
 ```
 
-Generated files are named `zz_forge_*.go` and are meant to be committed, so
-builds and editors work with no tool installed.
+A package gets one generated file, `forge.gen.go`, and it is meant to be
+committed, so builds and editors work with no tool installed. A package holding
+a spec-form declaration gets a second, `forge_stubs.gen.go`, which stands in for
+the first under the build tag the spec is written behind — exactly one of the
+two is in any build.
 
 ## Example
 

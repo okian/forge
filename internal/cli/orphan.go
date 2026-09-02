@@ -24,6 +24,17 @@ import (
 // source, and what it takes to fix is a deletion rather than an edit.
 var codeOrphan = diag.Register(5003, "generated file belongs to no declaration here")
 
+// codeSuperseded reports a file an older forge wrote and this one does not.
+//
+// Its own code because it is its own situation and has its own fix. An orphan
+// is a file whose declaration went away, and whether it is worth reporting
+// depends on whether the package still builds without it. A superseded file is
+// one no version of forge will ever write again: it holds the whole of what the
+// new file holds, so the moment the new file is written the package stops
+// building — and the run that would write it is the last chance anybody has to
+// be told why.
+var codeSuperseded = diag.Register(5008, "generated file was written by a forge that wrote one file per declaration")
+
 // orphans explains a package that will not build by naming the file forge left
 // in it.
 //
@@ -96,6 +107,19 @@ func orphans(found resolved) diag.Set {
 		half := partial(pkg)
 
 		for _, name := range loose {
+			// A file this forge will never write again is reported whatever
+			// the package's state. The exemptions below are about a leftover
+			// that breaks nothing, and this one breaks everything the moment
+			// the file that replaces it is written — which is the run being
+			// refused to say so.
+			if generated.Superseded(name) {
+				diags.Add(diag.New(codeSuperseded, at(found, pkg),
+					"%s was written by a forge that wrote one file per declaration", name).
+					WithHint("%s", "delete it; this forge writes "+generated.Name()+
+						" for the whole package, and the two hold the same declarations"))
+				continue
+			}
+
 			if builds && compiled(pkg, name) {
 				continue
 			}
@@ -152,9 +176,9 @@ func orphans(found resolved) diag.Set {
 //
 // Forge's own output is not counted. Its stub file is written under the tag and
 // so is a spec file by this test, and a package holding one would otherwise
-// look partial for ever. The name is enough to recognise it here: a hand-written
-// file borrowing the prefix would only cost this package its report, whereas
-// reading the header to be sure would cost a second read of every file.
+// look partial for ever. The name is enough to recognise it here: a
+// hand-written file borrowing the name would only cost this package its report,
+// whereas reading the header to be sure would cost a second read of every file.
 //
 // A file that cannot be read or parsed counts. Something is there, and this is
 // not the run to decide what.
@@ -195,17 +219,22 @@ func compiled(pkg *packages.Package, name string) bool {
 // By what discovery found rather than by what survived the stages after it. A
 // declaration whose marker is misspelled does not resolve, and one whose
 // subject is a pointer does not model — and both are still declarations in the
-// package, whose generated files are still theirs. Naming either as belonging
-// to nobody would tell an author to delete a current file, on top of the
-// refusal they are already being told about, and the refusal is what they
-// should be fixing.
+// package, whose generated file is still theirs. Naming it as belonging to
+// nobody would tell an author to delete a current file, on top of the refusal
+// they are already being told about, and the refusal is what they should be
+// fixing.
 //
-// The two files no single declaration owns are claimed by the package. The
-// shared one wherever there is a declaration at all, and the file standing in
-// for what the tag excludes wherever a declaration forge owns the type of asks
-// for one — the second only then, because a package whose spec declarations
-// have all been deleted or moved inline no longer has anything to stand in for,
-// and the file left behind is exactly the leftover this is looking for.
+// A package with any declaration at all claims the one file forge writes. It
+// claims the file standing in for that one under the tag only where a
+// declaration is written in spec form — a package whose spec declarations have
+// all been deleted or moved inline no longer has anything to stand in for, and
+// the file left behind is exactly the leftover this is looking for.
+//
+// Everything an older forge wrote is claimed by nobody, which is deliberate and
+// is the whole of what makes upgrading survivable: a package generated before
+// there was one file per package holds a file per declaration, every one of
+// them declaring methods the new file declares as well, and the package stops
+// building. Reporting them by name is the only thing that says why.
 func accountedFor(found resolved) map[string][]string {
 	out := make(map[string][]string)
 
@@ -216,10 +245,8 @@ func accountedFor(found resolved) map[string][]string {
 
 		held := out[one.Pkg.PkgPath]
 		if held == nil {
-			held = []string{generated.Shared()}
+			held = []string{generated.Name()}
 		}
-		held = append(held, generated.Named(one.Name))
-
 		if one.Form == model.FormSpec && !slices.Contains(held, generated.Stubs()) {
 			held = append(held, generated.Stubs())
 		}
@@ -233,8 +260,8 @@ func accountedFor(found resolved) map[string][]string {
 // package asks for.
 //
 // A file is forge's only if it says so in the way forge says it: the name alone
-// is a convention anybody could follow, and naming somebody's own
-// zz_forge_notes.go would be worse than saying nothing.
+// is a convention anybody could follow, and naming somebody's own forge.gen.go
+// would be worse than saying nothing.
 func unaccounted(dir string, claimed []string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

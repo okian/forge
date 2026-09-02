@@ -45,7 +45,7 @@ func TestWhatIsSharedIsWrittenOnce(t *testing.T) {
 		t.Fatalf("generating was refused:\n%s", diags.Render())
 	}
 
-	shared := string(written(t, files, generate.Shared()))
+	shared := string(written(t, files, generate.Name()))
 
 	// One of each, for the type two subjects reach and for the type two
 	// declarations share.
@@ -66,36 +66,6 @@ func TestWhatIsSharedIsWrittenOnce(t *testing.T) {
 	for what, held := range once {
 		if got := strings.Count(shared, held); got != 1 {
 			t.Errorf("%s appears %d times, want once:\n%q", what, got, held)
-		}
-	}
-}
-
-// What is shared is in the shared file and not in the declarations' own.
-//
-// The division is what makes the sharing possible at all: a helper written into
-// one declaration's file is a helper the next declaration cannot reach without
-// writing it again.
-func TestWhatIsSharedIsNotAlsoWrittenPerDeclaration(t *testing.T) {
-	files, diags := generate.Package(sharedPkg, "model", []generate.Request{
-		declaring(t, "People", "Person"),
-		declaring(t, "Employers", "Employer"),
-	}, config())
-
-	if !diags.Empty() {
-		t.Fatalf("generating was refused:\n%s", diags.Render())
-	}
-
-	for _, name := range []string{generate.Named("People"), generate.Named("Employers")} {
-		held := string(written(t, files, name))
-
-		for _, want := range []string{
-			"func (v Address) MarshalJSONTo(",
-			"func (v Address) Clone() Address {",
-			"func (v Person) MarshalJSONTo(",
-		} {
-			if strings.Contains(held, want) {
-				t.Errorf("%s holds %q, which belongs to the package rather than to it", name, want)
-			}
 		}
 	}
 }
@@ -245,7 +215,7 @@ func shared(t *testing.T, files []generate.File) string {
 	t.Helper()
 
 	for _, file := range files {
-		if file.Name == generate.Shared() {
+		if file.Name == generate.Name() {
 			return string(file.Content)
 		}
 	}

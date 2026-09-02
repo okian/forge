@@ -180,7 +180,7 @@ func generated(t *testing.T, ctx *plugin.Context) []byte {
 	merged := merge.Units(storage, query, shared)
 
 	out, err := emit.File{
-		Package: "model", Decl: ctx.Model.Name, Pos: ctx.Model.Pos,
+		Package: "model", Pos: ctx.Model.Pos,
 		Imports: merged.Imports, Sections: merged.Sections,
 	}.Render()
 	if err != nil {
@@ -198,7 +198,7 @@ func TestTheWorkedExample(t *testing.T) {
 		Path: "model",
 		Files: []goldentest.Source{
 			{Name: "person.go", Content: []byte(subjectSource)},
-			{Name: "zz_forge_persons.go", Content: generated(t, ctx), Generated: true},
+			{Name: "forge.gen.go", Content: generated(t, ctx), Generated: true},
 		},
 	})
 }
@@ -240,7 +240,7 @@ func TestADeclarationThatAsksForNothing(t *testing.T) {
 		Path: "model",
 		Files: []goldentest.Source{
 			{Name: "person.go", Content: []byte(subjectSource)},
-			{Name: "zz_forge_persons.go", Content: out, Generated: true},
+			{Name: "forge.gen.go", Content: out, Generated: true},
 		},
 	})
 }

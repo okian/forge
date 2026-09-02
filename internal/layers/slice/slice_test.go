@@ -96,7 +96,6 @@ func generated(t *testing.T, ctx *plugin.Context) []byte {
 
 	out, err := emit.File{
 		Package:  "model",
-		Decl:     ctx.Model.Name,
 		Pos:      ctx.Model.Pos,
 		Imports:  merged.Imports,
 		Sections: merged.Sections,
@@ -123,7 +122,7 @@ func TestTheInlineFormIsGivenMethodsAndNotADeclaration(t *testing.T) {
 		Path: "model",
 		Files: []goldentest.Source{
 			{Name: "person.go", Content: []byte(subjectSource + "\ntype Persons []Person\n")},
-			{Name: "zz_forge_persons.go", Content: out, Generated: true},
+			{Name: "forge.gen.go", Content: out, Generated: true},
 		},
 	})
 }
@@ -149,7 +148,7 @@ func TestTheSpecFormIsGivenTheDeclarationToo(t *testing.T) {
 		Path: "model",
 		Files: []goldentest.Source{
 			{Name: "person.go", Content: []byte(subjectSource)},
-			{Name: "zz_forge_persons.go", Content: out, Generated: true},
+			{Name: "forge.gen.go", Content: out, Generated: true},
 		},
 	})
 }
@@ -304,7 +303,7 @@ func TestASubjectWhosePackageNameIsAlreadyTaken(t *testing.T) {
 		t.Errorf("the unit imports %v, and none of them binds the subject's package", unit.Imports)
 	}
 
-	goldentest.Compare(t, "zz_forge_persons.go", out)
+	goldentest.Compare(t, "forge.gen.go", out)
 }
 
 // A form nobody set answers neither of the two questions this layer asks, and

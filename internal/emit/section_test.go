@@ -129,7 +129,6 @@ func TestAParsedCommentOnABuiltDeclarationIsRefused(t *testing.T) {
 
 	_, err := emit.File{
 		Package:  "model",
-		Decl:     "Persons",
 		Sections: []emit.Section{{Decls: []ast.Decl{built}, Comments: parsed.Comments, Fset: parsed.Fset}},
 	}.Render()
 
@@ -175,7 +174,6 @@ func TestADeclarationTheParserGaveUpOn(t *testing.T) {
 
 	_, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Sections: []emit.Section{{
 			Decls:    []ast.Decl{&ast.BadDecl{From: parsed.Decls[0].Pos(), To: parsed.Decls[0].End()}},
 			Comments: parsed.Comments,
@@ -383,7 +381,7 @@ func TestATypedNilIsAValueRatherThanAGap(t *testing.T) {
 			}
 
 			// And writing it is a diagnostic rather than a crash.
-			_, err := emit.File{Package: "model", Decl: "Persons", Sections: []emit.Section{section}}.Render()
+			_, err := emit.File{Package: "model", Sections: []emit.Section{section}}.Render()
 			if err == nil {
 				t.Fatal("a declaration that is nothing rendered without complaint")
 			}
@@ -446,7 +444,6 @@ func TestTreesWithHolesAreReportedRatherThanPanicking(t *testing.T) {
 	// against, and comparing is what deciding where a comment goes consists of.
 	_, err := emit.File{
 		Package: "model",
-		Decl:    "Persons",
 		Sections: []emit.Section{{
 			Decls: []ast.Decl{&ast.GenDecl{
 				Tok:   token.TYPE,

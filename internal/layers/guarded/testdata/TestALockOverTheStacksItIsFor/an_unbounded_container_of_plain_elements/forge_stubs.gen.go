@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs f2b99fba0d6b7281
+// inputs 1e9ba9d4893c1a45
 
 //go:build forgespec
 

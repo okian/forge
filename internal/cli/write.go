@@ -93,7 +93,7 @@ func foreign(file generated.File) error {
 	return diag.New(codeForeign, file.Pos,
 		"%s is already there and does not say forge wrote it", file.Name).
 		WithHint("%s", "delete it and run again if it is forge's and lost its header, "+
-			"or rename the declaration if the file is yours")
+			"or move it out of the way if the file is yours")
 }
 
 // identical reports whether a file already holds exactly what would be written.

@@ -161,7 +161,7 @@ func compiles(t *testing.T, out string) {
 
 	goldentest.Check(t, goldentest.Package{
 		Path:  modelPkg,
-		Files: append(fixture(t), goldentest.Source{Name: "zz_forge_enum.go", Content: []byte(out), Generated: true}),
+		Files: append(fixture(t), goldentest.Source{Name: "forge.gen.go", Content: []byte(out), Generated: true}),
 	})
 }
 

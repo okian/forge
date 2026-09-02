@@ -90,8 +90,7 @@ func TestBothBuildsTypeCheckWithCallSitesPresent(t *testing.T) {
 			Path: "model", Tags: tags,
 			Files: []goldentest.Source{
 				subject, declared, calling,
-				{Name: generate.Named("Persons"), Content: written(t, files, generate.Named("Persons")), Generated: true},
-				{Name: generate.Shared(), Content: written(t, files, generate.Shared()), Generated: true},
+				{Name: generate.Name(), Content: written(t, files, generate.Name()), Generated: true},
 				{Name: generate.Stubs(), Content: written(t, files, generate.Stubs()), Generated: true},
 			},
 		}
@@ -195,13 +194,16 @@ func TestAnInlineDeclarationGetsNoStubs(t *testing.T) {
 	}
 }
 
-// A package holding both forms writes stubs for the half that needs them, and
-// still compiles both ways.
+// A package holding both forms stands in for all of it, and still compiles both
+// ways.
 //
 // The mixture is the ordinary case once nesting sends one declaration to a spec
-// file and the others stay where they are, and it is where writing stubs for
-// everything would collide: the inline declaration's methods are already in the
-// build the stub file belongs to.
+// file and the others stay where they are. It used to be where writing stubs
+// for everything would collide, because the inline declaration had a file of
+// its own that every build read. It does not any more: one spec declaration
+// puts the package's whole output under the constraint, so the inline
+// declaration's methods are in the file the tag excludes and the stub file is
+// where the tagged build has to find them.
 func TestAPackageHoldingBothForms(t *testing.T) {
 	owned := request("Persons")
 	owned.Model.Form = model.FormSpec
@@ -217,8 +219,8 @@ func TestAPackageHoldingBothForms(t *testing.T) {
 	if !bytes.Contains(held, []byte("(c Persons)")) {
 		t.Errorf("the stub file does not stand in for the declaration forge owns:\n%s", held)
 	}
-	if bytes.Contains(held, []byte("(c Folk)")) {
-		t.Errorf("the stub file stands in for a declaration whose own file is in every build:\n%s", held)
+	if !bytes.Contains(held, []byte("(c Folk)")) {
+		t.Errorf("the stub file does not stand in for the inline declaration beside it:\n%s", held)
 	}
 
 	folk := goldentest.Source{Name: "folk.go", Content: []byte(
@@ -229,9 +231,7 @@ func TestAPackageHoldingBothForms(t *testing.T) {
 			Path: "model", Tags: tags,
 			Files: []goldentest.Source{
 				subject, declared, folk,
-				{Name: generate.Named("Persons"), Content: written(t, files, generate.Named("Persons")), Generated: true},
-				{Name: generate.Named("Folk"), Content: written(t, files, generate.Named("Folk")), Generated: true},
-				{Name: generate.Shared(), Content: written(t, files, generate.Shared()), Generated: true},
+				{Name: generate.Name(), Content: written(t, files, generate.Name()), Generated: true},
 				{Name: generate.Stubs(), Content: held, Generated: true},
 			},
 		}
@@ -273,28 +273,6 @@ func TestTwoSubjectsWhosePackagesShareAName(t *testing.T) {
 		if file.Name == generate.Stubs() {
 			t.Errorf("a file binding one name to two packages was handed up:\n%s", file.Content)
 		}
-	}
-}
-
-// A declaration named after a file the package writes for itself is refused.
-//
-// Its file and the package's are the same file, and whichever is written second
-// wins: the declaration's methods vanish from the ordinary build, and nothing
-// reports it, because the name is claimed either way.
-func TestADeclarationNamedAfterAFileThePackageKeeps(t *testing.T) {
-	for _, declared := range []string{"Stubs", "Shared"} {
-		t.Run(declared, func(t *testing.T) {
-			files, diags := generate.Package(local, "model",
-				[]generate.Request{request(declared)}, config())
-
-			if diags.Empty() {
-				t.Fatalf("%s was written to a file the package keeps, among %d files", declared, len(files))
-			}
-			if said := diags.Render(); !strings.Contains(said, "FRG4006") ||
-				!strings.Contains(said, "which the package writes for itself") {
-				t.Errorf("the report does not say what was collided with:\n%s", said)
-			}
-		})
 	}
 }
 

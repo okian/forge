@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/okian/forge/internal/diag"
 	"github.com/okian/forge/internal/emit"
 	generated "github.com/okian/forge/internal/generate"
+	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/plugin"
 )
 
@@ -83,22 +85,17 @@ func check(env *environment, cmd command, args []string) error {
 
 // freshness reports every generated file that is out of date or missing.
 //
-// Per declaration, because that is the level a fingerprint is recorded at and
-// the level an author acts at.
+// Per package, because that is what a package writes now and what a fingerprint
+// is recorded at. The file records what every declaration in the package was
+// made from, so asking whether it is current is reading one line and comparing
+// it — no composing, no rendering, and nothing written.
 //
-// The two files a package writes for itself are not checked. Both record a
-// fingerprint like any other file, and the value to compare it against is what
-// this cannot cheaply have: the shared file is a function of which helpers the
-// declarations asked for, which is not known until all of them have composed,
-// and composing every declaration is the work this verb exists to avoid.
-//
-// Most of what would make them stale reaches a declaration first — an option
-// changed, a field added, a subject renamed — and that declaration's own file
-// is reported here, which is the line the author acts on. What is genuinely
-// missed is a change to no declaration at all: somebody editing the shared file
-// by hand, or a change to forge's own generator that this build's version does
-// not distinguish. Regenerating is what settles those, and the run that does it
-// says what it rewrote.
+// Both of a package's files are checked, which is new and is the plainest win
+// of writing one. What used to keep the shared file out of this was that its
+// fingerprint was a function of which helpers the declarations asked for, and
+// knowing that meant generating every one of them — the work this verb exists
+// to avoid. A package's fingerprint is its declarations, which are here to be
+// read, so there is nothing left that this cannot cheaply answer.
 func freshness(catalog *plugin.Registry, found resolved) (diag.Set, int) {
 	var (
 		diags   diag.Set
@@ -115,29 +112,69 @@ func freshness(catalog *plugin.Registry, found resolved) (diag.Set, int) {
 			continue
 		}
 
-		for _, req := range pkg.requests {
-			if req.Model == nil {
-				// A declaration whose subject was refused is one nothing could
-				// have been generated for, and the refusal is already reported.
-				continue
-			}
-			stale(&diags, pkg, req, cfg)
-			checked++
+		// A declaration whose subject was refused is one nothing could have
+		// been generated for, and the refusal is already reported. It is left
+		// out of the fingerprint too, which is what generation does with it.
+		held := generable(pkg.requests)
+		if len(held) == 0 {
+			continue
 		}
+
+		for _, name := range wanted(held) {
+			stale(&diags, pkg, held, name, cfg)
+		}
+		checked += len(held)
 	}
 
 	return diags, checked
 }
 
-// stale reports what is wrong with one declaration's file, if anything.
-func stale(diags *diag.Set, pkg packaged, req generated.Request, cfg generated.Config) {
-	name := generated.Named(req.Model.Name)
+// generable returns the requests something could have been generated for.
+func generable(requests []generated.Request) []generated.Request {
+	out := make([]generated.Request, 0, len(requests))
+
+	for _, one := range requests {
+		if one.Model != nil {
+			out = append(out, one)
+		}
+	}
+	return out
+}
+
+// wanted returns the files a package's declarations should have between them.
+//
+// One, and a second only where a declaration is written in spec form: that is
+// the one case the language forces two files, and a package that has stopped
+// having spec declarations has stopped wanting the second. A file left behind
+// by that is a leftover rather than a staleness, and the orphan report is what
+// names it.
+func wanted(requests []generated.Request) []string {
+	out := []string{generated.Name()}
+
+	for _, one := range requests {
+		if one.Model.Form == model.FormSpec {
+			return append(out, generated.Stubs())
+		}
+	}
+	return out
+}
+
+// where points a report about a package at the first declaration in it. A
+// package has no position of its own, and every declaration in it is equally
+// the reason the file is there.
+func where(requests []generated.Request) token.Position {
+	return requests[0].Model.Pos
+}
+
+// stale reports what is wrong with one of a package's files, if anything.
+func stale(diags *diag.Set, pkg packaged, requests []generated.Request, name string, cfg generated.Config) {
+	at := where(requests)
 
 	held, err := os.ReadFile(filepath.Join(pkg.dir, name)) //nolint:gosec // a package directory and a name forge chose.
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		diags.Add(diag.New(codeMissing, req.Model.Pos,
-			"%s has no %s", req.Model.Name, name).
+		diags.Add(diag.New(codeMissing, at,
+			"package %s has no %s", pkg.name, name).
 			WithHint("%s", "run forge generate"))
 		return
 
@@ -145,7 +182,7 @@ func stale(diags *diag.Set, pkg packaged, req generated.Request, cfg generated.C
 		// There and unreadable, which is neither missing nor stale: forge has
 		// nothing to compare and cannot say which. A directory under the name,
 		// or a mode nothing can open, both land here.
-		diags.Add(diag.New(codeForeign, req.Model.Pos,
+		diags.Add(diag.New(codeForeign, at,
 			"%s cannot be read: %v", name, err).
 			WithHint("%s", "make it readable, or move it out of the way and run forge generate"))
 		return
@@ -158,14 +195,14 @@ func stale(diags *diag.Set, pkg packaged, req generated.Request, cfg generated.C
 		// the run that met it would use, and offering the same two ways out,
 		// because forge cannot tell somebody's own file from a generated one
 		// whose header was lost.
-		diags.Add(diag.New(codeForeign, req.Model.Pos,
+		diags.Add(diag.New(codeForeign, at,
 			"%s is already there and does not say forge wrote it", name).
 			WithHint("%s", "delete it and run forge generate if it is forge's and lost its header, "+
-				"or rename the declaration if the file is yours"))
+				"or move it out of the way"))
 		return
 	}
 
-	said, moved := staleness(recorded, req, pkg.name, cfg)
+	said, moved := staleness(recorded, requests, pkg.name, cfg)
 	if said == "" {
 		return
 	}
@@ -173,19 +210,19 @@ func stale(diags *diag.Set, pkg packaged, req generated.Request, cfg generated.C
 	code, hint := codeStale, "run forge generate"
 	if moved {
 		code = codeToolingMoved
-		hint = "run forge generate when convenient; nothing about the declaration has changed"
+		hint = "run forge generate when convenient; nothing about the declarations has changed"
 	}
 
-	diags.Add(diag.New(code, req.Model.Pos, "%s is %s", name, said).WithHint("%s", hint))
+	diags.Add(diag.New(code, at, "%s is %s", name, said).WithHint("%s", hint))
 }
 
 // staleness says how a file is out of date, and whether the only thing that
 // changed is which tooling made it.
 //
-// The fingerprint answers the first part: it covers the declaration, the
-// subject, the options and all three versions, so a file whose fingerprint
-// matches was made from these inputs by this build and a file whose fingerprint
-// differs was not.
+// The fingerprint answers the first part: it covers every declaration in the
+// package, each one's subject and options, and all three versions — so a file
+// whose fingerprint matches was made from these inputs by this build and a file
+// whose fingerprint differs was not.
 //
 // That leaves "differs how", which matters because two very different things
 // land in one answer. A declaration somebody edited and a forge somebody
@@ -201,13 +238,13 @@ func stale(diags *diag.Set, pkg packaged, req generated.Request, cfg generated.C
 // least, and by however much else went with it. Saying "this cannot tell" and
 // moving on would turn the check off for that file for good, since nothing else
 // would ever ask about it again.
-func staleness(recorded emit.Header, req generated.Request, pkg string, cfg generated.Config) (said string, tooling bool) {
+func staleness(recorded emit.Header, requests []generated.Request, pkg string, cfg generated.Config) (said string, tooling bool) {
 	if recorded.Inputs == "" {
 		return "missing the fingerprint forge writes into every file, so what it holds cannot be compared", false
 	}
 
 	var sum emit.Digest
-	generated.Fingerprint(&sum, req, pkg, cfg)
+	generated.FingerprintPackage(&sum, requests, pkg, cfg)
 
 	if recorded.Inputs == sum.String() {
 		return "", false
@@ -231,7 +268,7 @@ func staleness(recorded emit.Header, req generated.Request, pkg string, cfg gene
 	}
 
 	var then emit.Digest
-	generated.Fingerprint(&then, req, pkg, was)
+	generated.FingerprintPackage(&then, requests, pkg, was)
 
 	if recorded.Inputs == then.String() {
 		return "unchanged, and was written by " + moved(recorded, cfg), true

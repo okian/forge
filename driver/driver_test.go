@@ -56,7 +56,7 @@ func TestALayerForgeDoesNotShip(t *testing.T) {
 		t.Fatalf("generating exited %d:\n%s", status, out)
 	}
 
-	written := read(t, filepath.Join(dir, "zz_forge_people.go"))
+	written := read(t, filepath.Join(dir, "forge.gen.go"))
 	for _, want := range []string{
 		"func (c People) TalliedByCity() map[string]int",
 		"// TalliedByCity counts the elements sharing each City.",

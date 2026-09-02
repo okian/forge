@@ -78,7 +78,7 @@ func TestWhatADiagnosisReportsAboutAStaleTree(t *testing.T) {
 		"nothing generated": {
 			spoil: func(t *testing.T, dir string) {
 				t.Helper()
-				if err := os.Remove(filepath.Join(dir, "zz_forge_persons.go")); err != nil {
+				if err := os.Remove(filepath.Join(dir, "forge.gen.go")); err != nil {
 					t.Fatalf("removing the generated file: %v", err)
 				}
 			},
@@ -87,7 +87,7 @@ func TestWhatADiagnosisReportsAboutAStaleTree(t *testing.T) {
 		"out of date": {
 			spoil: func(t *testing.T, dir string) {
 				t.Helper()
-				name := filepath.Join(dir, "zz_forge_persons.go")
+				name := filepath.Join(dir, "forge.gen.go")
 				held, err := os.ReadFile(name)
 				if err != nil {
 					t.Fatalf("reading the generated file: %v", err)
@@ -407,7 +407,7 @@ func TestWhetherGeneratedFilesAreCommitted(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	for _, name := range []string{"zz_forge_persons.go", "zz_forge_shared.go"} {
+	for _, name := range []string{"forge.gen.go"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("package model\n"), 0o600); err != nil {
 			t.Fatalf("making the fixture: %v", err)
 		}
@@ -432,7 +432,7 @@ func TestWhetherGeneratedFilesAreCommitted(t *testing.T) {
 	if !strings.Contains(said, "does not track") || how != worth {
 		t.Errorf("untracked files were reported as %q at %v", said, how)
 	}
-	for _, name := range []string{"zz_forge_persons.go", "zz_forge_shared.go"} {
+	for _, name := range []string{"forge.gen.go"} {
 		if !strings.Contains(said, name) {
 			t.Errorf("the report does not name %s: %q", name, said)
 		}

@@ -3,7 +3,7 @@
 // forge v1.2.3
 // markers v1.2.3
 // go go1.27.0
-// inputs 0e29abe633d447e1
+// inputs a1fc6870e706dba9
 
 //go:build forgespec
 
@@ -76,3 +76,27 @@ func (s personsHeld) Backward() iter.Seq[Person] { panic("forge stub") }
 func (s *personsHeld) AppendSeq(seq iter.Seq[Person]) { panic("forge stub") }
 
 func (s *personsHeld) Reset() { panic("forge stub") }
+
+type Seq[U any] iter.Seq[U]
+
+func (s Seq[U]) All() iter.Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Filter(keep func(U) bool) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Map[V any](to func(U) V) Seq[V] { panic("forge stub") }
+
+func (s Seq[U]) Take(n int) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Skip(n int) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Dedup(same func(a, b U) bool) Seq[U] { panic("forge stub") }
+
+func (s Seq[U]) Chunk(n int) iter.Seq[[]U] { panic("forge stub") }
+
+func (s Seq[U]) Collect() []U { panic("forge stub") }
+
+func (s Seq[U]) Into(dst []U) []U { panic("forge stub") }
+
+func (s Seq[U]) First() (U, bool) { panic("forge stub") }
+
+func (s Seq[U]) Reduce[A any](initial A, combine func(A, U) A) A { panic("forge stub") }

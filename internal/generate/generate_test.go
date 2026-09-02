@@ -98,7 +98,7 @@ func TestWhatAPackageBecomes(t *testing.T) {
 	for i, file := range files {
 		named[i] = file.Name
 	}
-	if want := []string{"zz_forge_persons.go", "zz_forge_shared.go"}; !slices.Equal(named, want) {
+	if want := []string{generate.Name()}; !slices.Equal(named, want) {
 		t.Fatalf("wrote %v, want %v", named, want)
 	}
 
@@ -122,7 +122,7 @@ func TestTwoDeclarationsShareWhatTheyRequire(t *testing.T) {
 
 	shared := 0
 	for _, file := range files {
-		if file.Name == generate.Shared() {
+		if file.Name == generate.Name() {
 			shared++
 		}
 	}
@@ -132,7 +132,7 @@ func TestTwoDeclarationsShareWhatTheyRequire(t *testing.T) {
 
 	// And the helper is declared once inside it.
 	for _, file := range files {
-		if file.Name != generate.Shared() {
+		if file.Name != generate.Name() {
 			continue
 		}
 		if got := bytes.Count(file.Content, []byte("type Seq[U any]")); got != 1 {
@@ -141,19 +141,29 @@ func TestTwoDeclarationsShareWhatTheyRequire(t *testing.T) {
 	}
 }
 
-// Two declarations whose names differ only in case want one file, which is a
-// collision rather than something to resolve by inventing a second spelling.
-func TestTwoDeclarationsThatWantOneFile(t *testing.T) {
-	_, diags := generate.Package(local, "model",
-		[]generate.Request{request("Persons"), request("persons")}, config())
+// Two declarations in one package land in one file, which is what one file per
+// package means and is the collision that used to be reported.
+//
+// Two names differing only in case wanted one file when a file was named after
+// a declaration, and forge refused the pair rather than overwriting one with
+// the other. There is nothing left to refuse: the file is named after the
+// package, and what the two declare is held apart by the compiler's own rules
+// rather than by a file name.
+func TestTwoDeclarationsLandInOneFile(t *testing.T) {
+	files, diags := generate.Package(local, "model",
+		[]generate.Request{request("Persons"), request("Staff")}, config())
 
-	reported := diags.Render()
-	if !strings.Contains(reported, "FRG4006") {
-		t.Fatalf("two declarations wanting one file were accepted:\n%s", reported)
+	if !diags.Empty() {
+		t.Fatalf("two declarations in one package were refused:\n%s", diags.Render())
 	}
-	for _, want := range []string{"Persons", "persons", "zz_forge_persons.go"} {
-		if !strings.Contains(reported, want) {
-			t.Errorf("the report does not name %s:\n%s", want, reported)
+	if len(files) != 1 {
+		t.Fatalf("wrote %d files, want one", len(files))
+	}
+
+	held := string(files[0].Content)
+	for _, want := range []string{"type PersonsSeq struct", "type StaffSeq struct"} {
+		if !strings.Contains(held, want) {
+			t.Errorf("the file does not hold %q:\n%s", want, held)
 		}
 	}
 }
@@ -257,8 +267,8 @@ func TestADeclarationWithNoModel(t *testing.T) {
 	if !diags.Empty() {
 		t.Errorf("a declaration that was already refused was reported again:\n%s", diags.Render())
 	}
-	if len(files) != 2 {
-		t.Errorf("wrote %d files, want the one declaration's and the shared one", len(files))
+	if len(files) != 1 {
+		t.Errorf("wrote %d files, want the package's one", len(files))
 	}
 }
 
@@ -274,8 +284,8 @@ func TestADeclarationThatDoesNotCompose(t *testing.T) {
 		t.Fatal("a stack naming a marker nothing claims generated without complaint")
 	}
 	for _, file := range files {
-		if file.Decl == "Persons" {
-			t.Error("a declaration that does not compose was written anyway")
+		if strings.Contains(string(file.Content), "Persons") {
+			t.Errorf("a declaration that does not compose was written anyway:\n%s", file.Content)
 		}
 	}
 }
@@ -291,30 +301,42 @@ func TestADeclarationWhoseOptionsAreWrong(t *testing.T) {
 	}
 }
 
-// The file a package shares is a function of which helpers were asked for and
-// nothing else, so a package that merely gained a declaration writes the same
-// bytes and records the same fingerprint.
+// Generating twice from the same inputs writes the same bytes.
 //
-// The failure this pins is quiet: a fingerprint that counted the askers would
-// rewrite the shared file every time a declaration was added or removed, and
-// the diff would say nothing had changed except the line saying something had.
-func TestTheSharedFileDoesNotFollowTheDeclarationCount(t *testing.T) {
-	one, _ := generate.Package(local, "model", []generate.Request{request("Persons")}, config())
-	two, _ := generate.Package(local, "model",
-		[]generate.Request{request("Persons"), request("Staff")}, config())
-
-	held := func(files []generate.File) []byte {
-		for _, file := range files {
-			if file.Name == generate.Shared() {
-				return file.Content
-			}
-		}
-		t.Fatal("no shared file was written")
-		return nil
+// The property the whole arrangement rests on: output is committed, so a run
+// that produced a different file every time would put a diff in every review
+// and a rebuild in every pipeline. It is worth asserting here rather than
+// trusting, because one file per package multiplied the ways it could be lost —
+// every declaration's output now meets every other's in one unit, and anything
+// gathered through a map on the way would be ordered by the run rather than by
+// the package.
+func TestGeneratingTwiceWritesTheSameBytes(t *testing.T) {
+	asked := []generate.Request{
+		request("Persons", "//forge:collection sort=Name index=ID"),
+		request("Staff"),
 	}
 
-	first, second := held(one), held(two)
-	if !bytes.Equal(first, second) {
-		t.Errorf("one declaration and two wrote different shared files:\n%s\n%s", first, second)
+	first, diags := generate.Package(local, "model", asked, config())
+	if !diags.Empty() {
+		t.Fatalf("generating was refused:\n%s", diags.Render())
+	}
+
+	second, diags := generate.Package(local, "model", asked, config())
+	if !diags.Empty() {
+		t.Fatalf("generating a second time was refused:\n%s", diags.Render())
+	}
+
+	if len(first) != len(second) {
+		t.Fatalf("the first run wrote %d files and the second %d", len(first), len(second))
+	}
+	for at := range first {
+		if first[at].Name != second[at].Name {
+			t.Errorf("file %d is %s and then %s", at, first[at].Name, second[at].Name)
+			continue
+		}
+		if !bytes.Equal(first[at].Content, second[at].Content) {
+			t.Errorf("%s differs between two runs over one input:\n%s\n%s",
+				first[at].Name, first[at].Content, second[at].Content)
+		}
 	}
 }
