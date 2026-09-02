@@ -8,6 +8,10 @@ import (
 	"github.com/okian/forge/plugin"
 )
 
+// receiverVar is what the generated method calls the value it renders, and is
+// written once so that the statements and the block agree on it.
+const receiverVar = "v"
+
 // writer assembles one type's log value as source.
 //
 // Text rather than syntax, for the reason the other layers' writers give: what
@@ -15,7 +19,21 @@ import (
 // size as a tree. The cost is the possibility of writing something that is not
 // Go, and it is paid where the layer can still be stopped — the source is
 // parsed before it leaves the package.
-type writer struct{ out strings.Builder }
+type writer struct {
+	out strings.Builder
+
+	// block is what the method being written already binds: the packages the
+	// file imports and the receiver. A local named for one of those does not
+	// fail to compile, it fails on the next line that meant the package — in
+	// generated code the author cannot edit.
+	block *plugin.Block
+
+	// locals is the variable each guarded field's value is worked out into,
+	// against the field's own name. Kept rather than derived twice, because the
+	// block hands out a fresh name each time it is asked and the statement that
+	// binds one and the attribute that reads it have to agree.
+	locals map[string]string
+}
 
 // String returns what has been written.
 func (w *writer) String() string { return w.out.String() }
@@ -43,7 +61,7 @@ func (w *writer) wrapped(text string) {
 func (w *writer) value(held *plan) {
 	w.doc(held)
 
-	w.line("func (v %s) %s() slog.Value {", held.spelled.Text, method)
+	w.line("func (%s %s) %s() slog.Value {", receiverVar, held.spelled.Text, method)
 
 	for _, field := range held.fields {
 		if field.guarded {
@@ -54,7 +72,7 @@ func (w *writer) value(held *plan) {
 	w.line("\treturn slog.GroupValue(")
 
 	for _, field := range held.fields {
-		w.line("\t\t%s,", attr(field))
+		w.line("\t\t%s,", w.attr(field))
 	}
 
 	w.line("\t)")
@@ -74,9 +92,9 @@ func (w *writer) value(held *plan) {
 // as one, and a local rather than a helper beside the type because a local is
 // read where it is used and cannot collide with anything the package declares.
 func (w *writer) guard(field logged) {
-	w.line("\t%s := slog.AnyValue(nil)", local(field))
+	w.line("\t%s := slog.AnyValue(nil)", w.local(field))
 	w.line("\tif v.%s != nil {", field.field.Name)
-	w.line("\t\t%s = v.%s.%s()", local(field), field.field.Name, method)
+	w.line("\t\t%s = v.%s.%s()", w.local(field), field.field.Name, method)
 	w.line("\t}")
 	w.line("")
 }
@@ -85,11 +103,22 @@ func (w *writer) guard(field logged) {
 //
 // The field's own name, which is unique among the fields of a struct and so
 // among the locals here, with a suffix that keeps it from being the receiver or
-// a package a spelling bound. Lower-cased because it is a local, and because an
-// exported name here would read as something a caller could reach.
-func local(field logged) string {
-	held := field.field.Name
-	return strings.ToLower(held[:1]) + held[1:] + "Logged"
+// a package a spelling bound. Spelled as a local, which lowers the first word
+// rather than the first letter: a field named ID is worked out into idLogged
+// and not iDLogged.
+func (w *writer) local(field logged) string {
+	held, named := w.locals[field.field.Name]
+	if named {
+		return held
+	}
+
+	if w.locals == nil {
+		w.locals = make(map[string]string)
+	}
+	held = w.block.Declare(field.field.Name, "logged")
+	w.locals[field.field.Name] = held
+
+	return held
 }
 
 // attr writes what one field contributes.
@@ -99,7 +128,7 @@ func local(field logged) string {
 // redacted there — the same fixed string — and one that is not is rendered
 // through the same table, so a package holding both writes one kind of
 // attribute rather than two that differ by which of them got there first.
-func attr(field logged) string {
+func (w *writer) attr(field logged) string {
 	if field.masked {
 		return scalars.Masked(field.field.Name)
 	}
@@ -108,7 +137,7 @@ func attr(field logged) string {
 		// table it would reach slog.Any, which takes an interface and boxes it
 		// for AnyValue to unwrap — an allocation per guarded field per record,
 		// on a path a log line runs every time.
-		return scalars.Held(field.field.Name, local(field))
+		return scalars.Held(field.field.Name, w.local(field))
 	}
 	return scalars.Attr(field.field.Name, "v."+field.field.Name, field.field.Type)
 }

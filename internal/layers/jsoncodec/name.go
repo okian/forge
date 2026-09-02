@@ -4,7 +4,6 @@ import (
 	"go/types"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/okian/forge/plugin"
 )
@@ -64,30 +63,19 @@ func restyled(name, style string) string {
 
 // snake writes a Go name in lower_snake_case.
 //
-// The boundaries are the ones a reader would draw rather than the ones a naive
-// scan finds. A run of capitals is one word, so UserID is user_id rather than
-// user_i_d; the last capital of such a run starts the next word when a
-// lower-case letter follows it, so JSONValue is json_value rather than
-// jsonv_alue. A digit continues whatever word it is in.
+// The boundaries are [plugin.Words]', which are the ones a reader would draw
+// rather than the ones a naive scan finds: a run of capitals is one word, so
+// UserID is user_id rather than user_i_d, and the last capital of such a run
+// starts the next word when a lower-case letter follows, so JSONValue is
+// json_value rather than jsonv_alue. A digit continues whatever word it is in,
+// and an initialism made plural keeps its s, so UserIDs is user_ids.
+//
+// Shared rather than derived here, because a codec deciding where a word ends
+// and an enumeration deciding it somewhere else is one library with two
+// opinions about a name — and the name in question is one that goes out on a
+// wire, where the two disagreeing is a document member spelled two ways.
 func snake(name string) string {
-	var out strings.Builder
-	runes := []rune(name)
-
-	for i, r := range runes {
-		if !unicode.IsUpper(r) {
-			out.WriteRune(r)
-			continue
-		}
-
-		previous := i > 0 && !unicode.IsUpper(runes[i-1]) && runes[i-1] != '_'
-		trailing := i > 0 && i+1 < len(runes) && unicode.IsUpper(runes[i-1]) && unicode.IsLower(runes[i+1])
-		if previous || trailing {
-			out.WriteByte('_')
-		}
-		out.WriteRune(unicode.ToLower(r))
-	}
-
-	return out.String()
+	return strings.ToLower(strings.Join(plugin.Words(name), "_"))
 }
 
 // identifier returns the name a type's pair of codec functions is built from.

@@ -231,7 +231,7 @@ func (Layer) apply(ctx *plugin.Context, subject plugin.Spelling) (templates.Resu
 			Container: container,
 			Declared:  declared,
 			Names:     map[string]string{constructorInTemplate: constructorFor(declared)},
-			Prefix:    lower(declared),
+			Prefix:    plugin.Camel(declared),
 		},
 		ctx.Model.Pos)
 }
@@ -346,16 +346,12 @@ func declares(decl ast.Decl, name string) bool {
 // constructorFor names the constructor after the type it builds, and gives it
 // the visibility of that type: a constructor for an unexported container has no
 // business being reachable from outside the package it is unexported in.
+//
+// Through [plugin.Around], which is where every name forge builds around a
+// declaration is spelled — so the declaration's own name comes through as its
+// author wrote it and the seam is the same seam the layer beside this one
+// writes.
 func constructorFor(declared string) string {
-	if first, _ := utf8.DecodeRuneInString(declared); unicode.IsUpper(first) {
-		return constructorInTemplate + declared
-	}
-	return lower(constructorInTemplate) + upper(declared)
+	first, _ := utf8.DecodeRuneInString(declared)
+	return plugin.Around(unicode.IsUpper(first), constructorInTemplate, declared)
 }
-
-// lower returns a name with its first letter in lower case, and upper with it
-// in upper case. Between them they turn a declared name into the prefix its
-// helpers take and into the tail of its constructor's name.
-func lower(name string) string { return plugin.Lower(name) }
-
-func upper(name string) string { return plugin.Upper(name) }

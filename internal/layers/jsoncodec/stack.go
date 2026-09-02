@@ -132,7 +132,7 @@ func (s stack) binding() string {
 // Named after the declaration and unexported, like every other helper a
 // declaration brings with it: it is plumbing for one type's method rather than
 // something a caller reaches.
-func (s stack) counting() string { return plugin.Lower(s.declared) + "Counting" }
+func (s stack) counting() string { return plugin.Around(false, "", s.declared, "counting") }
 
 // streaming works out what codec the stack the declaration composed to can
 // carry.

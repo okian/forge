@@ -169,3 +169,33 @@ func TestALocalThatWouldShadowAnImport(t *testing.T) {
 		t.Error("the block reports a free name as shadowed")
 	}
 }
+
+// A walk over a nested value numbers its locals by depth, so that the number
+// says which level a variable belongs to and two loops at one depth may share
+// a name.
+func TestNamingTheLocalsOfANestedWalk(t *testing.T) {
+	block := words.Locals("slices", "v")
+
+	for _, one := range []struct {
+		depth int
+		parts []string
+		want  string
+	}{
+		{0, []string{"one"}, "one"},
+		{1, []string{"one"}, "one1"},
+		{2, []string{"one"}, "one2"},
+
+		// A sibling loop at the same depth is in its own scope and takes the
+		// same name, which is what keeps a wide struct from counting up.
+		{1, []string{"one"}, "one1"},
+
+		// A name the file already binds is not one a body may take, however
+		// deep it is.
+		{0, []string{"slices"}, "slices2"},
+		{0, []string{"v"}, "v2"},
+	} {
+		if got := block.Nested(one.depth, one.parts...); got != one.want {
+			t.Errorf("Nested(%d, %q) = %q, want %q", one.depth, one.parts, got, one.want)
+		}
+	}
+}

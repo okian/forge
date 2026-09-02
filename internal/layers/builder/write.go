@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/okian/forge/internal/layers/failures"
 	"github.com/okian/forge/plugin"
 )
 
@@ -185,12 +186,12 @@ func (w *writer) build(held *plan) {
 
 	w.line("func (%s *%s) %s() (%s, error) {",
 		builderVar, held.declared, method, held.spelled.Text)
-	w.line("var %s ValidationErrors", failedVar)
+	w.line("var %s %s", failedVar, failures.Errors)
 	w.blank()
 
 	for _, one := range held.required() {
 		w.line("if !%s.%s[%d] {", builderVar, givenField, one.index)
-		w.line("%s = append(%s, ValidationError{Path: %s, Rule: %s, Want: %s})",
+		w.line("%s = append(%s, "+failures.Failure+"{Path: %s, Rule: %s, Want: %s})",
 			failedVar, failedVar, quoted(one.name), quoted(rule), quoted(want))
 		w.line("}")
 	}

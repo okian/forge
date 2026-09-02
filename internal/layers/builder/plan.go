@@ -125,7 +125,7 @@ func planned(held *plugin.Struct, into string, bound []plugin.Import) *plan {
 		spelled:  plugin.Spell(held.Type(), into, bound),
 		declared: plugin.Through(held, "", suffix, into),
 	}
-	out.made = "New" + out.declared
+	out.made = plugin.Around(true, "new", out.declared)
 
 	for _, field := range held.Fields {
 		out.consider(field)

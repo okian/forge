@@ -2,7 +2,6 @@ package clone
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/okian/forge/plugin"
@@ -23,7 +22,16 @@ const (
 // size as a tree. The cost is the possibility of writing something that is not
 // Go, and it is paid where the layer can still be stopped — the source is
 // parsed before it leaves the package.
-type writer struct{ out strings.Builder }
+type writer struct {
+	out strings.Builder
+
+	// block is what the function being written already binds: the packages the
+	// file imports and the value and the copy every one of them opens with. A
+	// local named for one of those does not fail to compile, it fails on the
+	// next line that meant the package — in generated code the author cannot
+	// edit.
+	block *plugin.Block
+}
 
 // line writes one line of the body. Indentation is left to gofmt, which the
 // emitter runs over everything anyway.
@@ -252,12 +260,12 @@ func (w *writer) pointer(into, from string, of *form, depth int) {
 
 	w.line("if %s != nil {", from)
 	if single, one := expression(held, of.elem); one {
-		w.line("%s := %s", local(heldVar, depth), single)
+		w.line("%s := %s", w.block.Nested(depth, heldVar), single)
 	} else {
-		w.line("var %s %s", local(heldVar, depth), of.elem.spelled.Text)
-		w.value(local(heldVar, depth), held, of.elem, depth+1)
+		w.line("var %s %s", w.block.Nested(depth, heldVar), of.elem.spelled.Text)
+		w.value(w.block.Nested(depth, heldVar), held, of.elem, depth+1)
 	}
-	w.line("%s = &%s", into, local(heldVar, depth))
+	w.line("%s = &%s", into, w.block.Nested(depth, heldVar))
 	w.line("}")
 }
 
@@ -269,7 +277,7 @@ func (w *writer) pointer(into, from string, of *form, depth int) {
 // they do not, the expression above writes slices.Clone, which says the same in
 // one line and answers nil the same way.
 func (w *writer) slice(into, from string, of *form, depth int) {
-	index, one := local("i", depth), local("one", depth)
+	index, one := w.block.Nested(depth, "i"), w.block.Nested(depth, "one")
 
 	w.line("if %s != nil {", from)
 	w.line("%s = make(%s, len(%s))", into, of.spelled.Text, from)
@@ -284,7 +292,7 @@ func (w *writer) slice(into, from string, of *form, depth int) {
 // An array is a value, so the copy already holds one of each element; what is
 // written here is the copying those elements each need.
 func (w *writer) array(into, from string, of *form, depth int) {
-	index, one := local("i", depth), local("one", depth)
+	index, one := w.block.Nested(depth, "i"), w.block.Nested(depth, "one")
 
 	w.line("for %s, %s := range %s {", index, one, from)
 	w.value(into+"["+index+"]", one, of.elem, depth+1)
@@ -297,7 +305,7 @@ func (w *writer) array(into, from string, of *form, depth int) {
 // comparable type holds nothing a copy could share. Reached only where the
 // values each need copying, for the reason the slice above gives.
 func (w *writer) mapping(into, from string, of *form, depth int) {
-	key, one, made := local("key", depth), local("one", depth), local("value", depth)
+	key, one, made := w.block.Nested(depth, "key"), w.block.Nested(depth, "one"), w.block.Nested(depth, "value")
 
 	w.line("if %s != nil {", from)
 	w.line("%s = make(%s, len(%s))", into, of.spelled.Text, from)
@@ -313,13 +321,4 @@ func (w *writer) mapping(into, from string, of *form, depth int) {
 
 	w.line("}")
 	w.line("}")
-}
-
-// local names a variable a nested copy binds, so that a slice of slices does
-// not shadow its own.
-func local(name string, depth int) string {
-	if depth == 0 {
-		return name
-	}
-	return name + strconv.Itoa(depth)
 }

@@ -215,7 +215,7 @@ func (Layer) apply(ctx *plugin.Context, surface plan) (templates.Result, plugin.
 			Subject:   surface.subject.Text,
 			Container: container,
 			Declared:  ctx.Declared(),
-			Prefix:    lower(ctx.Declared()),
+			Prefix:    plugin.Camel(ctx.Declared()),
 		},
 		ctx.Model.Pos)
 }
@@ -333,15 +333,3 @@ func orderable(t types.Type) bool {
 // it needs. A slice, a map and a function cannot; a struct of them cannot
 // either, which is why this asks the type rather than its shape.
 func keyable(t types.Type) bool { return types.Comparable(t) }
-
-// lower returns a name with its first letter in lower case, which is the prefix
-// the template's package-level names would take if it had any.
-func lower(name string) string {
-	if name == "" {
-		return name
-	}
-	if first := name[0]; first >= 'A' && first <= 'Z' {
-		return string(first+('a'-'A')) + name[1:]
-	}
-	return name
-}

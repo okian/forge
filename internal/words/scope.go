@@ -196,11 +196,13 @@ type Block struct {
 	taken []string
 }
 
-// Block returns a scope for one function body, given the names already visible
-// in it.
-func (s *Scope) Block(taken ...string) *Block {
-	return &Block{taken: slices.Clone(taken)}
-}
+// Locals returns a scope for one function body, given the names already visible
+// in it: what the file imports, the receiver, and the parameters.
+func Locals(taken ...string) *Block { return &Block{taken: slices.Clone(taken)} }
+
+// Block returns a scope for one function body inside this package, which is
+// [Locals] reached from the package block a caller already has.
+func (s *Scope) Block(taken ...string) *Block { return Locals(taken...) }
 
 // Declare returns the name a local gets, renaming it where the name it would
 // have had is already visible.
@@ -226,6 +228,31 @@ func (b *Block) Declare(parts ...string) string {
 			return candidate
 		}
 	}
+}
+
+// Nested returns the name a local takes at one level of a walk over a nested
+// value, so that a slice of slices does not shadow its own.
+//
+// Numbered by depth rather than by how many have been handed out, which is the
+// difference from [Block.Declare] and is what the reader gets out of it: the
+// number says which level of the walk a variable belongs to, and two loops at
+// one depth are in disjoint scopes and may share a name — so a copy of a wide
+// struct binds one, one1 and one2 rather than counting up to nine.
+//
+// Nothing is recorded for the same reason. What is still checked is the
+// shadowing, since a walk whose element happens to be called what the file
+// imports is a body that compiles into something nobody meant; that one falls
+// back to [Block.Declare], which does count.
+func (b *Block) Nested(depth int, parts ...string) string {
+	name := Spell(KindLocal, false, parts...)
+	if depth > 0 {
+		name += strconv.Itoa(depth)
+	}
+
+	if b.free(name) {
+		return name
+	}
+	return b.Declare(name)
 }
 
 // Shadows reports whether a name is one the block already binds or the file

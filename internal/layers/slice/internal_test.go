@@ -191,14 +191,13 @@ func TestWhatCannotBeLeftOut(t *testing.T) {
 	}
 }
 
-// A name with nothing in it has no first letter to change, which is the one
-// case the case changes have to survive rather than index into.
-func TestRecasingANameWithNothingInIt(t *testing.T) {
-	if got := lower(""); got != "" {
-		t.Errorf("lower() = %q", got)
-	}
-	if got := upper(""); got != "" {
-		t.Errorf("upper() = %q", got)
+// A declaration with nothing in its name has no first letter to change, which
+// is the one case the naming has to survive rather than index into.
+func TestNamingAConstructorForADeclarationWithNoName(t *testing.T) {
+	// Nothing to take a visibility from reads as unexported, which is the safe
+	// half of the answer: a name a caller cannot reach beats one they can.
+	if got := constructorFor(""); got != "new" {
+		t.Errorf("constructorFor() = %q, want new", got)
 	}
 }
 

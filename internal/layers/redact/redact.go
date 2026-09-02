@@ -140,7 +140,7 @@ func provided(built *planner) (plugin.Unit, error) {
 
 // valueFor builds the declarations for one type's log value.
 func valueFor(held *plan) (plugin.Unit, error) {
-	w := &writer{}
+	w := &writer{block: plugin.Locals(binds(held)...)}
 	w.value(held)
 
 	decls, comments, fset, err := parsed(w.String(), held.spelled.Text)
@@ -170,6 +170,26 @@ func parsed(source, about string) ([]ast.Decl, []*ast.CommentGroup, *token.FileS
 	}
 
 	return file.Decls, file.Comments, fset, nil
+}
+
+// binds is every name already visible inside the method being written: the
+// packages its spellings could name, and the receiver.
+//
+// Gathered wide rather than narrowed, because a local is being kept away from
+// these rather than emitted for them, and a name avoided for no reason costs a
+// reader nothing where one taken by mistake costs them a compile.
+func binds(held *plan) []string {
+	out := []string{receiverVar, slogPkg.Name}
+
+	for _, one := range held.spelled.Imports {
+		out = append(out, one.Name)
+	}
+	for _, field := range held.fields {
+		for _, one := range field.spelled.Imports {
+			out = append(out, one.Name)
+		}
+	}
+	return out
 }
 
 // needed returns the imports one type's log value uses.

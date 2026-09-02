@@ -293,10 +293,8 @@ func (p plan) made() string {
 // the visibility of that type: a constructor for an unexported container has no
 // business being reachable from outside the package it is unexported in.
 func constructorFor(declared string) string {
-	if first, _ := utf8.DecodeRuneInString(declared); unicode.IsUpper(first) {
-		return "New" + declared
-	}
-	return "new" + plugin.Upper(declared)
+	first, _ := utf8.DecodeRuneInString(declared)
+	return plugin.Around(unicode.IsUpper(first), "new", declared)
 }
 
 // ready says what the zero value of the declared type is good for, which is

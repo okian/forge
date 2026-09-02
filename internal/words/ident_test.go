@@ -154,3 +154,35 @@ func TestNamesTheStandardLibraryHasTaken(t *testing.T) {
 		t.Error("Standard(Persons) reports a meaning it does not have")
 	}
 }
+
+// A name built around one that is already spelled keeps that name exactly.
+// Forge does not derive a declaration's name and must not respell one inside a
+// name derived from it.
+func TestBuildingANameAroundADeclaration(t *testing.T) {
+	for _, one := range []struct {
+		what     string
+		exported bool
+		before   string
+		held     string
+		after    []string
+		want     string
+	}{
+		{"a constructor", true, "new", "Persons", nil, "NewPersons"},
+		{"an unexported constructor", false, "new", "persons", nil, "newPersons"},
+		{"a sentinel error", true, "err", "Persons", []string{"full"}, "ErrPersonsFull"},
+		{"an unexported sentinel", false, "err", "persons", []string{"full"}, "errPersonsFull"},
+		{"a helper type", true, "", "Persons", []string{"builder"}, "PersonsBuilder"},
+		{"an unexported helper", false, "", "Roster", []string{"held"}, "rosterHeld"},
+
+		// The declaration's own spelling survives, however forge would have
+		// spelled it: a constructor that renamed the type it builds would read
+		// as belonging to something else.
+		{"a type spelled the author's way", true, "new", "MyIdThing", nil, "NewMyIdThing"},
+		{"and unexported", false, "", "myIdThing", []string{"held"}, "myIdThingHeld"},
+	} {
+		if got := words.Around(one.exported, one.before, one.held, one.after...); got != one.want {
+			t.Errorf("%s: Around(%v, %q, %q, %q) = %q, want %q",
+				one.what, one.exported, one.before, one.held, one.after, got, one.want)
+		}
+	}
+}

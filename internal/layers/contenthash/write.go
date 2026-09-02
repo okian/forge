@@ -36,6 +36,12 @@ const (
 type writer struct {
 	out strings.Builder
 
+	// block is what the function being written already binds: the packages the
+	// file imports and the value and accumulator every hash opens with. A local
+	// named for one of those does not fail to compile, it fails on the next
+	// line that meant the package — in generated code the author cannot edit.
+	block *plugin.Block
+
 	// totals counts the maps written into one function, so that each gets an
 	// accumulator of its own.
 	//
@@ -230,7 +236,7 @@ func selecting(from string) string {
 // run together the same way are not the same pair; and the order is part of
 // what a slice is, unlike a map.
 func (w *writer) slice(into, from string, of *form, depth int) {
-	one := local("one", depth)
+	one := w.block.Nested(depth, "one")
 
 	w.line("%s = %s(%s, %s != nil)", into, boolFn, into, from)
 	w.line("%s = %s(%s, uint64(len(%s)))", into, wholeFn, into, from)
@@ -244,7 +250,7 @@ func (w *writer) slice(into, from string, of *form, depth int) {
 // No length: an array's length is part of its type, so every value of the type
 // has the same one and mixing it in would say the same thing every time.
 func (w *writer) array(into, from string, of *form, depth int) {
-	one := local("one", depth)
+	one := w.block.Nested(depth, "one")
 
 	w.line("for _, %s := range %s {", one, from)
 	w.value(into, one, of.elem, depth+1)
@@ -263,8 +269,8 @@ func (w *writer) array(into, from string, of *form, depth int) {
 // to add up the same way, and whether the map is there at all, so that a nil
 // map is told from an empty one.
 func (w *writer) mapping(into, from string, of *form, depth int) {
-	key, one := local("key", depth), local("one", depth)
-	part, total := local(partVar, depth), w.accumulator()
+	key, one := w.block.Nested(depth, "key"), w.block.Nested(depth, "one")
+	part, total := w.block.Nested(depth, partVar), w.accumulator()
 
 	w.line("var %s uint64", total)
 	w.line("for %s, %s := range %s {", key, one, from)
@@ -287,13 +293,4 @@ func (w *writer) accumulator() string {
 		return totalVar
 	}
 	return totalVar + strconv.Itoa(w.totals)
-}
-
-// local names a variable a nested hash binds, so that a slice of slices does
-// not shadow its own.
-func local(name string, depth int) string {
-	if depth == 0 {
-		return name
-	}
-	return name + strconv.Itoa(depth)
 }

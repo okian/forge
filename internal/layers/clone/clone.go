@@ -155,7 +155,7 @@ func provided(built *planner) (plugin.Unit, error) {
 // copyFor builds the declarations for one type's copy, under the name
 // everything generated calls it by.
 func copyFor(held *plan, name string) (plugin.Unit, error) {
-	w := &writer{}
+	w := &writer{block: plugin.Locals(binds(held)...)}
 
 	if held.attach {
 		w.through(held, name)
@@ -208,6 +208,31 @@ func needed(held *plan, decls []ast.Decl) []plugin.Import {
 	}
 
 	return plugin.Reaching(decls, out)
+}
+
+// binds is every name already visible inside the function being written: the
+// packages its spellings could name, the value it copies, and the copy it
+// returns.
+//
+// Gathered wide rather than narrowed to what the body turns out to say, because
+// a local is being kept away from these rather than emitted for them: a name
+// avoided for no reason costs a reader nothing, where one taken by mistake
+// costs them a compile.
+func binds(held *plan) []string {
+	out := []string{valueVar, outVar}
+
+	for _, one := range imports {
+		out = append(out, one.Name)
+	}
+	for _, one := range held.spelled.Imports {
+		out = append(out, one.Name)
+	}
+	for _, one := range held.fields {
+		for _, needed := range reaching(one.of) {
+			out = append(out, needed.Name)
+		}
+	}
+	return out
 }
 
 // reaching returns the imports one form's own spelling and everything under it

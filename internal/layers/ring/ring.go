@@ -461,7 +461,7 @@ func (p plan) spelled(name, declared string) string {
 	if answer, asked := p.names[name]; asked {
 		return answer
 	}
-	return lower(declared) + upper(name)
+	return plugin.Around(false, "", declared, name)
 }
 
 // apply specialises the template for one declaration.
@@ -479,7 +479,7 @@ func (Layer) apply(ctx *plugin.Context, subject plugin.Spelling, held plan) (tem
 			Container: container,
 			Declared:  ctx.Declared(),
 			Names:     held.names,
-			Prefix:    lower(ctx.Declared()),
+			Prefix:    plugin.Camel(ctx.Declared()),
 		},
 		ctx.Model.Pos)
 }
@@ -685,21 +685,21 @@ func imported(spelled plugin.Spelling) []plugin.Import {
 // names the refusal after the type that returns it. Both take the visibility of
 // that type: neither has business being reachable from outside a package the
 // type is unexported in.
-func constructorFor(declared string) string { return exported(declared, "New", "") }
-
-func errorFor(declared string) string { return exported(declared, "Err", "Full") }
-
-// exported joins a name around the declaration, in the case the declaration has.
-func exported(declared, before, after string) string {
-	if first, _ := utf8.DecodeRuneInString(declared); unicode.IsUpper(first) {
-		return before + declared + after
-	}
-	return lower(before) + upper(declared) + after
+//
+// Through [plugin.Around] rather than by joining, so that the declaration's own
+// name comes through exactly as its author wrote it and the seam is spelled the
+// way every other seam forge writes is.
+func constructorFor(declared string) string {
+	return plugin.Around(exported(declared), "new", declared)
 }
 
-// lower returns a name with its first letter in lower case, and upper with it
-// in upper case. Between them they turn a declared name into the prefix its
-// helpers take and into the tail of the names built around it.
-func lower(name string) string { return plugin.Lower(name) }
+func errorFor(declared string) string {
+	return plugin.Around(exported(declared), "err", declared, "full")
+}
 
-func upper(name string) string { return plugin.Upper(name) }
+// exported reports whether a declaration is, which is what decides the
+// visibility of everything named after it.
+func exported(declared string) bool {
+	first, _ := utf8.DecodeRuneInString(declared)
+	return unicode.IsUpper(first)
+}

@@ -178,7 +178,7 @@ func shared() (plugin.Unit, error) {
 // hashFor builds the declarations for one type's hash, under the name
 // everything generated calls it by.
 func hashFor(held *plan, name string) (plugin.Unit, error) {
-	w := &writer{}
+	w := &writer{block: plugin.Locals(binds(held)...)}
 
 	if held.attach {
 		w.through(held, name)
@@ -211,6 +211,34 @@ func parsed(source, about string) ([]ast.Decl, []*ast.CommentGroup, *token.FileS
 	}
 
 	return file.Decls, file.Comments, fset, nil
+}
+
+// binds is every name already visible inside the function being written: the
+// packages its spellings could name, the value it takes, and the accumulator it
+// opens with.
+//
+// Gathered wide rather than narrowed to what the body turns out to say, because
+// a local is being kept away from these rather than emitted for them: a name
+// avoided for no reason costs a reader nothing, where one taken by mistake
+// costs them a compile.
+func binds(held *plan) []string {
+	out := []string{valueVar, hashVar}
+
+	for _, one := range sharedImports {
+		out = append(out, one.Name)
+	}
+	for _, one := range held.spelled.Imports {
+		out = append(out, one.Name)
+	}
+	for _, one := range held.fields {
+		for _, needed := range reaching(one.of) {
+			out = append(out, needed.Name)
+		}
+	}
+	for _, one := range reaching(held.value) {
+		out = append(out, one.Name)
+	}
+	return out
 }
 
 // needed returns the imports one type's hash uses.

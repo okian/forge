@@ -108,6 +108,36 @@ func visible(name string, exported bool) string {
 // commonest case and is spelled shorter because it is asked for so often.
 func Export(name string) string { return Join(name) }
 
+// Around returns a name built around one that is already spelled: New around
+// Persons is NewPersons, and Err around persons with Full after it is
+// errPersonsFull.
+//
+// The difference from [Spell] is the middle. A constructor is named after the
+// type it builds and a sentinel error after the type that refuses, and in both
+// the type's own name has to come through exactly as its author wrote it —
+// forge does not derive a declaration's name and must not respell one inside a
+// name derived from it. NewMyIdThing is the constructor of a type called
+// MyIdThing, however differently forge would have spelled the type given the
+// chance, and NewMyIDThing is a function that reads as belonging to something
+// else.
+//
+// Everything else is spelled: the prefix, the suffixes, and the seam. The
+// visibility is the caller's because it is the declaration's — a constructor
+// for an unexported container has no business being reachable from outside the
+// package the container is unexported in, and a helper type a layer keeps to
+// itself is unexported whatever the type it belongs to is.
+func Around(exported bool, before, held string, after ...string) string {
+	tail := Join(after...)
+
+	if exported {
+		return Join(before) + Upper(held) + tail
+	}
+	if before == "" {
+		return Camel(held) + tail
+	}
+	return Camel(Join(before)) + Upper(held) + tail
+}
+
 // Camel writes a Go name with its first word in lower case.
 //
 // The first word rather than the first letter, because an exported Go name

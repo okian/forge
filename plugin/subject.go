@@ -200,6 +200,41 @@ func Join(parts ...string) string { return words.Join(parts...) }
 // case a layer asks for most: userId is UserID, and http_server is HTTPServer.
 func Export(name string) string { return words.Export(name) }
 
+// Around returns a name built around one that is already spelled: New around
+// Persons is NewPersons, and Err around persons with Full after it is
+// errPersonsFull.
+//
+// This rather than [Join] wherever the middle is a name somebody wrote. A
+// constructor is named after the type it builds and a sentinel error after the
+// type that refuses, and the declaration's own name has to come through exactly
+// as its author spelled it — NewMyIdThing belongs to MyIdThing, and NewMyIDThing
+// reads as belonging to something else. Everything around it is spelled.
+//
+// The visibility is the caller's because it is the declaration's: a constructor
+// for an unexported container has no business being reachable from outside the
+// package the container is unexported in.
+func Around(exported bool, before, held string, after ...string) string {
+	return words.Around(exported, before, held, after...)
+}
+
+// Block is the names visible inside one generated function body.
+//
+// What it is for beyond uniqueness is shadowing. A local named slices in a file
+// that imports slices does not fail to compile; it fails on the next line that
+// meant the package, in generated code the author cannot edit. A layer writing
+// nested bodies has the same problem one level down, where a copy of a slice of
+// slices binds two variables that would otherwise have one name.
+type Block = words.Block
+
+// Locals returns a scope for one generated function body, given the names
+// already visible in it: the packages the file imports, the receiver, and the
+// parameters.
+//
+// A local that collides is renamed rather than refused, because nothing outside
+// the function can see it and the rename costs a reader nothing. Numbered from
+// two, so that held2 says what it is.
+func Locals(taken ...string) *Block { return words.Locals(taken...) }
+
 // Camel writes a Go name with its first word lowered, which is what a member of
 // a wire format or a closed set is usually called.
 //

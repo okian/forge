@@ -11,7 +11,6 @@ import (
 
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/shared/seq"
-	"github.com/okian/forge/internal/words"
 	"github.com/okian/forge/plugin"
 )
 
@@ -31,7 +30,7 @@ func TestAProjectionIsNamedThroughTheSharedInflection(t *testing.T) {
 		"Aliases": "Aliases",
 		"ID":      "IDs",
 	} {
-		if got := words.Plural(name); got != want {
+		if got := plugin.Plural(name); got != want {
 			t.Errorf("the projection of %s is %s, want %s", name, got, want)
 		}
 	}
@@ -69,7 +68,7 @@ func TestTwoFieldsThatProjectToOneName(t *testing.T) {
 			fields []model.Field
 		)
 		for _, name := range one.fields {
-			held = append(held, column{field: name, method: words.Plural(name)})
+			held = append(held, column{field: name, method: plugin.Plural(name)})
 			fields = append(fields, model.Field{Name: name, Exported: true})
 		}
 
@@ -241,12 +240,19 @@ func TestWhichImportsAreNamed(t *testing.T) {
 	}
 }
 
-// A declaration whose name has nothing in it has no first letter to lower,
-// which is the one case the prefix has to survive rather than index into.
-func TestLoweringANameWithNothingInIt(t *testing.T) {
-	for name, want := range map[string]string{"": "", "Persons": "persons", "persons": "persons"} {
-		if got := lower(name); got != want {
-			t.Errorf("lower(%q) = %q, want %q", name, got, want)
+// The prefix the template's package-level names take is the declaration's own
+// name with its first word lowered, which is the shared spelling rather than
+// one this layer keeps — including for a name with nothing in it, which is the
+// case a rule has to survive rather than index into.
+func TestThePrefixTheTemplateNamesTake(t *testing.T) {
+	for name, want := range map[string]string{
+		"":        "",
+		"Persons": "persons",
+		"persons": "persons",
+		"IDs":     "ids",
+	} {
+		if got := plugin.Camel(name); got != want {
+			t.Errorf("the prefix for %q is %q, want %q", name, got, want)
 		}
 	}
 }

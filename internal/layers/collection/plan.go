@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/okian/forge/internal/shared/seq"
-	"github.com/okian/forge/internal/words"
 	"github.com/okian/forge/plugin"
 )
 
@@ -105,7 +104,7 @@ func planned(ctx *plugin.Context, below plugin.Shape) (plan, plugin.Diagnostics)
 // declaration happens to live is worse than one that stops at the export
 // boundary everywhere.
 //
-// The plural is [words.Plural]'s, which is a real English dictionary rather
+// The plural is [plugin.Plural]'s, which is a real English dictionary rather
 // than three suffix rules: Person projects to People, Child to Children, and a
 // field that is already plural projects to itself rather than to Aliaseses. The
 // last of those is what makes two fields able to reach one name, which is what
@@ -123,7 +122,7 @@ func projections(
 		typ := plugin.Spell(field.Type.Type, spelled.Local, bound)
 		bound = typ.Bound(bound)
 
-		out = append(out, column{field: field.Name, method: words.Plural(field.Name), typ: typ})
+		out = append(out, column{field: field.Name, method: plugin.Plural(field.Name), typ: typ})
 	}
 
 	return share(out, subject, diags), bound
@@ -161,7 +160,7 @@ func share(held []column, subject *plugin.Struct, diags *plugin.Diagnostics) []c
 		if held[at].field == shared && held[earlier].field != shared {
 			loser, kept = earlier, at
 		}
-		held[loser].method = words.Join(held[loser].field, "values")
+		held[loser].method = plugin.Join(held[loser].field, "values")
 
 		diags.Add(plugin.New(codeProjectionsShareAName, declaredAt(subject, held[loser].field),
 			"%s and %s both project to %s, which %s keeps; %s is projected as %s",
@@ -243,7 +242,7 @@ func columns(
 		typ := plugin.Spell(field.Type.Type, spelled.Local, bound)
 		bound = typ.Bound(bound)
 
-		out = append(out, column{field: field.Name, method: words.Join(of.prefix, field.Name), typ: typ})
+		out = append(out, column{field: field.Name, method: plugin.Join(of.prefix, field.Name), typ: typ})
 	}
 	return out, bound
 }

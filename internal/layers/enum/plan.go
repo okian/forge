@@ -331,9 +331,33 @@ func called(name, of string, held *types.Const, text bool) string {
 	if text {
 		return constant.StringVal(held.Val())
 	}
-	shortened, cut := strings.CutPrefix(name, of)
+
+	shortened, cut := shortened(name, of)
 	if !cut || shortened == "" {
 		return name
 	}
 	return plugin.Camel(shortened)
+}
+
+// shortened takes the type's name off the front of a member's, and reports
+// whether it was there to take.
+//
+// A word at a time through [plugin.Words] rather than a byte at a time, which
+// is the same splitting a codec names a wire member with — the two have to
+// agree, because a member's name is written by whichever of them the value
+// reaches first. It is also what keeps a type called Status from cutting
+// Statuses down to esActive: es is a prefix of the letters and not of the
+// words, and what is left of a name cut there is not a name.
+func shortened(name, of string) (string, bool) {
+	member, typ := plugin.Words(name), plugin.Words(of)
+	if len(typ) == 0 || len(member) < len(typ) {
+		return name, false
+	}
+
+	for at, one := range typ {
+		if !strings.EqualFold(member[at], one) {
+			return name, false
+		}
+	}
+	return strings.Join(member[len(typ):], ""), true
 }

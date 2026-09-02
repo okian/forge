@@ -143,7 +143,7 @@ func (Layer) Encloses(declared string) string {
 	if declared == "" {
 		return ""
 	}
-	return plugin.Lower(declared) + "Held"
+	return plugin.Around(false, "", declared, "held")
 }
 
 // Constructor returns the function that makes one of these, where there is one.

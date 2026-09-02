@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/okian/forge/internal/layers/failures"
 	"github.com/okian/forge/plugin"
 )
 
@@ -125,7 +126,7 @@ func (w *writer) check(held *plan, name string) {
 		w.line("func %s(%s %s) error {", name, valueVar, spelled)
 	}
 
-	w.line("var %s ValidationErrors", failedVar)
+	w.line("var %s %s", failedVar, failures.Errors)
 	w.blank()
 
 	for _, one := range held.fields {
@@ -217,7 +218,7 @@ func (w *writer) after(one checked) {
 
 	if one.hook {
 		w.line("if %s := %s.%s%s(); %s != nil {", errVar, valueVar, method, one.field.Name, errVar)
-		w.line("%s = append(%s, ValidationError{Path: %s, Cause: %s})",
+		w.line("%s = append(%s, "+failures.Failure+"{Path: %s, Cause: %s})",
 			failedVar, failedVar, quoted(one.path), errVar)
 		w.line("}")
 	}
@@ -234,7 +235,7 @@ func deref(one checked) string {
 
 // fails writes what a rule reports when it is not met.
 func (w *writer) fails(one checked, asked rule) {
-	w.line("%s = append(%s, ValidationError{Path: %s, Rule: %s, Want: %s})",
+	w.line("%s = append(%s, "+failures.Failure+"{Path: %s, Rule: %s, Want: %s})",
 		failedVar, failedVar, quoted(one.path), quoted(asked.written), quoted(wanted(one, asked)))
 }
 

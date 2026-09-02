@@ -36,6 +36,19 @@ const (
 	// separate because a package with a builder and no check would otherwise be
 	// written a function nothing in it calls.
 	NestedKey = "failures: folding a nested failure into its holder"
+
+	// Errors is the type generated code collects a value's broken rules into,
+	// and Failure is one of them.
+	//
+	// Named here rather than written out by whichever layer is emitting,
+	// because two layers emit against them — a check builds one and a builder
+	// builds one for the fields it was not given — and a type spelled by two
+	// layers is two layers that can come to disagree. The names are the shared
+	// file's own declarations, so what this const block is holding is the seam
+	// between a file that is compiled by this repository and the bodies that
+	// name it.
+	Errors  = "ValidationErrors"
+	Failure = "ValidationError"
 )
 
 // The two files, embedded from the package beside this one.
