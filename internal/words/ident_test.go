@@ -29,6 +29,14 @@ func TestSpellingEachKindOfName(t *testing.T) {
 		{"a method", words.KindMethod, true, []string{"sorted", "by", "userId"}, "SortedByUserID"},
 		{"a bool method", words.KindMethod, true, []string{"is", "Active"}, "IsActive"},
 
+		// The names Go settled on for an iter.Seq, which a layer generating one
+		// chooses from rather than invents: a generated iterator called
+		// something else is one no reader will look for.
+		{"an iterator over everything", words.KindMethod, true, []string{"all"}, "All"},
+		{"an iterator over the values", words.KindMethod, true, []string{"values"}, "Values"},
+		{"an iterator over the keys", words.KindMethod, true, []string{"keys"}, "Keys"},
+		{"an iterator the other way", words.KindMethod, true, []string{"backward"}, "Backward"},
+
 		{"a field", words.KindField, false, []string{"held"}, "held"},
 		{"an exported field", words.KindField, true, []string{"user", "id"}, "UserID"},
 

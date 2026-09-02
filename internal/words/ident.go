@@ -26,6 +26,12 @@ const (
 	KindInterface
 
 	// KindMethod names a method on a type.
+	//
+	// No Get prefix: the accessor is Name and the mutator SetName. A boolean
+	// answer reads as a question, which is [Question]. And an iterator takes
+	// one of the names Go settled on for iter.Seq — All for the whole
+	// sequence, Values, Keys, Backward — because a generated iterator called
+	// something else is one no reader will look for.
 	KindMethod
 
 	// KindFunc names a package-level function.
