@@ -95,5 +95,48 @@
       "pending": false,
       "staged": false
     }
-  ]
+  ],
+  "names": [
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "Cap"
+    },
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "Len"
+    },
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "All"
+    },
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "Backward"
+    },
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "Reset"
+    },
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "Push"
+    },
+    {
+      "step": 3,
+      "layer": "Ring",
+      "name": "AppendSeq"
+    },
+    {
+      "step": 4,
+      "layer": "Collection",
+      "name": "Seq"
+    }
+  ],
+  "dictionary": "forge words 1 agid=2016.01.19 sha256=15d2d792d309d2dc838bf75d8abcd3feb36708c219dc5158d4fff70b89e601d1 plurals=1300 agents=633 vocabulary=3178 converter=1"
 }

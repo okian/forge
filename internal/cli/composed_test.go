@@ -101,6 +101,33 @@ func TestExplainingTheMethodsTheOptionsAskedFor(t *testing.T) {
 	}
 }
 
+// And where each of those names came from, which is the question forge gets
+// asked about inflection: a projection is named as the plural of the field it
+// reads, and a plural comes from a dictionary compiled into the binary rather
+// than from a rule somebody could guess at.
+//
+// The dictionary is named as well as consulted. Two builds of forge with
+// different dictionaries derive different names, and a row saying only "the
+// dictionary" is a claim nothing can be compared against.
+func TestExplainingWhereAGeneratedNameCameFrom(t *testing.T) {
+	got := asking(t, []request{specialising("Persons", nil, "Collection")}, "-t", "Persons")
+
+	if got.status != 0 {
+		t.Fatalf("explaining ended with %d:\n%s", got.status, got.err)
+	}
+	for _, want := range []string{
+		"Names",
+		"IDs",
+		"the Go initialism set",
+		"the regular rules",
+		"forge words 1 agid=",
+	} {
+		if !strings.Contains(got.out, want) {
+			t.Errorf("the answer does not say %q:\n%s", want, got.out)
+		}
+	}
+}
+
 // A stack that does not compose is explained as it was written, with the reason
 // beside it.
 //

@@ -105,8 +105,8 @@ func TestWhatAnsweredAnInflection(t *testing.T) {
 		{"Box", words.FromRule},
 		{"Widget", words.FromRule},
 		{"ID", words.FromInitialism},
-		{"Aliases", words.FromRule},
-		{"Data", words.FromDictionary},
+		{"Aliases", words.FromPlural},
+		{"Data", words.FromPlural},
 	} {
 		if _, got := words.PluralFrom(one.word); got != one.from {
 			t.Errorf("PluralFrom(%q) came from %v, want %v", one.word, got, one.from)

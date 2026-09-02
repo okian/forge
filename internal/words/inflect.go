@@ -90,8 +90,8 @@ func pluralWord(w string) (string, Source) {
 	if _, is := Initialism(w); is {
 		return w + "s", FromInitialism
 	}
-	if already, from := plural(w); already {
-		return w, from
+	if plural(w) {
+		return w, FromPlural
 	}
 
 	if held, is := dictionary().Plural(w); is {
@@ -132,7 +132,7 @@ func singularWord(w string) string {
 	if held, is := dictionary().Singular(w); is {
 		return recased(w, held)
 	}
-	if already, _ := plural(w); !already {
+	if !plural(w) {
 		return w
 	}
 	return reduced(w)
@@ -146,11 +146,10 @@ func IsPlural(name string) bool {
 		return false
 	}
 
-	already, _ := plural(name[at:end])
-	return already
+	return plural(name[at:end])
 }
 
-// plural reports whether one word is already plural, and what said so.
+// plural reports whether one word is already plural.
 //
 // The dictionary first, because it is the only thing that can know People and
 // Children and Data are plurals of anything. Then the vocabulary, which is what
@@ -162,25 +161,25 @@ func IsPlural(name string) bool {
 // domain word ending in s is taken to be plural unless it ends in ss, us or is,
 // which are the endings a singular noun has — so Widgets is plural, Cujus is
 // not, and neither of them had to be in a dictionary for that to come out.
-func plural(w string) (bool, Source) {
+func plural(w string) bool {
 	if stem, cut := strings.CutSuffix(w, "s"); cut {
 		if _, is := Initialism(stem); is {
-			return true, FromInitialism
+			return true
 		}
 	}
 	if _, is := Initialism(w); is {
-		return false, FromInitialism
+		return false
 	}
 
 	held := dictionary()
 
 	switch {
 	case has(held.Singular(w)):
-		return true, FromDictionary
+		return true
 	case has(held.Plural(w)), held.Known(w):
-		return false, FromDictionary
+		return false
 	default:
-		return looksPlural(w), FromRule
+		return looksPlural(w)
 	}
 }
 

@@ -2,6 +2,7 @@ package explain
 
 import (
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -37,6 +38,7 @@ func (r Resolution) Text(w io.Writer) error {
 	r.resolution(&b)
 	r.shapes(&b)
 	r.methods(&b)
+	r.names(&b)
 
 	_, err := io.WriteString(w, b.String())
 	return err
@@ -118,6 +120,42 @@ func (r Resolution) methods(b *strings.Builder) {
 			rows(strconv.Itoa(step.Number), step.Name, emits(step), list(step.Withdraws))
 		}
 	})
+}
+
+// names writes where the spelling of each generated name came from.
+//
+// The table nobody needs until they need it badly. A projection is named as the
+// plural of the field it reads, and a plural comes from a dictionary compiled
+// into forge — so a method called People rather than Persons is a question with
+// an answer, and the answer is a row here rather than a reading of the
+// generator. The provenance line under it says which dictionary answered, which
+// is what makes the rows worth anything across two builds of forge.
+//
+// Left out entirely where nothing was derived from the subject, since a table
+// of dashes is a question a reader then has to ask about the table.
+func (r Resolution) names(b *strings.Builder) {
+	if !slices.ContainsFunc(r.Names, func(one Name) bool { return one.From != "" }) {
+		return
+	}
+
+	b.WriteString("\nNames\n")
+
+	table(b, []string{"Step", "Layer", "Name", "From", "Spelled by"}, func(rows func(...string)) {
+		for _, one := range r.Names {
+			rows(strconv.Itoa(one.Step), one.Layer, one.Name, or(one.From), or(one.By))
+		}
+	})
+
+	b.WriteString("\n" + Dictionary() + "\n")
+}
+
+// or shows a value, or the mark that says a step has none of what a column
+// names.
+func or(held string) string {
+	if held == "" {
+		return nothing
+	}
+	return held
 }
 
 // emits says what a step will contribute, telling nothing from not yet.

@@ -19,6 +19,22 @@ type document struct {
 	Position    string     `json:"position,omitempty"`
 	Form        string     `json:"form,omitempty"`
 	Steps       []stepJSON `json:"steps"`
+
+	// Names says where each generated name's spelling came from, and Dictionary
+	// which dictionary answered. Both together, because either alone is
+	// unusable: a source with no dictionary is a claim nothing can be compared
+	// against, and a dictionary with no sources is a version number.
+	Names      []nameJSON `json:"names"`
+	Dictionary string     `json:"dictionary"`
+}
+
+// nameJSON is one generated name and where its spelling came from.
+type nameJSON struct {
+	Step  int    `json:"step"`
+	Layer string `json:"layer"`
+	Name  string `json:"name"`
+	From  string `json:"from,omitempty"`
+	By    string `json:"spelledBy,omitempty"`
 }
 
 // stepJSON is one step of a resolution, as a program reads it.
@@ -51,6 +67,8 @@ func (r Resolution) JSON(w io.Writer) error {
 		Package:     r.Package,
 		Position:    r.Position,
 		Steps:       make([]stepJSON, 0, len(r.Steps)),
+		Names:       make([]nameJSON, 0, len(r.Names)),
+		Dictionary:  Dictionary(),
 	}
 	if r.Form.Valid() {
 		out.Form = r.Form.String()
@@ -70,6 +88,13 @@ func (r Resolution) JSON(w io.Writer) error {
 			Pending:   step.Pending,
 			Staged:    step.Staged,
 		})
+	}
+
+	// Converted rather than copied field by field, which is the one place the
+	// two shapes are allowed to touch: a field added to [Name] stops this
+	// compiling, and somebody then decides whether the document gains one too.
+	for _, one := range r.Names {
+		out.Names = append(out.Names, nameJSON(one))
 	}
 
 	encoder := json.NewEncoder(w)

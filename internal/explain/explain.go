@@ -79,6 +79,10 @@ type Resolution struct {
 
 	// Steps holds the resolution, subject first.
 	Steps []Step
+
+	// Names says where the spelling of each generated name came from, so that
+	// "why is my method called that" is a command rather than an issue.
+	Names []Name
 }
 
 // Of walks a declaration and reports what each step of it contributes.
@@ -129,6 +133,8 @@ func Of(decl Declaration, registry *layer.Registry) Resolution {
 		out.Steps = append(out.Steps, step)
 		below = above
 	}
+
+	out.Names = naming(decl.Subject, out.Steps)
 
 	return out
 }
