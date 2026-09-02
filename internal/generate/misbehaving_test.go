@@ -134,6 +134,7 @@ func misbehavingConfig(t *testing.T, one layer.Layer) generate.Config {
 type misbehaved struct{ named string }
 
 func (misbehaved) Binds() []model.Import { return nil }
+func (misbehaved) Writes() []string      { return nil }
 func (m misbehaved) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: m.named}
 }
@@ -225,6 +226,7 @@ func (renaming) Origin() model.TypeRef { return misbehaved{named: "Renaming"}.Or
 func (renaming) Binds() []model.Import {
 	return []model.Import{{Path: "slices", Name: "sliceutil", Aliased: true}}
 }
+func (renaming) Writes() []string { return nil }
 
 func (renaming) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
 	decls, comments, fset := built(`type Persons []Person`)
@@ -248,6 +250,7 @@ func (doubtful) Binds() []model.Import {
 		{Path: "example.com/x", Name: "beta", Aliased: true},
 	}
 }
+func (doubtful) Writes() []string { return nil }
 
 func (doubtful) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
 	decls, comments, fset := built(`type Persons []Person`)

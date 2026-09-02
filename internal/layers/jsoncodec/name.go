@@ -181,6 +181,16 @@ func decoderFor(t types.Type) string { return "decode" + identifier(t) + "JSONFr
 const (
 	marshalMethod   = "MarshalJSONTo"
 	unmarshalMethod = "UnmarshalJSONFrom"
+
+	// And the text codec's, which this layer never writes and does call.
+	textMarshalMethod   = "MarshalText"
+	textAppendMethod    = "AppendText"
+	textUnmarshalMethod = "UnmarshalText"
+
+	// And the codec that came before this one, which this layer neither writes
+	// nor calls, and which the standard library asks for first.
+	olderMarshalMethod   = "MarshalJSON"
+	olderUnmarshalMethod = "UnmarshalJSON"
 )
 
 // declaresCodec reports whether a type has a codec of its own.
@@ -200,6 +210,188 @@ const (
 // output rather than a silent decision here.
 func (p *planner) declaresCodec(t types.Type) bool {
 	return p.declares(t, marshalMethod) && p.declares(t, unmarshalMethod)
+}
+
+// declaresText reports whether a type carries a text codec, so that its value
+// goes into JSON as the string that codec writes.
+//
+// Both halves, for the reason [planner.declaresCodec] wants both: a value
+// written through one half and read through nothing is a document that cannot
+// be loaded back. A type with only one half is left alone rather than
+// reported, because unlike a JSON codec this layer was never going to write
+// either half — there is nothing to collide with and nothing the author has to
+// resolve. Their type is written as whatever it is made of, which is what
+// happened before this question was asked at all.
+//
+// Asked of what the run will write as well as of what the author wrote, and the
+// two are separate questions asked by [planner.has]. What a neighbour
+// declaration's layers will write is in neither the package nor the model on
+// the first run, and is in the package on every run after — so believing the
+// package would write the number into an empty checkout and the name into a
+// full one, from one unchanged declaration. Forge's own output is kept out of
+// the answer for that reason, and what the run will write is asked of the
+// layers instead.
+func (p *planner) declaresText(t types.Type) bool {
+	// A type carrying either half of the codec that came before this one is
+	// left alone entirely. encoding/json asks for that half before it asks for
+	// a text codec, and it asks per direction: a type with MarshalJSON and a
+	// text codec is written by the first and read by the second. This layer
+	// reads neither half and writes neither, and it has one answer per type
+	// rather than one per direction — so it cannot follow that split, and the
+	// type is written as the form underneath it instead. Which is what happened
+	// before this question was asked at all, and is at least the same in both
+	// directions: a document this writes is one it reads.
+	//
+	// Left alone is not the same as agreed with. A struct this cannot write
+	// member by member is refused, and the way out a refusal names hands that
+	// one value to the reflective encoder — which reaches the older codec and
+	// writes what everything else writes. A named scalar is not refused, since
+	// it has a form of its own to be written as, so forge writes the number
+	// where the standard library writes whatever the older codec says. Two
+	// readers of one type disagreeing is the cost of not reading a codec this
+	// layer was not written to read, and it is the same cost that was there
+	// before a text codec was asked about at all.
+	if p.has(t, olderMarshalMethod) || p.has(t, olderUnmarshalMethod) {
+		return false
+	}
+
+	return p.textWriter(t) != "" && p.has(t, textUnmarshalMethod)
+}
+
+// textWriter names the half of a text codec that writes, or nothing where the
+// type has neither.
+//
+// MarshalText where the type has it, because it is the half everything has and
+// the one that reads plainly in generated code. AppendText is taken where it is
+// the only half there is: the standard library prefers it, having a buffer of
+// its own to append into, and this has none — a token is written from whatever
+// comes back either way, so there is nothing to prefer it for here.
+func (p *planner) textWriter(t types.Type) string {
+	switch {
+	case p.has(t, textMarshalMethod):
+		return textMarshalMethod
+	case p.has(t, textAppendMethod):
+		return textAppendMethod
+	default:
+		return ""
+	}
+}
+
+// has reports whether a type will carry a method with the signature this layer
+// would call it by: one the author wrote, or one this run is about to write.
+//
+// The signature and not only the name. A method's name is what a package holds
+// it under and says nothing about how it may be called, so a MarshalText
+// returning one value rather than two is a method by that name and not a text
+// codec's half. Reading only the name would generate a call with the wrong
+// number of results into a file the author cannot edit — a package that does
+// not build, from a run that reported nothing wrong.
+//
+// The tree is asked through [layer.Context.Authored], which keeps forge's own
+// output out of the answer, and the run through [layer.Context.Writes]. What
+// this run will write is taken on trust, because there is no signature to read
+// yet: a method a layer named is one it is generating, and a layer that
+// generated a MarshalText of some other shape has broken its own contract
+// rather than misled this.
+func (p *planner) has(t types.Type, method string) bool {
+	if p.willWrite != nil && p.willWrite(t, method) {
+		return true
+	}
+	return p.authored != nil && p.authored(t, method) && signed(t, method)
+}
+
+// signed reports whether the method a type declares has the signature this
+// layer calls it by.
+//
+// [shaped] is where each of the four shapes is written down.
+func signed(t types.Type, method string) bool {
+	named, is := types.Unalias(t).(*types.Named)
+	if !is {
+		return false
+	}
+
+	for i := range named.NumMethods() {
+		one := named.Method(i)
+		if one.Name() != method {
+			continue
+		}
+
+		sig, is := one.Type().(*types.Signature)
+		if !is {
+			return false
+		}
+		return shaped(sig, method)
+	}
+
+	return false
+}
+
+// shaped reports whether a signature is the one its name is standardised with.
+//
+// A writer takes nothing and answers with bytes and an error. An appender takes
+// the buffer to write into and answers the same way. A reader takes bytes and
+// answers with an error alone. Each is spelled out rather than derived, because
+// there are four of them and each is a shape somebody standardised.
+func shaped(sig *types.Signature, method string) bool {
+	// A variadic parameter is a slice to the function and one value to every
+	// caller, so a MarshalText taking ...byte reads as taking []byte here and
+	// is called with a single byte. It satisfies none of the interfaces these
+	// names belong to either, so refusing it agrees with the standard library
+	// as well as with the compiler.
+	if sig.Variadic() {
+		return false
+	}
+
+	switch method {
+	case textMarshalMethod, olderMarshalMethod:
+		return sig.Params().Len() == 0 && bytesThenError(sig.Results())
+
+	case textAppendMethod:
+		return isBytes(only(sig.Params())) && bytesThenError(sig.Results())
+
+	case textUnmarshalMethod, olderUnmarshalMethod:
+		return isBytes(only(sig.Params())) &&
+			sig.Results().Len() == 1 && isError(sig.Results().At(0).Type())
+
+	default:
+		return false
+	}
+}
+
+// bytesThenError reports whether a result list is ([]byte, error).
+func bytesThenError(held *types.Tuple) bool {
+	return held.Len() == 2 && isBytes(held.At(0).Type()) && isError(held.At(1).Type())
+}
+
+// only returns the one type in a tuple, or nil where the tuple is not one long.
+func only(held *types.Tuple) types.Type {
+	if held.Len() != 1 {
+		return nil
+	}
+	return held.At(0).Type()
+}
+
+// isBytes and isError name the two types every half of a text codec is spelled
+// with.
+//
+// Through an alias, because an alias is the same type and satisfies the same
+// interface: a MarshalText answering with a Bytes that is an alias for []byte
+// is a text codec's writer, and one answering with a defined type over []byte
+// is not — the compiler and the standard library agree on both, and so must
+// this. A named type is not unwrapped for the same reason.
+func isBytes(held types.Type) bool {
+	slice, is := types.Unalias(held).(*types.Slice)
+	if !is {
+		return false
+	}
+
+	basic, is := types.Unalias(slice.Elem()).(*types.Basic)
+	return is && basic.Kind() == types.Byte
+}
+
+func isError(held types.Type) bool {
+	named, is := types.Unalias(held).(*types.Named)
+	return is && named.Obj() != nil && named.Obj().Pkg() == nil && named.Obj().Name() == "error"
 }
 
 // declares reports whether the author declared a method on a type.

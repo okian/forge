@@ -221,6 +221,7 @@ func TestALayerThatPanicsWhileGenerating(t *testing.T) {
 type exploding struct{}
 
 func (exploding) Binds() []model.Import           { return nil }
+func (exploding) Writes() []string                { return nil }
 func (exploding) Origin() model.TypeRef           { return model.TypeRef{Name: "Broken"} }
 func (exploding) Kind() model.Kind                { return model.KindRefining }
 func (exploding) OptionSchema() []layer.OptionDef { return nil }

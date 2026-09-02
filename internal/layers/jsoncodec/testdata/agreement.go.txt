@@ -41,6 +41,19 @@ type (
 	// for the members that are.
 	OmittingTwin Omitting
 	NamingTwin   Naming
+
+	// These keep their field types for the reason Stamped keeps its Stamp: what
+	// is under test is what the field's own type carries, so both sides of the
+	// comparison have to reach the same thing. Three of them carry a text codec
+	// the standard library reaches for and forge must reach for too; three
+	// carry something that only looks like one, and what is being checked there
+	// is that neither side is fooled.
+	ColouredTwin Coloured
+	AppendedTwin Appended
+	AliasingTwin Aliasing
+	AgedTwin     Aged
+	OddlyTwin    Oddly
+	VariedTwin   Varied
 )
 
 type NestedTwin struct {
@@ -180,6 +193,83 @@ func TestStamped(t *testing.T) {
 
 	for _, held := range []Stamped{{}, {At: Stamp{Seconds: -1}, Also: &also, Name: "n"}} {
 		agree(t, held, StampedTwin(held))
+	}
+}
+
+// A named scalar with a text codec goes out as the text, from both sides.
+//
+// The standard library asks a type for a text codec before it writes the form
+// underneath, and so does forge. A colour written as the number behind it would
+// say nothing to a reader and would move the day somebody inserted a colour
+// above green.
+func TestColoured(t *testing.T) {
+	green := Green
+	for _, held := range []Coloured{
+		{},
+		{Shade: Green, Name: "n"},
+		{Shade: Red, Accent: &green, Name: "n"},
+	} {
+		agree(t, held, ColouredTwin(held))
+	}
+}
+
+// A type whose only writing half is the appender is written through it.
+//
+// encoding.TextAppender is the newer of the two halves and a type may carry it
+// alone, so a reader that asked only for MarshalText would write the number for
+// a type that had said how it reads.
+func TestAppended(t *testing.T) {
+	for _, held := range []Appended{{}, {Held: 1}} {
+		agree(t, held, AppendedTwin(held))
+	}
+}
+
+// A type carrying the codec that came before this one is written as the older
+// codec writes it, by both sides.
+//
+// The standard library asks for that pair before it asks for a text codec.
+// Forge reads neither pair, so it writes the form underneath — which is what
+// the older codec here writes too. A forge that had taken the text codec
+// instead would be the one reader in the ecosystem writing a string.
+func TestAged(t *testing.T) {
+	for _, held := range []Aged{{}, {Held: 3}} {
+		agree(t, held, AgedTwin(held))
+	}
+}
+
+// A method named as a text codec's half and shaped like nothing is not one.
+//
+// The standard library reads the shape as well as the name and ignores this
+// pair, writing the number underneath. So does forge, which is what keeps a
+// generated call from being written with the wrong number of results — and what
+// keeps the two agreeing about a type whose author very nearly wrote a codec.
+func TestOddly(t *testing.T) {
+	for _, held := range []Oddly{{}, {Held: 4}} {
+		agree(t, held, OddlyTwin(held))
+	}
+}
+
+// A text codec spelled through aliases is a text codec.
+//
+// An alias is the same type, so a codec written against one satisfies the same
+// interface — and a reader of the signature that compared spellings rather than
+// types would write the number for a value the standard library writes as its
+// name.
+func TestAliasing(t *testing.T) {
+	for _, held := range []Aliasing{{}, {Held: 1}} {
+		agree(t, held, AliasingTwin(held))
+	}
+}
+
+// A text codec whose reader takes its bytes one at a time is not one.
+//
+// A variadic parameter is a slice to the function and one value to every
+// caller. Neither the standard library nor forge accepts it, so both write the
+// number — and the pair agreeing is what says forge read the shape rather than
+// only the name.
+func TestVaried(t *testing.T) {
+	for _, held := range []Varied{{}, {Held: 5}} {
+		agree(t, held, VariedTwin(held))
 	}
 }
 

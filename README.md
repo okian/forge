@@ -82,9 +82,9 @@ elements with the subject's own field names in the method names — `Names()`,
 The other four go further: a bounded ring under eight layers, a smaller ring
 behind a mutex, a closed set over a named integer, and a directory whose
 elements encode in full and log with their secret masked. The package
-documentation walks them in that order. It also collects the three places this
-package comes out other than a reader would guess, and says where each is
-written up — an example is worth reading for what a tool really does.
+documentation walks them in that order. It also names the one place this
+package comes out other than a reader would guess, and says where it is written
+up — an example is worth reading for what a tool really does.
 
 ## Development
 

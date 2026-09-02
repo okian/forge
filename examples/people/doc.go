@@ -50,24 +50,14 @@
 //
 // # What is not smooth
 //
-// Three things in this package come out other than a reader would guess, and
-// all three are left as they come out rather than arranged around.
+// One thing in this package comes out other than a reader would guess, and it
+// is left as it comes out rather than arranged around. [Persons.Aliaseses] is a
+// projection named by pluralising a field name that was already plural. It is
+// written up on [Persons], with the reason nothing here reads the field's type
+// to settle it, and held down by a test.
 //
-// The first is a name. [Persons.Aliaseses] is a projection named by pluralising
-// a field name that was already plural.
-//
-// The second and third are one composition and its consequence. Forge writes
-// its own codec for [Credential] and does not reach for the text codec on
-// [Status] when it does, so [Credential.State] goes over the wire as a number
-// and a number no member stands for is read back without complaint. What
-// follows from that is the third: such a credential logs an error where its
-// state should be, in every line, because the log value asks the closed set to
-// write a member it has no name for.
-//
-// Each is written up where it happens, on [Persons] and on [Statuses], and each
-// is held down by a test that fails if it stops being true. An example is worth
-// reading for what a tool really does, and a package shaped to avoid its own
-// edges would be an example of a tool that does not exist.
+// An example is worth reading for what a tool really does, and a package shaped
+// to avoid its own edges would be an example of a tool that does not exist.
 //
 // The generated files are committed, so building this package needs no tool
 // installed. That is the arrangement forge is for: generation happens when the

@@ -14,11 +14,10 @@ type Status int
 
 // The statuses a credential can be in, in the order they read.
 //
-// Counted from iota, which is why declaration order matters. The names are what
-// a reader of Go sees and the numbers are nobody's to write down — but they are
-// what [Statuses] warns goes over forge's own wire, so a member inserted here
-// renames every stored credential holding one below it. Adding at the end costs
-// nothing and moves nothing.
+// Counted from iota, which is why declaration order matters here and nowhere
+// else: the names are what a reader sees, what a document carries, and what
+// [ParseStatus] takes, so the numbers are nobody's to write down and a member
+// inserted in the middle renames nothing that was stored.
 const (
 	StatusPending Status = iota
 	StatusActive
@@ -40,10 +39,10 @@ type Credential struct {
 
 	// State is the closed set, which is the field the enumeration is for.
 	//
-	// Read [Statuses] before believing this field encodes as its name. It does
-	// through the standard library, which reaches for the text codec the
-	// enumeration writes; it does not through the codec generated here, which
-	// sees a named integer and writes the integer.
+	// It encodes as its name rather than as the number behind it, through the
+	// text codec [Statuses] gives the type. That is the pairing worth reading
+	// this file for: one declaration says what a Status is, another says how a
+	// Credential goes over a wire, and neither says anything about the other.
 	State Status
 
 	// Secret is held behind a pointer, and is nil for a credential that has

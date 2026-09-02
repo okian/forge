@@ -3,6 +3,7 @@ package layer
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"slices"
 	"strconv"
 	"strings"
@@ -105,6 +106,69 @@ type Layer interface {
 	// spelling finds without being told.
 	Binds() []model.Import
 
+	// Writes names the methods the layer puts on the subject, rather than on
+	// the type the author declared.
+	//
+	// A layer's own output is not what this is for. It is asked so that one
+	// declaration can be generated knowing what another declaration's layers
+	// will have made of a type it holds as a field: a codec writing a field of
+	// a closed set has to write the member's name rather than the number
+	// behind it, and whether that name can be written is decided by the
+	// declaration over the closed set — which is a neighbour, generated in the
+	// same run, and not the one being asked.
+	//
+	// Asked rather than read off what was generated, because the answer is
+	// needed before anything is generated and reading the package instead
+	// would read the last run's output. A generated file is part of the
+	// package and is loaded with it, so a codec that believed what it found
+	// there would write the number on a clean checkout and the name on the
+	// next run, from one unchanged declaration — and the file would rewrite
+	// itself on alternate builds. Every layer's answer to this is a fact about
+	// the run rather than about the tree, which is what makes it the same
+	// answer on the first run as on the tenth.
+	//
+	// One package, which is as wide as the answer goes. A closed set is
+	// declared beside the type it closes over, because nothing else may declare
+	// methods on that type, and the struct holding one of its members is
+	// usually declared alongside — so one package is where the pair almost
+	// always is. A type given methods in a neighbouring package is not
+	// answered for here and is read as whatever it already carries, the same
+	// way on every run.
+	//
+	// Answered wide rather than exactly, for the reason [Layer.Binds] is.
+	// Which methods a layer writes depends on what the declaration turns out
+	// to hold and on what the author has already written, and this is asked
+	// before either is known — so a layer names what it may write. Naming one
+	// it then withholds because the author wrote their own costs nothing: the
+	// author's is there instead, and it is the method rather than its origin
+	// that a neighbour is asking about. Naming one it withholds because it
+	// refused outright costs nothing either, since a refusal is a diagnostic
+	// and a package with one is not written at all.
+	//
+	// Only what lands on the subject. A method on the declared type reaches
+	// the layers above as a surface, which is a different question asked by
+	// different readers, and a method on a companion type this layer invents
+	// is nobody's business but its own.
+	//
+	// A name and no signature, and the name has to mean the signature the name
+	// is standardised with. A layer naming MarshalText is saying its subject
+	// will have the one every reader of that name expects; one that wrote some
+	// other shape under that name would have a neighbour generate a call that
+	// does not compile, in a file its author cannot edit. Where a layer invents
+	// a name of its own the question does not arise, since nothing else is
+	// looking for it.
+	//
+	// A method named here may be called through a local holding a copy of the
+	// value, whatever receiver the layer declares it on. That is what lets a
+	// neighbour write the call before the method exists to be read: there is no
+	// receiver to look up, and a local suits either. A method that had to be
+	// called on the original — one that mutates the receiver, or reads its
+	// address — cannot be named here.
+	//
+	// Nil is a fair answer, and is the right one for every layer that writes
+	// about the container rather than about what is in it.
+	Writes() []string
+
 	// Generate returns the declarations this layer contributes.
 	Generate(ctx *Context, below shape.Shape) (Unit, error)
 }
@@ -168,11 +232,22 @@ type Context struct {
 	// [Context.Holds].
 	holds *Constructor
 
+	// writes is what the run will put on each subject it generates for: the
+	// union of [Layer.Writes] across the run, keyed by the subject's type
+	// identity. Read through [Context.Writes].
+	writes map[string][]string
+
+	// generated reports whether a declaration is forge's own output in a
+	// package this run may rewrite, as [load.Session.Ours] answers it. Read
+	// through [Context.Authored].
+	generated func(token.Pos) bool
+
 	// bound is what the files this layer writes into will bind: the union of
 	// [Layer.Binds] across the package, sorted by path.
 	//
-	// Held here rather than reached for, because it is the one fact about a
-	// layer's neighbours it is allowed to know. A layer asks what is taken so
+	// Held here rather than reached for, because it is one of the two facts
+	// about a layer's neighbours it is allowed to know — [Context.Writes] is
+	// the other. A layer asks what is taken so
 	// that it can spell a type around it; it may not ask who took it, which
 	// would be a layer generating differently for the company it keeps. Read
 	// through [Context.Bound].
@@ -211,6 +286,103 @@ func (c *Context) Binding(bound []model.Import) *Context {
 	held.bound = bound
 
 	return &held
+}
+
+// Writes reports whether the run will put this method on this type, whoever
+// writes it.
+//
+// The question a layer asks about a type it holds rather than owns: a codec
+// writing a field of a closed set needs to know a member's name can be
+// written, and what writes it is the declaration over the closed set. The
+// answer is the union of [Layer.Writes] across every package the run covers,
+// taken before anything was generated — so it is the same answer on a clean
+// checkout as on the tenth run, which is the whole reason it is passed in
+// rather than looked up.
+//
+// What the author wrote is not in it, and is not meant to be. This says what
+// the run adds; [Context.Authored] says what was there already, and the two
+// are asked separately because they go wrong in opposite directions. A
+// generated method the author also wrote is withheld and the author's stands,
+// so either answer is enough to know the method is there; a generated method
+// nobody has written yet is in neither the package nor the model, and only this
+// has it.
+//
+// False for a type no declaration in this package is over, including one whose
+// declaration is in a neighbouring package of the same run. Answering across
+// the run was tried and is worse: it makes what one package generates depend on
+// which others were named on the command line, and lets a declaration refused
+// in one leave a call to a method that will never exist in another. So the
+// question stops at the package, and a type from outside it is whatever
+// [Context.Authored] says it already is.
+func (c *Context) Writes(held types.Type, method string) bool {
+	if c == nil || held == nil {
+		return false
+	}
+	return slices.Contains(c.writes[model.TypeIdentity(held)], method)
+}
+
+// Writing returns the context told what the run will write on the subjects it
+// generates for, keyed by type identity, and how to tell forge's own output
+// from an author's.
+//
+// A copy, like [Context.Binding], and for the same reason.
+func (c *Context) Writing(writes map[string][]string, generated func(token.Pos) bool) *Context {
+	if c == nil {
+		return nil
+	}
+
+	held := *c
+	held.writes = writes
+	held.generated = generated
+
+	return &held
+}
+
+// Authored reports whether the author declared this method on this type,
+// rather than a generator having written it.
+//
+// The question a layer asks about a type it holds rather than owns, and the
+// half of it that is about the tree. [Context.Writes] is the other half, about
+// the run; between them they cover a method that is there and one that is
+// about to be.
+//
+// Forge's own output is what this keeps out, and keeping it out is the point.
+// A generated file is part of the package and is loaded with it, so a layer
+// that believed everything it found would find a neighbour's methods on every
+// run but the first — and would generate one thing into an empty checkout and
+// another into a full one, from declarations neither of which had changed. What
+// the run will write is knowable without reading the tree, so the tree is only
+// asked about what it can be trusted on.
+//
+// Forge's output in a dependency is not kept out, and is not forge's own from
+// here: it is committed, released and no run of this module rewrites it, so it
+// is as fixed as anything its author typed. A layer that ignored it would be
+// ignoring a method that is really there and will still be there tomorrow.
+//
+// A method promoted from an embedded field is not in it. What is asked is what
+// the type itself declares, because that is what a generator would collide with
+// and what an author overriding a decision would have written.
+func (c *Context) Authored(held types.Type, method string) bool {
+	if c == nil || held == nil {
+		return false
+	}
+
+	named, is := types.Unalias(held).(*types.Named)
+	if !is {
+		return false
+	}
+
+	for i := range named.NumMethods() {
+		one := named.Method(i)
+		if one.Name() != method {
+			continue
+		}
+		if c.generated == nil || !c.generated(one.Pos()) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Holds returns how the type this layer encloses is made, and whether it has to

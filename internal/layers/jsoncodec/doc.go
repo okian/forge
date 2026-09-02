@@ -75,13 +75,38 @@
 // one half and not the other is refused instead, since generating the pair
 // would redeclare the half that is already there.
 //
+// A type carrying a text codec goes onto the wire as the string that codec
+// writes, which is what the standard library does with one and for the same
+// reason: the text is what its author said the value means, and the form
+// underneath is a detail no document can explain. A closed set is the case that
+// makes it matter, and the declaration giving the type its text codec is
+// usually a different declaration — so what the run will write is asked of the
+// layers rather than read off the package, which would answer differently on a
+// clean checkout than on the next one.
+//
+// One package is as wide as that goes. A declaration in a neighbouring package
+// is not asked, so a field whose type is given a text codec over there is
+// written as the form underneath it — the same way on every run and from every
+// invocation, which is what matters more than reaching it. Declare a closed set
+// beside the types that hold its members.
+//
+// Three things are not offered a text codec. A struct whose members this layer
+// can read is written from them, because member by member is what the layer is
+// for. A type carrying either half of the codec that came before this one is
+// left alone, since the standard library asks for that half first and this
+// layer neither reads it nor writes it. And a map's key type is refused rather
+// than written through it: what a key needs is a member name, and the members
+// would come out in the order the Go keys sort rather than the order the names
+// do.
+//
 // Everything else is refused rather than guessed at. An interface field holds a
 // type nobody knows until run time; a struct from another module holds
-// unexported fields generated code cannot read. So is a tag option this layer
-// does not generate for — a format, a loose name match, a number asked to be
-// written as a string — because an option quietly ignored puts the document in
-// a shape nobody asked for. Each is a diagnostic naming the field, and most have
-// the same way out: write
+// unexported fields generated code cannot read, unless it carries a text codec
+// to be written through. So is a tag option this layer does not generate for —
+// a format, a loose name match, a number asked to be written as a string —
+// because an option quietly ignored puts the document in a shape nobody asked
+// for. Each is a diagnostic naming the field, and most have the same way out:
+// write
 //
 //	//forge:json fallback=stdlib
 //

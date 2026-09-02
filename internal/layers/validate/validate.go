@@ -52,6 +52,9 @@ func (Layer) Binds() []model.Import {
 	return append(slices.Clone(imports), failures.Binds()...)
 }
 
+// Writes names the check this layer puts on the subject.
+func (Layer) Writes() []string { return []string{method} }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: the check is about one value rather than about a container

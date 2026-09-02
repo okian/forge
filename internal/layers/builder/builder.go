@@ -38,6 +38,13 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // for nothing else.
 func (Layer) Binds() []model.Import { return failures.Binds() }
 
+// Writes names nothing, because a builder puts its methods on the builder.
+//
+// The setters and Build go on a type this layer invents, which nothing outside
+// it holds as a field — so there is no neighbour with a question about them.
+// What the subject gains is a constructor, and a constructor is a function.
+func (Layer) Writes() []string { return nil }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: a builder makes one value rather than a container of them,

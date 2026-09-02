@@ -175,6 +175,7 @@ func collapsed(of string) string { return strings.Join(strings.Fields(of), " ") 
 type sample struct{}
 
 func (sample) Binds() []model.Import { return nil }
+func (sample) Writes() []string      { return nil }
 func (sample) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Sample"} }
 func (sample) Kind() model.Kind      { return model.KindStorage }
 func (sample) Stage() layer.Stage    { return layer.StageStub }
@@ -262,6 +263,7 @@ func TestACatalogEntryForALayerThatSaysNothing(t *testing.T) {
 type unspoken struct{}
 
 func (unspoken) Binds() []model.Import { return nil }
+func (unspoken) Writes() []string      { return nil }
 func (unspoken) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Quiet"} }
 func (unspoken) Kind() model.Kind      { return model.KindStorage }
 func (unspoken) Accepts(shape.Shape) error {
@@ -411,6 +413,7 @@ func TestALayerThatRefusesEveryShape(t *testing.T) {
 type stubborn struct{}
 
 func (stubborn) Binds() []model.Import { return nil }
+func (stubborn) Writes() []string      { return nil }
 func (stubborn) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Stubborn"} }
 func (stubborn) Kind() model.Kind      { return model.KindDecorator }
 func (stubborn) Accepts(shape.Shape) error {
@@ -451,6 +454,7 @@ type awkward struct {
 }
 
 func (awkward) Binds() []model.Import { return nil }
+func (awkward) Writes() []string      { return nil }
 func (awkward) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Awkward"} }
 func (awkward) Kind() model.Kind      { return model.KindStorage }
 

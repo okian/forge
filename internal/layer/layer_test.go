@@ -2,6 +2,8 @@ package layer_test
 
 import (
 	"errors"
+	"go/token"
+	"go/types"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +24,7 @@ type fake struct {
 }
 
 func (fake) Binds() []model.Import             { return nil }
+func (fake) Writes() []string                  { return nil }
 func (f fake) Origin() model.TypeRef           { return f.origin }
 func (f fake) Kind() model.Kind                { return f.kind }
 func (f fake) OptionSchema() []layer.OptionDef { return f.options }
@@ -281,4 +284,66 @@ func TestRegistryRefusesALayerNamedForAReservedDirective(t *testing.T) {
 			t.Errorf("error %q does not name the directive it collides with", err)
 		}
 	}
+}
+
+// What the author wrote is what Authored answers for, and forge's own output is
+// not.
+//
+// The question a layer asks about a type it holds rather than owns, and the
+// half of it that is about the tree. Keeping forge's output out is the point: a
+// generated file is part of the package and is loaded with it, so a layer that
+// believed everything it found would find a neighbour declaration's methods on
+// every run but the first — and would generate one thing into an empty checkout
+// and another into a full one, from declarations neither of which had changed.
+func TestWhatAuthoredAnswersFor(t *testing.T) {
+	pkg := types.NewPackage("example.com/model", "model")
+	held := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Status", nil), types.Typ[types.Int], nil)
+
+	// Two methods, at two positions, so that one can be called generated and
+	// the other not.
+	byHand, byForge := token.Pos(10), token.Pos(20)
+	held.AddMethod(method(pkg, byHand, held, "Parse"))
+	held.AddMethod(method(pkg, byForge, held, "MarshalText"))
+
+	ctx := (&layer.Context{}).Writing(nil, func(at token.Pos) bool { return at == byForge })
+
+	if !ctx.Authored(held, "Parse") {
+		t.Error("a method the author wrote is not reported as theirs")
+	}
+	if ctx.Authored(held, "MarshalText") {
+		t.Error("a method forge wrote is reported as the author's")
+	}
+	if ctx.Authored(held, "Absent") {
+		t.Error("a method nobody wrote is reported as somebody's")
+	}
+
+	// With nothing to tell the two apart, everything the type declares is the
+	// author's — which is what a caller who passed no predicate is saying.
+	blind := (&layer.Context{}).Writing(nil, nil)
+	if !blind.Authored(held, "MarshalText") || !blind.Authored(held, "Parse") {
+		t.Error("with no predicate, a declared method is not reported as declared")
+	}
+
+	// And nothing is answered for a type that cannot carry a method, or for no
+	// type at all.
+	if blind.Authored(types.Typ[types.Int], "Parse") {
+		t.Error("a predeclared type was reported as declaring a method")
+	}
+	if blind.Authored(nil, "Parse") {
+		t.Error("no type at all was reported as declaring a method")
+	}
+
+	var absent *layer.Context
+	if absent.Authored(held, "Parse") {
+		t.Error("no context at all answered yes")
+	}
+}
+
+// method builds a method on a type, at a position, so that a test can say which
+// of two a generator wrote.
+func method(pkg *types.Package, at token.Pos, on *types.Named, name string) *types.Func {
+	recv := types.NewVar(token.NoPos, pkg, "v", on)
+	sig := types.NewSignatureType(recv, nil, nil, nil, nil, false)
+
+	return types.NewFunc(at, pkg, name, sig)
 }

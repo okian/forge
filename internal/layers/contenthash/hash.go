@@ -66,6 +66,9 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // What the arithmetic imports, which is what the hash is written in terms of.
 func (Layer) Binds() []model.Import { return slices.Clone(sharedImports) }
 
+// Writes names the hash this layer puts on the subject.
+func (Layer) Writes() []string { return []string{method} }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: a hash is about one value rather than about a container of

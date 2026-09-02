@@ -38,6 +38,7 @@ import (
 type marked struct{}
 
 func (marked) Binds() []model.Import { return nil }
+func (marked) Writes() []string      { return nil }
 func (marked) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Marked"} }
 func (marked) Kind() model.Kind      { return model.KindElement }
 func (marked) Stage() layer.Stage    { return layer.StageReady }

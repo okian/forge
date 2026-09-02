@@ -14,7 +14,6 @@ import (
 	generated "github.com/okian/forge/internal/generate"
 	"github.com/okian/forge/internal/layer"
 	"github.com/okian/forge/internal/layers"
-	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/options"
 )
@@ -123,7 +122,7 @@ func wrong(found resolved, one request, catalog *layer.Registry) diag.Set {
 	out := found.Diagnostics
 	out.Merge(&one.Diagnostics)
 
-	refusals := refused(one, catalog, found.Session)
+	refusals := refused(found, one, catalog)
 	out.Merge(&refusals)
 
 	return out
@@ -151,6 +150,12 @@ func wrong(found resolved, one request, catalog *layer.Registry) diag.Set {
 // one file cannot arise from generating a declaration on its own. Somebody
 // asking about one declaration is asking about that one.
 //
+// What its neighbours will write is passed in all the same, because that is not
+// a fault of theirs but a fact about this declaration's own field types: a
+// closed set declared next door decides whether a field of it goes over the
+// wire as a name, and a report that generated without knowing would describe a
+// codec the run does not write.
+//
 // A layer whose generator is not written is left out as well. It says forge has
 // not got there yet rather than that the author did anything wrong, and the
 // report has a column for it: a step whose work is pending is marked as pending
@@ -165,7 +170,7 @@ func wrong(found resolved, one request, catalog *layer.Registry) diag.Set {
 // to tell a previous run's declarations from the author's would answer about
 // every name the last run left in the package; [against] says why the load is
 // what settles that.
-func refused(one request, catalog *layer.Registry, session *load.Session) diag.Set {
+func refused(found resolved, one request, catalog *layer.Registry) diag.Set {
 	if one.Model == nil {
 		return diag.Set{}
 	}
@@ -175,9 +180,12 @@ func refused(one request, catalog *layer.Registry, session *load.Session) diag.S
 		return diag.Set{}
 	}
 
+	cfg := against(catalog, found.Session)
+	cfg.Writes = generated.Writes(alongside(found.Requests, pkg.PkgPath), cfg)
+
 	_, problems := generated.Package(pkg.PkgPath, pkg.Name,
 		[]generated.Request{{Model: built(one), Directives: one.Declaration.Candidate.Directives}},
-		against(catalog, session))
+		cfg)
 
 	// By code rather than by wording, and the code holds because a stub reports
 	// a diagnostic rather than a plain error: an ordinary error is given a code
@@ -370,4 +378,28 @@ func packagesOf(requests []request) []string {
 
 	slices.Sort(found)
 	return slices.Compact(found)
+}
+
+// alongside returns every request of one package as generation reads them.
+//
+// The package and not the run, for the reason [generated.Config.Writes] gives:
+// what a declaration generates may not turn on which other packages somebody
+// happened to name.
+func alongside(requests []request, path string) []generated.Request {
+	var out []generated.Request
+
+	for _, one := range requests {
+		if one.Model == nil {
+			continue
+		}
+		if pkg := one.Declaration.Candidate.Pkg; pkg == nil || pkg.PkgPath != path {
+			continue
+		}
+		out = append(out, generated.Request{
+			Model:      built(one),
+			Directives: one.Declaration.Candidate.Directives,
+		})
+	}
+
+	return out
 }

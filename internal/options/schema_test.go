@@ -25,6 +25,7 @@ type demanding struct {
 }
 
 func (demanding) Binds() []model.Import { return nil }
+func (demanding) Writes() []string      { return nil }
 func (d demanding) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: d.name}
 }

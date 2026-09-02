@@ -8,6 +8,8 @@ package model
 
 import (
 	"encoding/json/jsontext"
+	"errors"
+	"strconv"
 
 	"codecfixture/other"
 )
@@ -194,6 +196,202 @@ func (w *Weight) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 type Weighed struct {
 	Mass Weight
 	Name string
+}
+
+// Colour is a named scalar carrying a text codec and nothing else.
+//
+// What forge does with one is write the text, because that is what the standard
+// library does and because the text is what its author said the value means.
+// The number underneath is an implementation detail no document can explain.
+type Colour int
+
+// The colours, whose names are the whole of what a document carries.
+const (
+	Red Colour = iota
+	Green
+)
+
+// MarshalText writes the colour's name.
+func (c Colour) MarshalText() ([]byte, error) {
+	switch c {
+	case Red:
+		return []byte("red"), nil
+	case Green:
+		return []byte("green"), nil
+	default:
+		return nil, errors.New("no such colour")
+	}
+}
+
+// UnmarshalText reads a colour's name back, and refuses one nobody declared.
+func (c *Colour) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "red":
+		*c = Red
+	case "green":
+		*c = Green
+	default:
+		return errors.New("no such colour: " + string(text))
+	}
+	return nil
+}
+
+// Coloured holds one by value and one behind a pointer.
+type Coloured struct {
+	Shade  Colour
+	Accent *Colour
+	Name   string
+}
+
+// Appending is a named scalar whose only writing half is the appender.
+//
+// encoding.TextAppender is the newer of the two and a type may carry it alone.
+// Nothing here has a buffer to append into, so the half is taken for the text
+// it produces rather than for what it was added to save.
+type Appending int
+
+// AppendText writes the value onto the end of a buffer.
+func (a Appending) AppendText(b []byte) ([]byte, error) {
+	return append(b, "held"...), nil
+}
+
+// UnmarshalText reads it back.
+func (a *Appending) UnmarshalText(text []byte) error {
+	if string(text) != "held" {
+		return errors.New("no such value")
+	}
+	*a = 1
+	return nil
+}
+
+// Appended holds one.
+type Appended struct {
+	Held Appending
+}
+
+// Older is a named scalar carrying the codec that came before this one, beside
+// a text codec.
+//
+// The standard library asks for the older pair first, so a value of this type
+// goes onto the wire as a number wherever it is encoded reflectively. This
+// layer reads neither pair and writes neither, so taking the text codec would
+// make forge the one reader that disagreed — it is left to the reflective
+// encoder instead, which reaches the same method everything else does.
+type Older int
+
+// MarshalJSON writes the value as a number, which is what the older codec is.
+func (o Older) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Itoa(int(o))), nil
+}
+
+// UnmarshalJSON reads a number back.
+func (o *Older) UnmarshalJSON(b []byte) error {
+	held, err := strconv.Atoi(string(b))
+	if err != nil {
+		return err
+	}
+	*o = Older(held)
+	return nil
+}
+
+// MarshalText writes the value as a name, which nothing asks it for.
+func (o Older) MarshalText() ([]byte, error) { return []byte("older"), nil }
+
+// UnmarshalText reads that name back.
+func (o *Older) UnmarshalText(text []byte) error {
+	if string(text) != "older" {
+		return errors.New("no such value")
+	}
+	*o = 1
+	return nil
+}
+
+// Aged holds one, which goes out as a number from either side.
+type Aged struct {
+	Held Older
+}
+
+// Odd is a named scalar with two methods named as a text codec's halves are and
+// shaped like nothing.
+//
+// A name says what a package holds a method under and nothing about how it may
+// be called. Reading only the name would have this written through a call with
+// the wrong number of results, in a file its author cannot edit — a package
+// that does not build, from a run that reported nothing wrong. It is written as
+// the number it is.
+type Odd int
+
+// MarshalText returns one value where a text codec's writer returns two.
+func (o Odd) MarshalText() string { return "odd" }
+
+// UnmarshalText takes a string where a text codec's reader takes bytes.
+func (o *Odd) UnmarshalText(text string) error {
+	_ = text
+	return nil
+}
+
+// Oddly holds one, and is written as the number underneath it.
+type Oddly struct {
+	Held Odd
+}
+
+// Vary is a named scalar whose text codec takes its bytes one at a time.
+//
+// A variadic parameter is a slice to the function and one value to every
+// caller, so a half taking ...byte reads as taking []byte and is called with a
+// single byte. Neither half satisfies the interface its name belongs to, and
+// the value is written as the number it is.
+//
+// Both halves rather than one, because a type with one good half and one bad
+// one is a type the standard library writes through the good half and cannot
+// read back — and a fixture cannot be held against a library disagreeing with
+// itself.
+type Vary int
+
+// AppendText takes its buffer one byte at a time, which no caller of a text
+// codec does.
+func (v Vary) AppendText(b ...byte) ([]byte, error) { return append(b, "vary"...), nil }
+
+// UnmarshalText takes its bytes the same way, so neither half is one.
+func (v *Vary) UnmarshalText(text ...byte) error {
+	_ = text
+	return nil
+}
+
+// Varied holds one.
+type Varied struct {
+	Held Vary
+}
+
+// Bytes and Err are aliases for the two types a text codec is spelled with.
+//
+// An alias is the same type. A codec written against these satisfies the same
+// interfaces as one written against what they stand for, and the compiler and
+// the standard library both say so — which is why what reads a signature here
+// has to see through them.
+type (
+	Bytes = []byte
+	Err   = error
+)
+
+// Aliased is a named scalar whose text codec is spelled through those aliases.
+type Aliased int
+
+// MarshalText writes it, spelled through the aliases.
+func (a Aliased) MarshalText() (Bytes, Err) { return Bytes("aliased"), nil }
+
+// UnmarshalText reads it back, spelled the same way.
+func (a *Aliased) UnmarshalText(text Bytes) Err {
+	if string(text) != "aliased" {
+		return errors.New("no such value")
+	}
+	*a = 1
+	return nil
+}
+
+// Naming what it holds, which is a text codec however it is spelled.
+type Aliasing struct {
+	Held Aliased
 }
 
 // Naming holds the field names that tell one naming style from another.

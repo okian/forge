@@ -39,6 +39,7 @@ type emitting struct {
 }
 
 func (emitting) Binds() []model.Import { return nil }
+func (emitting) Writes() []string      { return nil }
 func (e emitting) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: e.name}
 }

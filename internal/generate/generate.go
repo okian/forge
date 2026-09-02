@@ -74,6 +74,38 @@ type Config struct {
 	// No function means nothing was generated, which is what a caller with no
 	// load has and what is true of the run before the first one.
 	Generated func(token.Pos) bool
+
+	// Writes is what the package's declarations will put on each subject, by
+	// the identity of each, for a caller generating fewer of them than the
+	// package holds.
+	//
+	// [Package] takes this answer from the requests it is given, which is the
+	// whole package where a run generates one. A caller generating one
+	// declaration to see what it would say — which is what explaining a
+	// declaration does — is giving a subset, and a subset answers about its own
+	// declarations only: a field whose type a neighbour gives a text codec
+	// would be described one way here and generated another.
+	//
+	// The package and no wider. Answering across a run makes what one package
+	// generates depend on which others were named on the command line, and lets
+	// a declaration refused in one leave a call to a method that will never
+	// exist in another.
+	//
+	// Nil is a fair answer, and is what a caller generating a whole package
+	// passes: what those requests say is unioned in regardless.
+	Writes map[string][]string
+
+	// Ours reports whether a declaration is forge's own output in a package
+	// this module may rewrite, as [load.Session.Ours] answers it.
+	//
+	// Narrower than Generated on purpose, and the difference is who may change
+	// the file. A generated file in this module is one a later run rewrites, so
+	// what it holds says nothing about what the next run will hold — and a
+	// layer that read it would answer differently on a clean checkout than on a
+	// full one. A generated file in a dependency is committed, released and
+	// immutable from here: it is as fixed as anything its author typed, and a
+	// layer that ignored it would be ignoring a method that is really there.
+	Ours func(token.Pos) bool
 }
 
 // File is one file generation would write.
@@ -90,6 +122,71 @@ type File struct {
 	// share.
 	Decl string
 	Pos  token.Position
+}
+
+// wide is what a declaration is generated against that it cannot answer for
+// itself, because the answer is about the package rather than about it.
+//
+// Held together rather than passed one by one, because they are one kind of
+// thing: each is a question a declaration would answer wrongly on its own, and
+// each is answered by looking at every declaration before any of them is
+// generated for. A fourth would go here rather than into another parameter.
+type wide struct {
+	// reads names the subjects that will be given a String, by the identity of
+	// each. A field of one is rendered through it, and a declaration asked on
+	// its own could only answer that by reading what the last run left behind.
+	reads map[string]bool
+
+	// bound is what every file this package gets written will bind, decided
+	// across all of them for the reason [willBind] gives: two of the three
+	// files a declaration reaches are shared with its neighbours.
+	bound []model.Import
+
+	// writes is what the run will put on each subject, which is what lets one
+	// declaration be generated knowing what a neighbour will have made of a
+	// type it holds as a field. Decided here for the reason [willWrite] gives:
+	// asked after the loop it would be an answer about the last run.
+	writes map[string][]string
+}
+
+// alongside merges what the caller said the package writes with what these
+// requests say, so that a caller passing neither, one, or both gets the whole
+// package's answer.
+//
+// Both are unions of [Layer.Writes] over declarations of one package, so
+// neither can disagree with the other about a type they both cover — which is
+// what makes merging them safe rather than a choice between two answers.
+func alongside(held, here map[string][]string) map[string][]string {
+	out := make(map[string][]string, len(held)+len(here))
+
+	for _, one := range []map[string][]string{held, here} {
+		for key, methods := range one {
+			for _, method := range methods {
+				if !slices.Contains(out[key], method) {
+					out[key] = append(out[key], method)
+				}
+			}
+		}
+	}
+
+	return out
+}
+
+// Writes returns what a package's declarations will put on each subject, for a
+// caller that means to generate fewer of them than the package holds.
+//
+// [Config.Writes] says why a subset is not enough to answer it.
+func Writes(requests []Request, cfg Config) map[string][]string {
+	return willWrite(requests, cfg)
+}
+
+// widely answers the questions a declaration cannot answer for itself.
+func widely(requests []Request, cfg Config, diags *diag.Set) wide {
+	return wide{
+		reads:  reading(requests),
+		bound:  willBind(requests, cfg, diags),
+		writes: alongside(cfg.Writes, willWrite(requests, cfg)),
+	}
 }
 
 // Package generates the files one package's declarations ask for.
@@ -116,16 +213,9 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 		about    = make(map[string]layer.Unit)
 		taken    = spokenFor(requests)
 
-		// Which subjects will be given a String, decided before any of them is
-		// generated for. A field of one is rendered through it, and a
-		// declaration asked on its own could only answer that by reading what
-		// the last run left behind.
-		willRead = reading(requests)
-
-		// And what every file this package gets written will bind, decided
-		// across all of them for the reason [willBind] gives: two of the three
-		// files a declaration reaches are shared with its neighbours.
-		bound = willBind(requests, cfg, &diags)
+		// What only the package knows, decided before any declaration is
+		// generated for.
+		known = widely(requests, cfg, &diags)
 
 		// What each declaration's layers put on its subject, gathered as they
 		// go. A subject reached from two declarations earns from its tags once,
@@ -141,7 +231,7 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 			continue
 		}
 
-		file, unit, was, wrote, ok := one(req, name, cfg, taken, bound, &diags)
+		file, unit, was, wrote, ok := one(req, name, cfg, taken, known, &diags)
 		if !ok {
 			continue
 		}
@@ -174,7 +264,7 @@ func Package(path, name string, requests []Request, cfg Config) ([]File, diag.Se
 	// After every declaration, because what a subject earns is a fact about the
 	// package: it is keyed by the subject rather than by whoever asked, and two
 	// declarations over one subject would otherwise each contribute a copy.
-	gather(about, earned(requests, putting, path, bound, willRead, cfg, &diags))
+	gather(about, earned(requests, putting, path, known, cfg, &diags))
 
 	if file, wrote := standIn(standing, imported, requests, name, cfg, &diags); wrote {
 		out = append(out, file)
@@ -450,7 +540,7 @@ func subjects(requests []Request) []*model.Struct {
 // refused here does not need a second path out.
 func one(
 	req Request, name string, cfg Config,
-	taken map[string]string, bound []model.Import, diags *diag.Set,
+	taken map[string]string, known wide, diags *diag.Set,
 ) (File, merge.Unit, claimable, map[string][]string, bool) {
 	into := Named(req.Model.Name)
 	if first, twice := taken[into]; twice {
@@ -466,7 +556,7 @@ func one(
 	var sum emit.Digest
 	Fingerprint(&sum, req, name, cfg)
 
-	unit, was, problems, wrote := declaration(req, cfg, bound)
+	unit, was, problems, wrote := declaration(req, cfg, known)
 	diags.Merge(&problems)
 
 	if !problems.Empty() {
@@ -565,7 +655,7 @@ func asUnit(held merge.Unit) layer.Unit {
 
 // declaration generates for one declaration: what its options mean, what its
 // stack composes to, and what each of its layers contributes.
-func declaration(req Request, cfg Config, bound []model.Import) (merge.Unit, claimable, diag.Set, map[string][]string) {
+func declaration(req Request, cfg Config, known wide) (merge.Unit, claimable, diag.Set, map[string][]string) {
 	var diags diag.Set
 
 	held := req.Model
@@ -603,7 +693,7 @@ func declaration(req Request, cfg Config, bound []model.Import) (merge.Unit, cla
 	// written: a refining layer over no storage has one filled in.
 	held.Stack = composed.Stack()
 
-	units := contributions(held, composed, cfg, bound, &diags)
+	units := contributions(held, composed, cfg, known, &diags)
 
 	if !diags.Empty() {
 		return merge.Unit{}, claimable{}, diags, nil
@@ -704,8 +794,7 @@ func binds(imports []emit.Import) []model.Import {
 // have the neighbour earn a log value beside the one the first had written.
 func earned(
 	requests []Request, putting map[string][]string,
-	path string, bound []model.Import, reads map[string]bool,
-	cfg Config, diags *diag.Set,
+	path string, known wide, cfg Config, diags *diag.Set,
 ) map[string]layer.Unit {
 	out := make(map[string]layer.Unit)
 
@@ -713,9 +802,9 @@ func earned(
 		written, err := scalars.For(scalars.Asked{
 			Subject:   one,
 			Local:     path,
-			Bound:     bound,
+			Bound:     known.bound,
 			At:        one.Pos,
-			Earning:   reads,
+			Earning:   known.reads,
 			Generated: cfg.Generated,
 			Written:   append(slices.Clone(putting[one.Ref().Name]), one.Methods...),
 		}, diags)
@@ -782,6 +871,91 @@ func merged(held, adding []emit.Import) []emit.Import {
 		}
 	}
 	return held
+}
+
+// willWrite returns the methods this run will put on each of the
+// subjects it generates for, keyed by the subject's type identity.
+//
+// One declaration's layers decide how another declaration's output reads a type
+// it holds as a field. A codec writing a field of a closed set has to write the
+// member's name rather than the number behind it, and whether the name can be
+// written is settled by the declaration over the closed set — a neighbour,
+// generated in the same run, that the codec's own declaration knows nothing
+// about. So it is answered here, where every declaration is in view, and handed
+// down as [layer.Context.Writes].
+//
+// Before anything is generated, which is the whole point. The methods are in
+// the package by the end of the run, so a layer could find them by looking —
+// but only on a run that was not the first. A generated file is part of the
+// package and is loaded with it, so a codec that read the package would write
+// the number into an empty checkout and the name on the next run, from one
+// unchanged declaration, and the file would rewrite itself on alternate builds.
+// Asking the layers instead gives the same answer however many times the run
+// has been made.
+//
+// One package, which is as wide as this goes. The two declarations it answers
+// for are usually in one package — a closed set is declared beside the type it
+// closes over, since nothing else may declare methods on that type, and the
+// struct holding one of its members is usually declared alongside — and a
+// package is the unit everything else here is decided in.
+//
+// Wider was tried and is worse. Answering across the run makes what one package
+// generates depend on which others were named on the command line, so the same
+// tree generates two ways; it lets a declaration refused in one package leave a
+// call to a method that will never exist in another, which nothing then
+// reports; and it puts the whole effect in the file a package shares, which is
+// the one file the freshness check does not compare. A field whose type is
+// given a text codec in another package is written as the form underneath it,
+// the same way on every run and from every invocation.
+//
+// Keyed by type identity rather than by the declaration, because that is the
+// question: a field has a type, and what a neighbour did to it is a fact about
+// the type. Two declarations over one subject contribute to one entry, which is
+// right — what either of them writes is in the package, and a reader of the
+// subject cannot tell which put it there and has no reason to care.
+//
+// Gathered from the whole stack rather than from its element layers, since
+// which kinds put methods on a subject is a layer's business and not this
+// function's. A layer that writes about the container answers nothing here.
+func willWrite(requests []Request, cfg Config) map[string][]string {
+	out := make(map[string][]string)
+
+	for _, req := range requests {
+		if req.Model == nil || req.Model.Subject == nil {
+			continue
+		}
+
+		held := model.TypeIdentity(req.Model.Subject.Type())
+
+		// The stack as it was written, and the storage a declaration naming no
+		// container has filled in beneath it. Composing is what fills that in
+		// and this runs before composing, so the default is claimed here the
+		// way [willBind] claims it: a storage layer that put a method on the
+		// subject would otherwise be the one layer nothing asked.
+		for _, ref := range append(refs(req.Model.Stack), cfg.Catalog.DefaultStorage) {
+			found, claims := cfg.Catalog.Registry.Lookup(ref)
+			if !claims {
+				continue
+			}
+
+			for _, method := range found.Writes() {
+				if !slices.Contains(out[held], method) {
+					out[held] = append(out[held], method)
+				}
+			}
+		}
+	}
+
+	return out
+}
+
+// refs returns the markers a stack names, which is what a registry is asked by.
+func refs(stack []model.LayerRef) []model.TypeRef {
+	out := make([]model.TypeRef, len(stack))
+	for i, one := range stack {
+		out[i] = one.Origin
+	}
+	return out
 }
 
 // willBind returns what the files this package's declarations write into will
@@ -913,8 +1087,7 @@ const bindsFault = "one path binds one name, so forge cannot spell against both;
 // Outermost first in the file, innermost first in the walk: a layer is
 // generated against what is beneath it, and read above what is above it.
 func contributions(
-	held *model.Model, composed compose.Composed, cfg Config,
-	bound []model.Import, diags *diag.Set,
+	held *model.Model, composed compose.Composed, cfg Config, known wide, diags *diag.Set,
 ) []layer.Unit {
 	units := make([]layer.Unit, 0, len(composed.Steps))
 
@@ -930,7 +1103,8 @@ func contributions(
 			Generating(composed.Exposed).
 			Declaring(step.Declared).
 			Holding(step.Holds).
-			Binding(bound)
+			Binding(known.bound).
+			Writing(known.writes, cfg.Ours)
 
 		unit, err := generated(found, ctx, step.Below)
 		if err != nil {

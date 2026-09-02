@@ -48,6 +48,10 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // the spelling rather than through here.
 func (Layer) Binds() []model.Import { return []model.Import{slogPkg} }
 
+// Writes names the log value this layer puts on the subject and on everything
+// it reaches.
+func (Layer) Writes() []string { return []string{method} }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: what may be logged is a fact about one value rather than

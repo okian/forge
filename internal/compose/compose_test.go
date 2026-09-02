@@ -346,6 +346,7 @@ func TestALayerThatPanicsWhileComposing(t *testing.T) {
 type panicking struct{ at string }
 
 func (panicking) Binds() []model.Import { return nil }
+func (panicking) Writes() []string      { return nil }
 func (p panicking) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Broken"}
 }

@@ -513,8 +513,15 @@ func (v Credential) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := enc.WriteToken(jsontext.String("State")); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.Int(int64(v.State))); err != nil {
-		return err
+	{
+		held := v.State
+		text, err := held.MarshalText()
+		if err != nil {
+			return err
+		}
+		if err := enc.WriteToken(jsontext.String(string(text))); err != nil {
+			return err
+		}
 	}
 	if err := enc.WriteToken(jsontext.String("Secret")); err != nil {
 		return err
@@ -601,15 +608,10 @@ func (v *Credential) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				case 'n':
 					var zero Status
 					v.State = zero
-				case '0':
-					number, err := raw.Int()
-					if err != nil {
+				case '"':
+					if err := v.State.UnmarshalText([]byte(raw.String())); err != nil {
 						return err
 					}
-					if int64(Status(number)) != number {
-						return fmt.Errorf("%d is out of range for Status", number)
-					}
-					v.State = Status(number)
 				default:
 					return fmt.Errorf("cannot read Status from a JSON %s", raw.Kind())
 				}

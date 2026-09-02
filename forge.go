@@ -67,14 +67,19 @@ type Redact[T any] struct{ _ [0]T }
 // name it is known by rather than as the number behind it. A second codec would
 // be a second answer to one question.
 //
-// That holds where the standard library does the encoding. It does not hold
-// inside a codec [Json] generates for a struct holding a member: that codec
-// hands a field to something else only where the field's type declares both
-// halves of a JSON codec itself, and a text codec is not among the things it
-// looks for. So a named integer is seen through and written as the integer,
-// wherever its text codec came from, and an integer no member stands for is
-// read back without complaint. Pairing the two over one field is the
-// composition to know about before relying on either.
+// It holds inside a codec [Json] generates too, and that takes the two
+// declarations together: this one gives the subject a text codec, and a codec
+// generated for a struct holding one of its members writes the field through
+// it. Neither mentions the other, and both being in one package is what puts
+// them together — a declaration in a neighbouring package is not seen, and its
+// members go over forge's own wire as the numbers behind them.
+//
+// So a member goes over either wire under its name, and a value the set has no
+// name for is refused wherever a document holding it is written or read. Which
+// includes the zero: a set counted from anything but iota's first value has no
+// member for it, so the zero value of a struct holding one cannot be encoded
+// until the field is set. That is what a closed set means, and it is the same
+// answer encoding/json gives.
 //
 // Kind: element. Stage: v1. Directive: //forge:enum.
 type Enum[T any] struct{ _ [0]T }

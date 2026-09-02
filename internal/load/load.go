@@ -297,6 +297,64 @@ func (s *Session) Generated() func(token.Pos) bool {
 	}
 }
 
+// Ours reports whether a position falls in a generated file of a package this
+// module may rewrite.
+//
+// Narrower than [Session.Generated], and the difference is who may change the
+// file. A generated file in a main module is one a later run rewrites, so what
+// it holds now says nothing about what it will hold next: a reader that
+// believed it would answer one way on a clean checkout and another once
+// something had been generated, from source nobody had touched. A generated
+// file in a dependency is committed, released and immutable from here — as
+// fixed as anything its author typed, and a reader that ignored it would be
+// ignoring a method that is really there.
+//
+// What it is for is a layer deciding what a type it holds rather than owns can
+// be asked to do. [Session.Generated] answers the wider question, which is the
+// right one for collision detection: a method is a collision whoever wrote it
+// and wherever it lives.
+func (s *Session) Ours() func(token.Pos) bool {
+	if s == nil {
+		return func(token.Pos) bool { return false }
+	}
+
+	owned := s.Owned()
+	written := make(map[string]bool)
+	seen := make(map[string]bool)
+
+	var walk func(pkg *packages.Package)
+	walk = func(pkg *packages.Package) {
+		if pkg == nil || seen[pkg.PkgPath] {
+			return
+		}
+		seen[pkg.PkgPath] = true
+
+		if owned[pkg.PkgPath] {
+			for _, file := range pkg.Syntax {
+				if ast.IsGenerated(file) {
+					written[s.FileName(file)] = true
+				}
+			}
+		}
+		for _, one := range pkg.Imports {
+			walk(one)
+		}
+	}
+
+	for _, pkg := range s.Packages {
+		walk(pkg)
+	}
+
+	fset := s.Fset
+
+	return func(pos token.Pos) bool {
+		if !pos.IsValid() || fset == nil || len(written) == 0 {
+			return false
+		}
+		return written[fset.Position(pos).Filename]
+	}
+}
+
 // FieldDocs returns the comment written above each struct field in the load,
 // keyed by the position of the field's name.
 //

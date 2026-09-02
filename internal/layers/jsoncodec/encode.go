@@ -243,7 +243,7 @@ func (w *writer) nonZeroScalar(held string, of *form) (string, bool) {
 	case writtenInt, writtenUint, writtenFloat:
 		return held + " != 0", true
 
-	case writtenStruct, writtenArray, writtenFallback, writtenDelegate, writtenInvalid:
+	case writtenStruct, writtenArray, writtenFallback, writtenDelegate, writtenText, writtenInvalid:
 		return "", false
 	}
 
@@ -271,10 +271,10 @@ func (w *writer) nonZeroComposite(held string, of *form) (string, bool) {
 	case writtenArray:
 		return w.someElement(held, of)
 
-	case writtenDelegate, writtenFallback:
-		// A type that writes itself, or one handed to the reflective encoder.
-		// Neither is comparable — the case above would have taken it — and
-		// neither has parts this may look at.
+	case writtenDelegate, writtenFallback, writtenText:
+		// A type that writes itself, one handed to the reflective encoder, or
+		// one written through its text codec. None is comparable — the case
+		// above would have taken it — and none has parts this may look at.
 		return "", false
 
 	case writtenInvalid, writtenBool, writtenString, writtenInt, writtenUint,
@@ -466,12 +466,13 @@ func (w *writer) nonEmpty(held string, of *form) when {
 	case writtenBool, writtenInt, writtenUint, writtenFloat, writtenInvalid:
 		return always
 
-	case writtenDelegate, writtenFallback:
+	case writtenDelegate, writtenFallback, writtenText:
 		// Empty is a question about what was written, and what these write is
-		// decided elsewhere — by a codec somebody else wrote, or by the
-		// reflective encoder. The standard library can ask because it looks at
-		// the bytes afterwards; this cannot, and answering "never empty" would
-		// write a member the author asked to leave out.
+		// decided elsewhere — by a codec somebody else wrote, by the reflective
+		// encoder, or by a text codec whose output nothing here has seen. The
+		// standard library can ask because it looks at the bytes afterwards;
+		// this cannot, and answering "never empty" would write a member the
+		// author asked to leave out.
 		return when{}
 	}
 
@@ -532,26 +533,11 @@ func (w *writer) someWritten(held string, of *form) when {
 // depth distinguishes the variables a nested composite binds, so that a slice
 // of slices does not shadow its own loop variable.
 func (w *writer) writeValue(held string, of *form, depth int) {
-	switch of.how {
-	case writtenBool:
-		w.token(held, "Bool", "bool", of)
-	case writtenString:
-		w.token(held, "String", "string", of)
-	case writtenInt:
-		w.token(held, "Int", "int64", of)
-	case writtenUint:
-		w.token(held, "Uint", "uint64", of)
-	case writtenFloat:
-		// A float32 has a shortest form of its own, and it is not the shortest
-		// form of the float64 it widens to: 1.1 as a float32 widens to
-		// 1.100000023841858, which is the number but not what anybody else
-		// writes for it. jsontext has a constructor per width for exactly this.
-		if basic, ok := of.typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
-			w.token(held, "Float32", "float32", of)
-			return
-		}
-		w.token(held, "Float", "float64", of)
+	if w.writeScalar(held, of) {
+		return
+	}
 
+	switch of.how {
 	case writtenBytes, writtenFallback:
 		// Both go through the reflective encoder, for different reasons that
 		// produce the same line. A byte slice is a base64 string rather than an
@@ -561,6 +547,9 @@ func (w *writer) writeValue(held string, of *form, depth int) {
 
 	case writtenDelegate:
 		w.delegate(held, of, depth)
+
+	case writtenText:
+		w.text(held, of, depth)
 
 	case writtenStruct:
 		w.checked("%s(%s, %s)", encoderFor(of.typ), encoderVar, held)
@@ -574,10 +563,49 @@ func (w *writer) writeValue(held string, of *form, depth int) {
 	case writtenMap:
 		w.writeMap(held, of, depth)
 
-	case writtenInvalid:
-		// Nothing is written for a form that was refused. The refusal is
-		// already recorded, and the run stops before any of this is emitted.
+	case writtenBool, writtenString, writtenInt, writtenUint, writtenFloat, writtenInvalid:
+		// Nothing here for either. The scalars were answered above, and are
+		// named so that a form added to the plan and forgotten here is a
+		// compiler's complaint rather than a value nothing writes; a refused
+		// form has its refusal recorded already, and the run stops before any
+		// of this is emitted.
 	}
+}
+
+// writeScalar writes the forms that are one jsontext token, and reports whether
+// it wrote one.
+//
+// Split from the rest because they are the forms with nothing to decide: each
+// is a constructor and a conversion, and holding them beside the composites
+// made one function whose length said more about how many token kinds JSON has
+// than about anything a reader needs to follow.
+func (w *writer) writeScalar(held string, of *form) bool {
+	switch of.how {
+	case writtenBool:
+		w.token(held, "Bool", "bool", of)
+	case writtenString:
+		w.token(held, "String", "string", of)
+	case writtenInt:
+		w.token(held, "Int", "int64", of)
+	case writtenUint:
+		w.token(held, "Uint", "uint64", of)
+
+	case writtenFloat:
+		// A float32 has a shortest form of its own, and it is not the shortest
+		// form of the float64 it widens to: 1.1 as a float32 widens to
+		// 1.100000023841858, which is the number but not what anybody else
+		// writes for it. jsontext has a constructor per width for exactly this.
+		if basic, ok := of.typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
+			w.token(held, "Float32", "float32", of)
+			return true
+		}
+		w.token(held, "Float", "float64", of)
+
+	default:
+		return false
+	}
+
+	return true
 }
 
 // delegate calls the codec a type declares for itself.
@@ -599,6 +627,46 @@ func (w *writer) delegate(held string, of *form, depth int) {
 	w.line("%s := %s", one, held)
 	w.checked("%s.%s(%s)", one, marshalMethod, encoderVar)
 	w.line("}")
+}
+
+// text writes a value as the JSON string its own text codec produces.
+//
+// What the standard library does with such a type, and for the same reason: the
+// text form is what its author said the value means, and the form underneath is
+// an implementation detail a document has no way to explain. A closed set is
+// the case that makes it matter — a member written as the number behind it says
+// nothing to a reader and moves the day somebody inserts a member above it —
+// and it is the codec's refusal of an undeclared value that comes with it.
+//
+// Always through a local, where [writer.delegate] asks first whether it needs
+// one. Asking means reading the package for the method's receiver, and the
+// method may be one this run has not written yet: on a clean checkout there is
+// no receiver to read and on the next run there is, so the answer would differ
+// between two runs of one unchanged declaration and the file would rewrite
+// itself on alternate builds. A local is right for either receiver — a method
+// on the pointer needs something addressable and a method on the value will
+// take one — so the question is not worth the way it has to be asked.
+func (w *writer) text(held string, of *form, depth int) {
+	one := loopVar("held", depth)
+	text := loopVar("text", depth)
+
+	w.line("{")
+	w.line("%s := %s", one, held)
+	w.line("%s, err := %s.%s(%s)", text, one, of.text, appended(of.text))
+	w.line("if err != nil {")
+	w.line("return err")
+	w.line("}")
+	w.checked("%s.WriteToken(jsontext.String(string(%s)))", encoderVar, text)
+	w.line("}")
+}
+
+// appended is the argument a text writer takes: nothing for MarshalText, and
+// the buffer to append to for AppendText, which here is none.
+func appended(method string) string {
+	if method == textAppendMethod {
+		return "nil"
+	}
+	return ""
 }
 
 // token writes a scalar as one jsontext token, converted to the type the token

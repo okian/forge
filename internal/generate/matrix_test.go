@@ -407,6 +407,7 @@ func TestTheMatrixFailsOnALayerThatDoesNotCompile(t *testing.T) {
 type broken struct{}
 
 func (broken) Binds() []model.Import { return nil }
+func (broken) Writes() []string      { return nil }
 func (broken) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg, Name: "Broken"} }
 func (broken) Kind() model.Kind      { return model.KindStorage }
 func (broken) Stage() layer.Stage    { return layer.StageReady }
@@ -491,6 +492,7 @@ func TestTheMatrixFailsOnARefusalNobodyCanActOn(t *testing.T) {
 type unhelpful struct{}
 
 func (unhelpful) Binds() []model.Import { return nil }
+func (unhelpful) Writes() []string      { return nil }
 func (unhelpful) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Unhelpful"}
 }

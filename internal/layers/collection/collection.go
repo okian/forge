@@ -276,6 +276,10 @@ func accounted(imports []emit.Import) string {
 // binds it under its own name.
 func (Layer) Binds() []model.Import { return taken() }
 
+// Writes names nothing, because everything this layer writes is about the
+// container rather than about what is in it.
+func (Layer) Writes() []string { return nil }
+
 // taken returns what the template's imports bind, sorted so that what is built
 // from them does not depend on the order a map was walked in.
 func taken() []model.Import {

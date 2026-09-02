@@ -26,6 +26,7 @@ type fake struct {
 }
 
 func (fake) Binds() []model.Import             { return nil }
+func (fake) Writes() []string                  { return nil }
 func (f fake) Origin() model.TypeRef           { return f.origin }
 func (f fake) Kind() model.Kind                { return f.kind }
 func (f fake) OptionSchema() []layer.OptionDef { return nil }

@@ -85,6 +85,14 @@ func (s *stub) Doc() string { return s.doc }
 // written.
 func (s *stub) Binds() []model.Import { return nil }
 
+// Writes names nothing, for the reason [stub.Binds] names nothing.
+//
+// A marker whose generator is unwritten puts no method anywhere. Naming what it
+// will one day write would have a neighbour's codec reach for a method nobody
+// has written yet, in a package that then names one nothing declares — which is
+// a worse answer than the number the codec would otherwise have written.
+func (s *stub) Writes() []string { return nil }
+
 // Transparent reports whether the raw underlying type upholds this layer's
 // invariants on its own.
 func (s *stub) Transparent() bool { return s.transparent }

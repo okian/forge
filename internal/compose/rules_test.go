@@ -366,6 +366,7 @@ func TestTheStorageForgeFillsInIsNotBlamed(t *testing.T) {
 type misclassified struct{}
 
 func (misclassified) Binds() []model.Import { return nil }
+func (misclassified) Writes() []string      { return nil }
 func (misclassified) Origin() model.TypeRef {
 	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Itself"}
 }

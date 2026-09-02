@@ -83,6 +83,10 @@ func (Layer) Binds() []model.Import {
 	return []model.Import{stdJSONText, stdIter, stdSlices, stdSync}
 }
 
+// Writes names nothing, because a lock is about who may reach the container
+// rather than about what is in it.
+func (Layer) Writes() []string { return nil }
+
 // Kind says where in a stack the layer may appear.
 //
 // A decorator: it wraps a representation rather than being one, and what it

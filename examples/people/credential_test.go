@@ -42,7 +42,7 @@ func TestWhatACredentialWritesAndWhatItLogs(t *testing.T) {
 		t.Fatalf("encoding a credential: %v", err)
 	}
 
-	const want = `{"Owner":7,"State":1,"Secret":{"Issued":"2026-01-01","Token":"hunter2"}}`
+	const want = `{"Owner":7,"State":"active","Secret":{"Issued":"2026-01-01","Token":"hunter2"}}`
 	if got := string(written); got != want {
 		t.Errorf("a credential encodes as\n  %s\nwant\n  %s", got, want)
 	}
@@ -324,42 +324,69 @@ func TestAMisspeltStatus(t *testing.T) {
 	}
 }
 
-// A status inside a generated codec travels as its number, which is not what it
-// travels as anywhere else.
+// A status inside a generated codec travels as its name, the same as it does
+// anywhere else.
 //
-// Where the two halves of forge disagree, pinned so that it is visible and so
-// that fixing it is a test failure rather than a silent change of format. A
-// generated codec hands a field to something else only where that type declares
-// both halves of a JSON codec itself; a text codec is not among the things it
-// looks for. So a named integer is seen through and written as the integer,
-// whoever wrote the text codec and wherever they wrote it, and an integer no
-// member stands for is written and read without complaint.
-func TestAStatusInsideAGeneratedCodecTravelsAsItsNumber(t *testing.T) {
+// The composition worth a test of its own, because the two halves of it are
+// decided by two declarations. [people.Statuses] gives [people.Status] a text
+// codec; [people.Credentials] gives [people.Credential] a codec of forge's own,
+// which writes the field through it. Neither declaration mentions the other,
+// and the run is what puts the two together.
+//
+// What the field must not travel as is the number behind it. A document holding
+// 2 says nothing to a reader, cannot be checked by one, and changes meaning the
+// day somebody inserts a member above revoked — and a receiver reading it has
+// no way to notice any of that.
+func TestAStatusInsideAGeneratedCodecTravelsAsItsName(t *testing.T) {
 	written, err := json.Marshal(people.Credential{Owner: 1, State: people.StatusRevoked})
 	if err != nil {
 		t.Fatalf("encoding a credential: %v", err)
 	}
-	if !strings.Contains(string(written), `"State":2`) {
-		t.Errorf("the state is no longer written as its number, so the warning about it is stale: %s", written)
+	if got, want := string(written), `{"Owner":1,"State":"revoked","Secret":null}`; got != want {
+		t.Errorf("a credential encodes as\n  %s\nwant\n  %s", got, want)
 	}
 
-	// And a number nobody declared makes the round trip, which is the cost of
-	// the line above.
 	var back people.Credential
-	if err := json.Unmarshal([]byte(`{"Owner":1,"State":42}`), &back); err != nil {
+	if err := json.Unmarshal(written, &back); err != nil {
 		t.Fatalf("reading a credential back: %v", err)
 	}
-	if back.State.Valid() {
-		t.Errorf("%s arrived as a member, which is worse than the two lines above", back.State)
+	if back.State != people.StatusRevoked {
+		t.Errorf("the state came back as %s, want revoked", back.State)
+	}
+}
+
+// A number no member stands for does not get into a credential.
+//
+// The other half of what writing the name buys, and the half that matters when
+// the document came from somewhere else. The text codec refuses a value the set
+// has no name for, so a document carrying one is refused where it is read
+// rather than accepted and carried around — and a status that got in would go
+// on to spoil every log line holding it, since a log value asks the same closed
+// set to write the same member it has no name for.
+func TestANumberNoMemberStandsForIsRefused(t *testing.T) {
+	var back people.Credential
+
+	// The old format, which is also what a hand-rolled writer would produce.
+	if err := json.Unmarshal([]byte(`{"Owner":1,"State":2}`), &back); err == nil {
+		t.Errorf("a number was read into a closed set, as %s", back.State)
+	} else if !strings.Contains(err.Error(), "Status") {
+		t.Errorf("the complaint does not name the type that refused it: %v", err)
 	}
 
-	// And what it costs downstream, which is the reason the two lines above are
-	// worth more than a note about a format. A log value hands the field to
-	// slog, slog asks the closed set to write it, and the closed set refuses —
-	// so the credential that came off the wire logs an error where its state
-	// should be, in every line, for as long as it is held.
-	if logged := logging(t, back); !strings.Contains(logged, "!ERROR") {
-		t.Errorf("an undeclared state no longer spoils the log line, so the warning about it is stale:\n%s", logged)
+	// And a name the set does not hold, which is the same refusal reached the
+	// other way.
+	if err := json.Unmarshal([]byte(`{"Owner":1,"State":"lapsed"}`), &back); err == nil {
+		t.Errorf("an undeclared name was read into a closed set, as %s", back.State)
+	}
+
+	// Null is the zero, as it is for every other field: a document saying a
+	// member is absent is not one the reader should be made to parse.
+	back.State = people.StatusRevoked
+	if err := json.Unmarshal([]byte(`{"Owner":1,"State":null}`), &back); err != nil {
+		t.Fatalf("null did not read as the zero: %v", err)
+	}
+	if back.State != people.StatusPending {
+		t.Errorf("null read as %s, want the zero member", back.State)
 	}
 }
 

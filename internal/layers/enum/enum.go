@@ -50,6 +50,19 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // stack spells its types against the same set.
 func (Layer) Binds() []model.Import { return slices.Clone(imports) }
 
+// Writes names the closed set's API, which all of it goes on the subject.
+//
+// The parser and the list of members are left out: they are functions of the
+// package rather than methods of the type, since a parser has no value to be
+// called on and a list of the members is not about any one of them.
+//
+// The text codec is the half a neighbour asks about. A codec generated for a
+// struct holding a member has to write the member's name rather than the
+// number behind it, and these are what let it.
+func (Layer) Writes() []string {
+	return []string{displayMethod, validMethod, marshalMethod, appendMethod, unmarshalMethod}
+}
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: what a closed set can do is a fact about one value rather

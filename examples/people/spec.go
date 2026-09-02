@@ -94,22 +94,19 @@ type Roster forge.Guarded[forge.Ring[forge.Json[Person]]]
 // generated file declares. The build tags are what let the two spellings of one
 // name exist in one package.
 //
-// The text codec is reached by the standard library, which asks a type for one
-// before writing it. It is not reached by the codec forge generates for a
-// struct holding a Status: a generated codec hands a field to something else
-// only where that type declares both halves of a JSON codec itself, and a text
-// codec is not among the things it looks for. So [Credential.State] goes over
-// the wire as its number, whoever wrote the text codec and wherever they wrote
-// it, and a number no member stands for is read back without complaint.
+// The text codec is what carries a member over a wire, and it is reached from
+// two directions. The standard library asks a type for one before writing it,
+// and so does the codec forge generates for a struct holding a Status — which
+// is how [Credential.State] goes out as "revoked" rather than as 2, though
+// nothing in either declaration mentions the other. Both being declared in this
+// package is what puts them together; a closed set declared elsewhere is not
+// seen, and its members go over forge's own wire as their numbers.
 //
-// What that second half costs is not confined to the wire. A status read off a
-// document is held like any other, and the first thing that happens to a
-// credential holding one is usually that somebody logs it — where slog asks the
-// closed set to write the member, the closed set refuses a value it has no name
-// for, and the line comes out carrying an error where the state should be. A
-// format nobody can read back and a log nobody can read are the same defect
-// twice, which is why it is written down here rather than left in the output
-// for a reader to find.
+// It is also what refuses a value the set has no name for. A document holding a
+// number, or a name the set does not hold, is refused where it is read: a
+// status that got in would render as the type and the number for the rest of
+// its life, and the log line holding it would carry an error where the state
+// should be.
 //
 //forge:enum
 type Statuses forge.Enum[Status]

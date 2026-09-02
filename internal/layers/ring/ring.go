@@ -124,6 +124,10 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // package imported twice under one name.
 func (Layer) Binds() []model.Import { return taken() }
 
+// Writes names nothing, because everything this layer writes is about the
+// buffer rather than about what is in it.
+func (Layer) Writes() []string { return nil }
+
 // Kind says where in a stack the layer may appear.
 func (Layer) Kind() model.Kind { return model.KindStorage }
 

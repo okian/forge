@@ -70,6 +70,17 @@ const (
 	// which is called rather than duplicated.
 	writtenDelegate
 
+	// writtenText is a type carrying a text codec, which JSON carries as a
+	// string written through it.
+	//
+	// What the standard library does with such a type, and the reason to do the
+	// same: a named integer counted through a set of constants means one of
+	// their names, and the number behind it is an implementation detail that a
+	// document has no way to explain and a reader has no way to check. Writing
+	// the name also refuses a value the set has no name for, since that is what
+	// the text codec was written to do.
+	writtenText
+
 	// The composites, each written in terms of what it holds.
 	writtenPointer
 	writtenSlice
@@ -102,6 +113,14 @@ type form struct {
 	// attach records that the type may carry the two methods, which is true
 	// only for a struct declared in the package being generated into.
 	attach bool
+
+	// text names the half of a text codec the value is written through, and is
+	// set only where [form.how] is [writtenText].
+	//
+	// Decided here rather than at the point of writing, because deciding is
+	// what a plan is for: which half a type has is a question about the type,
+	// and the writer's business is turning an answer into lines.
+	text string
 
 	// whole records that the members are the whole struct: nothing was left off
 	// the wire, so what the members say about the value is what the value is.
@@ -176,6 +195,14 @@ type planner struct {
 	// against so that a type from a package called json is not written under
 	// the name this layer's own import has.
 	bound []model.Import
+
+	// willWrite reports whether the run will put a method on a type, and
+	// authored whether the author already declared one. Between them they are
+	// how this layer learns that one of its field types carries a text codec,
+	// without believing what a previous run wrote. Either may be nil, which is
+	// what a test asking one question gets.
+	willWrite func(types.Type, string) bool
+	authored  func(types.Type, string) bool
 
 	// known holds every struct the subject reaches, by the spelling that
 	// identifies it.
@@ -287,36 +314,65 @@ func (p *planner) decide(t types.Type, where blamed) *form {
 	return out
 }
 
+// owned reports whether the type says for itself how it goes onto the wire, and
+// records the answer where it does.
+//
+// Asked before the type is taken apart. A type with a codec of its own is
+// written by calling it, whatever it is made of — which is the whole point of a
+// hand-written codec, and the reason time.Time does not have to be understood
+// here.
+//
+// A pointer is not asked, because a pointer's method set is its element's and
+// answering yes would lose the only thing a pointer adds: that it may be
+// absent. Delegating straight through one writes a call on a nil receiver,
+// which for a value-receiver method is a dereference at run time rather than a
+// null on the wire. What the pointer points at is asked instead, once the
+// pointer itself has been taken apart.
+func (p *planner) owned(out *form, where blamed) bool {
+	if _, indirect := out.typ.(*types.Pointer); indirect {
+		return false
+	}
+
+	if p.declaresCodec(out.typ) {
+		out.how = writtenDelegate
+		return true
+	}
+
+	// One half is not a codec, and it is not nothing either. Generating the
+	// pair would redeclare the half that is there, in a file the author cannot
+	// edit; generating neither would leave the type written by a marshaler
+	// nobody wrote a reader for. Saying so is the only answer that leaves them
+	// somewhere to go.
+	if half := p.halfCodec(out.typ); half != "" {
+		p.diags.Add(diag.New(codeHalfCodec, where.pos,
+			"%s declares %s and not the other half", out.spelled.Text, half).
+			WithHint("%s", halfHint))
+		return true
+	}
+
+	// Then a text codec, for a type this layer would not write member by member
+	// anyway. After the JSON codec, because a type that says how it goes into
+	// JSON has answered the question this one is asking. Before the type is
+	// taken apart, because a named integer with a text codec is still an
+	// integer underneath and taking it apart would write the number — which is
+	// the one thing the text codec was written to stop.
+	//
+	// A struct is left alone here. Its members are what this layer exists to
+	// write, and a struct whose members it cannot read is offered the text
+	// codec in [planner.fillStruct] instead, where the reason it cannot is
+	// already in hand.
+	if _, held := out.typ.Underlying().(*types.Struct); !held && p.declaresText(out.typ) {
+		out.how, out.text = writtenText, p.textWriter(out.typ)
+		return true
+	}
+
+	return false
+}
+
 // fill decides one form, having already recorded it.
 func (p *planner) fill(out *form, where blamed) {
-	// Asked before the type is taken apart. A type with a codec of its own is
-	// written by calling it, whatever it is made of — which is the whole point
-	// of a hand-written codec, and the reason time.Time does not have to be
-	// understood here.
-	//
-	// A pointer is not asked, because a pointer's method set is its element's
-	// and answering yes would lose the only thing a pointer adds: that it may
-	// be absent. Delegating straight through one writes a call on a nil
-	// receiver, which for a value-receiver method is a dereference at run time
-	// rather than a null on the wire. What the pointer points at is asked
-	// instead, once the pointer itself has been taken apart below.
-	if _, indirect := out.typ.(*types.Pointer); !indirect {
-		if p.declaresCodec(out.typ) {
-			out.how = writtenDelegate
-			return
-		}
-
-		// One half is not a codec, and it is not nothing either. Generating the
-		// pair would redeclare the half that is there, in a file the author
-		// cannot edit; generating neither would leave the type written by a
-		// marshaler nobody wrote a reader for. Saying so is the only answer
-		// that leaves them somewhere to go.
-		if half := p.halfCodec(out.typ); half != "" {
-			p.diags.Add(diag.New(codeHalfCodec, where.pos,
-				"%s declares %s and not the other half", out.spelled.Text, half).
-				WithHint("%s", halfHint))
-			return
-		}
+	if p.owned(out, where) {
+		return
 	}
 
 	switch under := out.typ.Underlying().(type) {
@@ -358,6 +414,20 @@ func (p *planner) fill(out *form, where blamed) {
 }
 
 // fillStruct decides a struct, which is the case with members.
+//
+// A struct this layer cannot write member by member is offered its own text
+// codec before it is refused. That is the answer for a type like netip.Addr,
+// whose whole content is unexported and whose text form is the one everybody
+// already reads it in. It is offered here rather than before the type is taken
+// apart, because a struct whose members *can* be read is written from them:
+// member by member is what this layer is for, and a local struct that also
+// carries a text codec is one whose author has two answers for one question.
+//
+// Not time.Time, which carries the codec that came before this one and is
+// refused for that reason rather than this one. Refused and not handed over: a
+// refusal names the field and says to write fallback=stdlib above it, which is
+// what hands that one value to the reflective encoder — and the encoder then
+// reaches the same method everything else does.
 func (p *planner) fillStruct(out *form, where blamed) {
 	held, modelled := p.known[key(out.typ)]
 	switch {
@@ -366,6 +436,10 @@ func (p *planner) fillStruct(out *form, where blamed) {
 		// here knows its fields' tags or the options written above them, and
 		// guessing at either produces a codec that disagrees with the one the
 		// same struct gets elsewhere.
+		if p.declaresText(out.typ) {
+			out.how, out.text = writtenText, p.textWriter(out.typ)
+			return
+		}
 		p.refuse(where, "a %s, a struct this codec was not given the fields of", out.spelled.Text)
 		return
 
@@ -374,6 +448,10 @@ func (p *planner) fillStruct(out *form, where blamed) {
 		// written member by member would silently leave them out — and for a
 		// type like time.Time, whose whole content is unexported, that is an
 		// empty object rather than a timestamp.
+		if p.declaresText(out.typ) {
+			out.how, out.text = writtenText, p.textWriter(out.typ)
+			return
+		}
 		p.refuse(where, "a %s, declared in another module, whose unexported fields generated code cannot read",
 			out.spelled.Text)
 		return
@@ -407,10 +485,19 @@ func (p *planner) fillMap(out *form, under *types.Map, where blamed) {
 		return
 	}
 
-	// A key that brought its own codec writes itself, and what it writes is a
-	// value rather than a member name — so a map keyed by one is not written as
-	// this would write it.
-	if p.declaresCodec(under.Key()) {
+	// A key that says how it is written says it about a value rather than about
+	// a member name, so a map keyed by one is not written as this would write
+	// it. A JSON codec writes a whole value, which is not a name at all. A text
+	// codec writes something a name could be — and the members would come out
+	// in the order the Go keys sort rather than the order the names do, which
+	// is an order nothing in the document explains and one a reader comparing
+	// two documents cannot rely on.
+	//
+	// Refused rather than sorted by the text, because sorting by it means
+	// writing every name before choosing an order, and this layer writes a
+	// member as it reaches it. The reflective encoder holds the whole object
+	// and can afford to.
+	if p.declaresCodec(under.Key()) || p.declaresText(under.Key()) {
 		p.refuse(where, "a %s, whose key type writes itself and so cannot be a member name",
 			out.spelled.Text)
 		return

@@ -49,6 +49,9 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // way of the one a copy would reach for.
 func (Layer) Binds() []model.Import { return slices.Clone(imports) }
 
+// Writes names the copy this layer puts on the subject.
+func (Layer) Writes() []string { return []string{method} }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: a copy is about one value rather than about a container of

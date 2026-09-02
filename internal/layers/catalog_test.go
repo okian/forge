@@ -18,6 +18,10 @@ type entry struct {
 	requires    []shape.Cap
 	adds        []shape.Cap
 	masks       []shape.Cap
+
+	// writes names what the layer puts on the subject, which is what a
+	// neighbour declaration's output reads it by.
+	writes []string
 }
 
 // catalog is every layer forge knows about and everything it declares about
@@ -43,15 +47,17 @@ var catalog = map[string]entry{
 	"Json": {
 		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
+		writes: []string{"MarshalJSONTo", "UnmarshalJSONFrom"},
 	},
 	"Validate": {
 		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured},
+		writes:   []string{"Validate"},
 	},
-	"Clone": {kind: model.KindElement, stage: layer.StageReady},
+	"Clone": {kind: model.KindElement, stage: layer.StageReady, writes: []string{"Clone"}},
 	"Hash": {
 		kind: model.KindElement, stage: layer.StageReady,
-		adds: []shape.Cap{shape.Comparable},
+		adds: []shape.Cap{shape.Comparable}, writes: []string{"Hash"},
 	},
 	"Builder": {
 		kind: model.KindElement, stage: layer.StageReady,
@@ -64,10 +70,14 @@ var catalog = map[string]entry{
 	"Redact": {
 		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured},
+		writes:   []string{"LogValue"},
 	},
 	"Enum": {
 		kind: model.KindElement, stage: layer.StageReady,
 		adds: []shape.Cap{shape.Comparable, shape.Encodable},
+		// The text codec is the half a neighbour's codec reads it by; the
+		// parser and the list of members are functions rather than methods.
+		writes: []string{"String", "Valid", "MarshalText", "AppendText", "UnmarshalText"},
 	},
 	"Guarded": {
 		kind: model.KindDecorator, stage: layer.StageReady,
@@ -195,6 +205,14 @@ func TestTheCatalogIsWhatItSaysItIs(t *testing.T) {
 			masked := everything().Caps.Without(exposed.All()...).All()
 			if !slices.Equal(masked, sorted(want.masks)) {
 				t.Errorf("withdraws %v, want %v", masked, sorted(want.masks))
+			}
+
+			// And what it puts on the subject, which is the one thing here that
+			// another declaration's output reads: a layer that stopped naming a
+			// method it still writes would have a neighbour's codec write the
+			// form underneath a type instead of asking it.
+			if got := found.Writes(); !slices.Equal(got, want.writes) {
+				t.Errorf("writes %v, want %v", got, want.writes)
 			}
 		})
 	}

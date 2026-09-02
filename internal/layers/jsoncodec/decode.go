@@ -134,6 +134,9 @@ func (w *writer) readValue(held string, of *form, depth int) {
 	case writtenDelegate:
 		w.checked("%s.%s(%s)", held, unmarshalMethod, decoderVar)
 
+	case writtenText:
+		w.readText(held, of)
+
 	case writtenStruct:
 		w.checked("%s(%s, &%s)", decoderFor(of.typ), decoderVar, held)
 
@@ -152,6 +155,41 @@ func (w *writer) readValue(held string, of *form, depth int) {
 	case writtenInvalid:
 		// Refused already; nothing is emitted for it.
 	}
+}
+
+// readText reads a JSON string back through the type's own text codec.
+//
+// Null is the zero value, which is what every other form here does with it and
+// what the standard library does with a text codec: a document saying a member
+// is absent is not a document the reader should be asked to parse the absence
+// of. Anything that is not a string is refused by name, so that a document
+// carrying the number the value used to be written as says so rather than
+// arriving as whatever the reader made of it.
+//
+// The value is addressable wherever this is reached. A member of the struct
+// being read is a field of a local, and a slice's or map's element is read into
+// a local of its own before being put in place — so the reader half, which is
+// declared on the pointer, has something to take the address of.
+func (w *writer) readText(held string, of *form) {
+	w.line("{")
+	w.line("raw, err := %s.ReadToken()", decoderVar)
+	w.line("if err != nil {")
+	w.line("return err")
+	w.line("}")
+
+	w.line("switch raw.Kind() {")
+	w.line("case 'n':")
+	w.line("var zero %s", of.spelled.Text)
+	w.line("%s = zero", held)
+
+	w.line("case '\"':")
+	w.checked("%s.%s([]byte(raw.String()))", held, textUnmarshalMethod)
+
+	w.line("default:")
+	w.line("return fmt.Errorf(%s, raw.Kind())",
+		strconv.Quote("cannot read "+of.spelled.Text+" from a JSON %s"))
+	w.line("}")
+	w.line("}")
 }
 
 // accessorFor names the jsontext accessor that reads a scalar of this form, and

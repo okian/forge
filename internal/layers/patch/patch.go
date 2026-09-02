@@ -37,6 +37,13 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // those types come from — and the spelling finds those for itself.
 func (Layer) Binds() []model.Import { return nil }
 
+// Writes names nothing, because a patch puts its methods on the patch.
+//
+// Apply and IsZero go on a type this layer invents. It is a type somebody may
+// well hold as a field — that is what the codec's omitzero support is for — but
+// what it holds is the patch's own business and not the subject's.
+func (Layer) Writes() []string { return nil }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: a patch is about one value rather than about a container of

@@ -64,6 +64,20 @@ func (Layer) Origin() model.TypeRef { return model.TypeRef{Pkg: model.MarkerPkg,
 // binds json to two packages and does not build.
 func (Layer) Binds() []model.Import { return slices.Clone(imports) }
 
+// Writes names the codec this layer puts on the subject.
+//
+// It puts the same pair on every struct the subject reaches, and says so
+// nowhere: what is asked here is answered against the subject, so a neighbour
+// asking about a type the subject merely holds gets nothing. Nothing is the
+// right answer — such a struct is one this layer is already writing a codec
+// for, and it writes that codec inline rather than delegating to a method it
+// has not been told about.
+//
+// The container's four are not here either. Those go on the declared type,
+// which a surface is the question about — and the layer cannot say whether it
+// will write them until it knows whether there is a container above it to walk.
+func (Layer) Writes() []string { return []string{marshalMethod, unmarshalMethod} }
+
 // Kind says where in a stack the layer may appear.
 //
 // An element layer: the codec it writes is about the subject rather than about
@@ -162,10 +176,12 @@ func (l Layer) Generate(ctx *layer.Context, _ shape.Shape) (layer.Unit, error) {
 	}
 
 	built := &planner{
-		into:     ctx.Model.Pkg.PkgPath,
-		bound:    ctx.Bound(),
-		style:    style(ctx.Options),
-		omitZero: flag(ctx.Options, optionOmitZero),
+		into:      ctx.Model.Pkg.PkgPath,
+		bound:     ctx.Bound(),
+		willWrite: ctx.Writes,
+		authored:  ctx.Authored,
+		style:     style(ctx.Options),
+		omitZero:  flag(ctx.Options, optionOmitZero),
 	}
 	root := built.plan(held)
 

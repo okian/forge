@@ -144,6 +144,7 @@ func against(catalog *layer.Registry, session *load.Session) generated.Config {
 		},
 		Forge: self, Markers: markers, Toolchain: toolchain,
 		Generated: session.Generated(),
+		Ours:      session.Ours(),
 	}
 }
 
