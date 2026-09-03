@@ -59,22 +59,52 @@ func (c Candidate) String() string {
 	return c.Name + " " + types.ExprString(c.Spec.Type)
 }
 
-// Declarations returns every candidate declaration in the session, along with
-// the diagnostics for directives that landed on nothing.
+// Hint is a package-level function carrying a map directive, kept whole for
+// the stage that reads it. Discovery claims it and judges nothing: whether the
+// directive means anything is the reading stage's to say, which is the same
+// bargain claimFields strikes for field options.
+type Hint struct {
+	// Layer and Args are the directive as written: "map" and whatever
+	// followed it.
+	Layer string
+	Args  string
+
+	// Fn is the function itself, its body kept by the loader because the
+	// directive marks it as a stage's input.
+	Fn *ast.FuncDecl
+
+	// Pkg is the package the function lives in, which is where its parameter
+	// types resolve.
+	Pkg *packages.Package
+
+	// Form records what kind of file the function was written in. A hint
+	// belongs in a spec file, and the stage that reads hints is the one that
+	// says so — with the form recorded here.
+	Form model.Form
+
+	// Pos is the position of the function's name, which is where every
+	// diagnostic about this hint points.
+	Pos token.Position
+}
+
+// Declarations returns every candidate declaration in the session and every
+// map hint beside them, along with the diagnostics for directives that landed
+// on nothing.
 //
-// The result is ordered by package import path, then by file name, then by
+// Each result is ordered by package import path, then by file name, then by
 // position within that file. The file name is not decoration: a position's
 // offset is counted across the whole file set rather than within one file, so
 // comparing offsets is only meaningful between candidates already known to
 // share a file.
-func Declarations(session *load.Session) ([]Candidate, diag.Set) {
+func Declarations(session *load.Session) ([]Candidate, []Hint, diag.Set) {
 	var (
 		found []Candidate
+		hints []Hint
 		diags diag.Set
 	)
 
 	if session == nil {
-		return nil, diags
+		return nil, nil, diags
 	}
 
 	for _, pkg := range session.Packages {
@@ -85,21 +115,32 @@ func Declarations(session *load.Session) ([]Candidate, diag.Set) {
 
 			candidates, claimed := inFile(session.Fset, pkg, file)
 			found = append(found, candidates...)
+			hints = append(hints, claimFuncs(session.Fset, pkg, file, claimed)...)
 			reportStrays(session.Fset, file, claimed, &diags)
 		}
 	}
 
-	slices.SortFunc(found, func(a, b Candidate) int {
-		if c := strings.Compare(a.Pkg.PkgPath, b.Pkg.PkgPath); c != 0 {
-			return c
-		}
-		if c := strings.Compare(a.Pos.Filename, b.Pos.Filename); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Pos.Offset, b.Pos.Offset)
-	})
+	byPosition(found, func(c Candidate) (string, token.Position) { return c.Pkg.PkgPath, c.Pos })
+	byPosition(hints, func(h Hint) (string, token.Position) { return h.Pkg.PkgPath, h.Pos })
 
-	return found, diags
+	return found, hints, diags
+}
+
+// byPosition orders a discovery result by package import path, then file, then
+// position within the file.
+func byPosition[T any](held []T, at func(T) (string, token.Position)) {
+	slices.SortFunc(held, func(a, b T) int {
+		aPkg, aPos := at(a)
+		bPkg, bPos := at(b)
+
+		if c := strings.Compare(aPkg, bPkg); c != 0 {
+			return c
+		}
+		if c := strings.Compare(aPos.Filename, bPos.Filename); c != 0 {
+			return c
+		}
+		return cmp.Compare(aPos.Offset, bPos.Offset)
+	})
 }
 
 // written reports whether a file is one forge produced.
@@ -218,6 +259,47 @@ func claimFields(fset *token.FileSet, file *ast.File, claimed map[int]bool) {
 		}
 		return true
 	})
+}
+
+// claimFuncs returns the map directives written on package-level functions,
+// claiming them so the stray check does not report them.
+//
+// Only the map layer reads functions, so only its directives are claimed: a
+// directive naming any other layer on a function still lands on nothing, and
+// saying so is the point of the stray check. What "map" means — the grammar of
+// the arguments, the shape of the signature, which declaration the hint is for
+// — is the reading stage's business, judged where source and target are known.
+func claimFuncs(fset *token.FileSet, pkg *packages.Package, file *ast.File, claimed map[int]bool) []Hint {
+	form := model.FormInline
+	if load.SpecFile(fset, file) {
+		form = model.FormSpec
+	}
+
+	var hints []Hint
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil {
+			continue
+		}
+
+		for _, directive := range model.Directives(fset, fn.Doc) {
+			if directive.Layer != "map" {
+				continue
+			}
+
+			claimed[directive.Pos.Offset] = true
+			hints = append(hints, Hint{
+				Layer: directive.Layer,
+				Args:  directive.Args,
+				Fn:    fn,
+				Pkg:   pkg,
+				Form:  form,
+				Pos:   fset.Position(fn.Name.Pos()),
+			})
+		}
+	}
+
+	return hints
 }
 
 // candidate reports whether a type declaration is one worth resolving.

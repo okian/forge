@@ -60,3 +60,9 @@ type Fielded struct {
 	//forge:json fallback=stdlib
 	Also any
 }
+
+// misdirected carries a directive for a layer that reads no functions, which
+// lands on nothing exactly as it did before hints existed.
+//
+//forge:collection index=SKU
+func misdirected() {}

@@ -64,9 +64,9 @@ func (s *stack) Load(cfg load.Config) (*load.Session, error) {
 	return s.session, nil
 }
 
-func (s *stack) Discover(*load.Session) ([]discover.Candidate, diag.Set) {
+func (s *stack) Discover(*load.Session) ([]discover.Candidate, []discover.Hint, diag.Set) {
 	s.asked = append(s.asked, "discover")
-	return s.candidates, s.discovered
+	return s.candidates, nil, s.discovered
 }
 
 func (s *stack) Resolve([]discover.Candidate) ([]resolve.Declaration, diag.Set) {

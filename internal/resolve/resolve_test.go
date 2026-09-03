@@ -35,7 +35,7 @@ func candidates(t *testing.T) []discover.Candidate {
 		t.Fatalf("fixture does not load clean:\n%s", session.Diagnostics.Render())
 	}
 
-	found, diags := discover.Declarations(session)
+	found, _, diags := discover.Declarations(session)
 	if !diags.Empty() {
 		t.Fatalf("fixture does not discover clean:\n%s", diags.Render())
 	}

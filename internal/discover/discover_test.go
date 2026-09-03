@@ -56,7 +56,7 @@ func find(t *testing.T, candidates []discover.Candidate, name string) discover.C
 // declaration that is not an instantiation, and instantiations written outside
 // any declaration. Only the first two kinds are generation requests.
 func TestDeclarationsPicksOutTheRightShapes(t *testing.T) {
-	candidates, _ := discover.Declarations(loadFixture(t))
+	candidates, _, _ := discover.Declarations(loadFixture(t))
 
 	got := names(candidates)
 	// Ordered by package import path first, then by file and position within it.
@@ -86,7 +86,7 @@ func TestDeclarationsPicksOutTheRightShapes(t *testing.T) {
 // and stops being one at resolution, which is the only stage that can follow it
 // to its origin and see that no layer claims it.
 func TestUnrelatedInstantiationsSurviveThisStage(t *testing.T) {
-	candidates, _ := discover.Declarations(loadFixture(t))
+	candidates, _, _ := discover.Declarations(loadFixture(t))
 
 	numbers := find(t, candidates, "Numbers")
 	if got, want := numbers.String(), "Numbers Box[int]"; got != want {
@@ -101,7 +101,7 @@ func TestUnrelatedInstantiationsSurviveThisStage(t *testing.T) {
 // author's type or owns the declaration outright, and nothing downstream can
 // work it out on its own.
 func TestFormFollowsTheFile(t *testing.T) {
-	candidates, _ := discover.Declarations(loadFixture(t))
+	candidates, _, _ := discover.Declarations(loadFixture(t))
 
 	cases := map[string]model.Form{
 		"Items":      model.FormInline,
@@ -120,7 +120,7 @@ func TestFormFollowsTheFile(t *testing.T) {
 }
 
 func TestDirectivesAreCollectedInOrder(t *testing.T) {
-	candidates, _ := discover.Declarations(loadFixture(t))
+	candidates, _, _ := discover.Declarations(loadFixture(t))
 
 	persons := find(t, candidates, "Persons")
 	if len(persons.Directives) != 3 {
@@ -158,7 +158,7 @@ func TestDirectivesAreCollectedInOrder(t *testing.T) {
 // own comment, because the group's comment sits above several declarations and
 // could not say which one it means.
 func TestDirectivesInsideATypeGroup(t *testing.T) {
-	candidates, _ := discover.Declarations(loadFixture(t))
+	candidates, _, _ := discover.Declarations(loadFixture(t))
 
 	recent := find(t, candidates, "Recent")
 	if len(recent.Directives) != 1 {
@@ -176,7 +176,7 @@ func TestDirectivesInsideATypeGroup(t *testing.T) {
 // Every diagnostic about a declaration points at the declared name, so the
 // position has to be the name's and not the keyword's.
 func TestPositionIsTheDeclaredName(t *testing.T) {
-	candidates, _ := discover.Declarations(loadFixture(t))
+	candidates, _, _ := discover.Declarations(loadFixture(t))
 
 	persons := find(t, candidates, "Persons")
 	if filepath.Base(persons.Pos.Filename) != "spec.go" {
@@ -214,10 +214,10 @@ func TestPositionIsTheDeclaredName(t *testing.T) {
 func TestDeclarationsAreOrdered(t *testing.T) {
 	session := loadFixture(t)
 
-	initial, _ := discover.Declarations(session)
+	initial, _, _ := discover.Declarations(session)
 	first := names(initial)
 	for range 3 {
-		again, _ := discover.Declarations(session)
+		again, _, _ := discover.Declarations(session)
 		if got := names(again); !slices.Equal(got, first) {
 			t.Fatalf("Declarations() returned %v then %v", first, got)
 		}
@@ -225,7 +225,7 @@ func TestDeclarationsAreOrdered(t *testing.T) {
 
 	// Within a package the order is by file and then by position, which is the
 	// order an author reads them in.
-	candidates, _ := discover.Declarations(session)
+	candidates, _, _ := discover.Declarations(session)
 	for i := 1; i < len(candidates); i++ {
 		before, after := candidates[i-1], candidates[i]
 		if before.Pos.Filename != after.Pos.Filename {
@@ -238,7 +238,7 @@ func TestDeclarationsAreOrdered(t *testing.T) {
 }
 
 func TestDeclarationsOnNothing(t *testing.T) {
-	got, diags := discover.Declarations(nil)
+	got, _, diags := discover.Declarations(nil)
 	if got != nil {
 		t.Errorf("Declarations(nil) = %v, want nil", got)
 	}
@@ -252,7 +252,7 @@ func TestDeclarationsOnNothing(t *testing.T) {
 // the author gets a wrong result rather than a missing one — which is the kind
 // nobody thinks to look for.
 func TestReportsDirectivesThatLandOnNothing(t *testing.T) {
-	_, diags := discover.Declarations(loadFixture(t))
+	_, _, diags := discover.Declarations(loadFixture(t))
 
 	if diags.Empty() {
 		t.Fatal("no stray directives reported")
@@ -266,6 +266,7 @@ func TestReportsDirectivesThatLandOnNothing(t *testing.T) {
 		"above an alias":                                 "FRG3001",
 		"above a group of several declarations":          "FRG3001",
 		"separated from its declaration by a blank line": "FRG3001",
+		"naming a layer that reads no functions, on one": "FRG3001",
 		"written with a space after the marker":          "FRG3002",
 		"written as a block comment":                     "FRG3002",
 	}
@@ -291,8 +292,8 @@ func TestReportsDirectivesThatLandOnNothing(t *testing.T) {
 		}
 	}
 
-	if notAttached != 4 {
-		t.Errorf("reported %d unattached directives, want 4:\n%s", notAttached, rendered)
+	if notAttached != 5 {
+		t.Errorf("reported %d unattached directives, want 5:\n%s", notAttached, rendered)
 	}
 	if malformed != 2 {
 		t.Errorf("reported %d malformed directives, want 2:\n%s", malformed, rendered)
@@ -303,7 +304,7 @@ func TestReportsDirectivesThatLandOnNothing(t *testing.T) {
 // by the parser, and losing it would leave the declaration misconfigured with
 // nothing said.
 func TestTrailingDirectiveIsAttached(t *testing.T) {
-	candidates, diags := discover.Declarations(loadFixture(t))
+	candidates, _, diags := discover.Declarations(loadFixture(t))
 
 	trailing := find(t, candidates, "Trailing")
 	if len(trailing.Directives) != 1 {
@@ -328,7 +329,7 @@ func TestTrailingDirectiveIsAttached(t *testing.T) {
 // The fixture carries one such file, so this fails if the rule goes away rather
 // than merely passing where nothing tries it.
 func TestForgeDoesNotReadItsOwnOutput(t *testing.T) {
-	found, _ := discover.Declarations(loadFixture(t))
+	found, _, _ := discover.Declarations(loadFixture(t))
 
 	for _, one := range found {
 		if strings.HasPrefix(filepath.Base(one.Pos.Filename), "zz_forge_") {
@@ -350,7 +351,7 @@ func TestForgeDoesNotReadItsOwnOutput(t *testing.T) {
 // the deliberate half of the rule, and it is the half a reader reaching for
 // go/build's own predicate would remove.
 func TestSomebodyElsesGeneratedCodeIsStillRead(t *testing.T) {
-	found, _ := discover.Declarations(loadFixture(t))
+	found, _, _ := discover.Declarations(loadFixture(t))
 
 	if !slices.Contains(names(found), "Sessions") {
 		t.Errorf("a declaration in another generator's output was passed over; found %v", names(found))
@@ -366,10 +367,52 @@ func TestSomebodyElsesGeneratedCodeIsStillRead(t *testing.T) {
 // applying to nothing, and the only advice forge could give is to delete the
 // one thing that would have worked.
 func TestADirectiveAboveAFieldLandsOnIt(t *testing.T) {
-	_, diags := discover.Declarations(loadFixture(t))
+	_, _, diags := discover.Declarations(loadFixture(t))
 
 	rendered := diags.Render()
 	if strings.Contains(rendered, "fallback=stdlib") {
 		t.Errorf("a directive above a field was reported as landing on nothing:\n%s", rendered)
+	}
+}
+
+// A map directive on a package-level function is claimed for the stage that
+// reads hints, so a correctly written hint stops being reported as applying to
+// nothing. Only the map layer reads functions: any other layer's directive on
+// one still lands nowhere, which TestReportsDirectivesThatLandOnNothing keeps
+// counting.
+func TestAFunctionDirectiveIsClaimed(t *testing.T) {
+	_, hints, diags := discover.Declarations(loadFixture(t))
+
+	if rendered := diags.Render(); strings.Contains(rendered, "forge:map hint") {
+		t.Errorf("a map hint was reported as landing on nothing:\n%s", rendered)
+	}
+
+	var held discover.Hint
+	for _, hint := range hints {
+		if hint.Fn != nil && hint.Fn.Name.Name == "personFromUser" {
+			held = hint
+		}
+	}
+	if held.Fn == nil {
+		t.Fatalf("the hint was not returned; got %d hints", len(hints))
+	}
+
+	if held.Layer != "map" {
+		t.Errorf("the hint's layer is %q, want map", held.Layer)
+	}
+	if held.Args != "hint" {
+		t.Errorf("the hint's args are %q, want hint", held.Args)
+	}
+	if held.Form != model.FormSpec {
+		t.Errorf("the hint's form is %s, want spec", held.Form)
+	}
+	if held.Fn.Body == nil {
+		t.Error("the hint's body was stripped; its statements are the input")
+	}
+	if held.Pkg == nil {
+		t.Error("the hint carries no package")
+	}
+	if held.Pos.Line == 0 {
+		t.Error("the hint carries no position")
 	}
 }

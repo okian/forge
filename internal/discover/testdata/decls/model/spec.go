@@ -21,3 +21,13 @@ type (
 	// Undirected carries no directives at all.
 	Undirected markers.Collection[Person]
 )
+
+// User is the source a bridge reads, here so a hint has something to name.
+type User struct {
+	Name string
+}
+
+//forge:map hint
+func personFromUser(src *User, dst *Person) {
+	dst.Name = src.Name
+}

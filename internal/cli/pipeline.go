@@ -18,9 +18,10 @@ type loader interface {
 	Load(load.Config) (*load.Session, error)
 }
 
-// A discoverer finds the declarations in a session that might be requests.
+// A discoverer finds the declarations in a session that might be requests,
+// and the map hints written beside them.
 type discoverer interface {
-	Discover(*load.Session) ([]discover.Candidate, diag.Set)
+	Discover(*load.Session) ([]discover.Candidate, []discover.Hint, diag.Set)
 }
 
 // A resolver follows each candidate to the stack it names.
@@ -109,6 +110,10 @@ type request struct {
 	// type there, a model of it here.
 	Model *model.Struct
 
+	// Hints holds the hint functions matched to this declaration's source and
+	// subject, for the layer that reads them.
+	Hints []model.Hint
+
 	// Diagnostics holds what was said about this declaration in particular.
 	//
 	// Kept here as well as in the walk's own set, because a verb that answers a
@@ -191,7 +196,7 @@ func (p pipeline) follow(env *environment, cfg load.Config) (resolved, error) {
 	found := resolved{Session: session}
 	found.Diagnostics.Merge(&session.Diagnostics)
 
-	candidates, problems := p.discovering.Discover(session)
+	candidates, hints, problems := p.discovering.Discover(session)
 	found.Diagnostics.Merge(&problems)
 	found.Candidates = candidates
 	env.progress("found %d declarations", len(candidates))
@@ -209,6 +214,7 @@ func (p pipeline) follow(env *environment, cfg load.Config) (resolved, error) {
 		Docs:      session.FieldDocs(),
 		Generated: session.Generated(),
 	}, declarations)
+	matched(hints, requests, &found.Diagnostics)
 	found.Requests = requests
 	env.progress("modelled %d subjects", modelled(requests))
 
@@ -235,8 +241,8 @@ func (loading) Load(cfg load.Config) (*load.Session, error) { return load.Load(c
 // discovering is the ordinary discoverer.
 type discovering struct{}
 
-// Discover scans the session's syntax for candidates.
-func (discovering) Discover(session *load.Session) ([]discover.Candidate, diag.Set) {
+// Discover scans the session's syntax for candidates and hints.
+func (discovering) Discover(session *load.Session) ([]discover.Candidate, []discover.Hint, diag.Set) {
 	return discover.Declarations(session)
 }
 

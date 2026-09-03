@@ -1,6 +1,7 @@
 package model
 
 import (
+	"go/ast"
 	"go/token"
 	"go/types"
 	"strings"
@@ -8,6 +9,26 @@ import (
 
 	"golang.org/x/tools/go/packages"
 )
+
+// Hint is a function a //forge:map directive marks, matched to the one bridge
+// declaration whose source and subject its parameters name.
+//
+// It rides the model because the layer that reads it is handed the model and
+// nothing else. The function is carried as syntax rather than digested here:
+// its statements are the input, and what they may say is the reading layer's
+// grammar to enforce, beside the members they settle.
+type Hint struct {
+	// Fn is the function itself, body kept by the loader.
+	Fn *ast.FuncDecl
+
+	// Pkg is the package the function lives in, which is where the
+	// expressions in its body resolve.
+	Pkg *packages.Package
+
+	// Pos is the position of the function's name, which is where every
+	// diagnostic about the hint points.
+	Pos token.Position
+}
 
 // Model is one generation request: a single type declaration, resolved.
 //
@@ -40,6 +61,11 @@ type Model struct {
 	// carry a fields list that is wrong for an interface. Nil for every
 	// declaration that is not a bridge.
 	Source types.Type
+
+	// Hints holds the hint functions matched to this declaration. Empty for
+	// everything but a bridge, and for a bridge whose members all match by
+	// name.
+	Hints []Hint
 
 	// Stack holds the layers the declaration names, outermost first. Stack[0]
 	// determines the public API and the generated type's name.

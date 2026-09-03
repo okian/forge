@@ -272,3 +272,39 @@ func TestTheToolchainThatBuiltIt(t *testing.T) {
 		t.Errorf("the toolchain reports %q, want the one stamped into the binary", toolchain)
 	}
 }
+
+// Every way a map hint can be wrong, reported through the command line, and
+// the way it can be right, claimed in silence.
+func TestForgeOverEveryShapeOfHint(t *testing.T) {
+	fixture := fixtureAt(t, "cli", "hints")
+
+	got := forge("-C", fixture, "check", "./...")
+
+	if got.status != diag.ExitDiagnostics {
+		t.Errorf("exited %d, want %d:\n%s", got.status, diag.ExitDiagnostics, got.err)
+	}
+
+	// One code per way to get it wrong. The duplicate is also the proof the
+	// valid hint was claimed: a second hint is only ever second to a first.
+	cases := map[string]string{
+		"a verb the layer does not take": "FRG3025",
+		"a hint not shaped like one":     "FRG3026",
+		"a second hint for one mapping":  "FRG3028",
+		"a hint matching no declaration": "FRG3029",
+		"a hint outside the spec file":   "FRG3030",
+	}
+	for name, code := range cases {
+		if !strings.Contains(got.err, code) {
+			t.Errorf("nothing reported for %s (want %s):\n%s", name, code, got.err)
+		}
+	}
+
+	// The claimed hints are not also strays, and the one that matches is not
+	// complained about at all.
+	if strings.Contains(got.err, "FRG3001") {
+		t.Errorf("a claimed hint was reported as landing on nothing:\n%s", got.err)
+	}
+	if strings.Contains(got.err, "fromUser is") {
+		t.Errorf("the matching hint was complained about:\n%s", got.err)
+	}
+}
