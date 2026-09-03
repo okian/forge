@@ -19,22 +19,6 @@
 // rules for a word the dictionary has never heard of, which is where a domain
 // word belongs: a domain word is usually regular.
 //
-// The dictionary is committed as text, in english.txt, because a committed file
-// is source. Adding a domain word, correcting a plural, or reviewing what an
-// upstream release changed is reading and writing words — and a diff of a
-// compressed blob shows none of that, so nobody reviews it. What a lookup wants
-// instead is a compact table with an index, and [Load] builds that from the
-// text the first time something asks the dictionary a question: one string
-// holding every word end to end, and sorted offsets into it, so that a hit is a
-// binary search returning a slice and allocating nothing.
-//
-// That is where an optimisation of a committed asset belongs. It costs a fifth
-// of a millisecond, once, in a process that resolves a name the rules could not
-// — and it is cheaper than reading the compressed form was, because there is
-// nothing to decompress. The file is a fifth of what the repository would hold
-// if the singulars were written down too; they are the plurals read backwards,
-// so [Load] derives them rather than storing one fact in two places.
-//
 // This replaces an argument the collection layer used to make for itself —
 // that a table of exceptions never ends, because no dictionary knows the
 // author's domain words. That is right about a hand-written table of forty
@@ -51,7 +35,7 @@
 //
 // Nothing here is asked of the author. There is no wordlist to install, no file
 // to point at, no directive to write and no network at generation time. The
-// dictionary is embedded in the forge binary, so go install is the whole
+// dictionary is compiled into the forge binary, so go install is the whole
 // installation, and two people generating from one declaration cannot get two
 // answers.
 //

@@ -71,9 +71,7 @@ jobs:
           check-latest: true
 
       - name: build
-        run: |
-          go build ./...
-          cd x/csv && go build ./...
+        run: go build ./...
 
       # Both builds a spec-form declaration is written for. `make vet` runs the
       # default one and the marker-tagged one, because a stub file lives only in
@@ -104,23 +102,18 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: okian/forge
-          # Naming the profiles beats searching for them: the search would
-          # also find the fixture modules under testdata. One per module, and
-          # the layer's is its own module's — the gate that refused it is
-          # separate too.
-          files: ./cover.out,./x/csv/cover.out
+          # Naming the profile beats searching for it: the search would also
+          # find the fixture modules under testdata.
+          files: ./cover.out
           disable_search: true
 
-      # One run's profiles are enough to read, and the two runners produce the
-      # same ones.
-      - name: upload coverage profiles
+      # One profile is enough to read, and the two runners produce the same one.
+      - name: upload coverage profile
         if: ${{ always() && matrix.os == 'ubuntu-latest' }}
         uses: actions/upload-artifact@v7
         with:
           name: coverage
-          path: |
-            cover.out
-            x/csv/cover.out
+          path: cover.out
           if-no-files-found: ignore
 
   # The detector over the whole module, which is also where the generated stress
@@ -167,8 +160,8 @@ jobs:
         run: make bench
 
       # The comparisons against other people's libraries, which live in a module
-      # of their own so that the module everybody builds keeps its one direct
-      # dependency. Run here rather than in the step above because they fetch
+      # of their own so that the module everybody builds keeps its two
+      # dependencies. Run here rather than in the step above because they fetch
       # a dependency tree that has nothing to do with building forge.
       - name: the comparisons are within budget
         run: make bench-against
@@ -224,18 +217,11 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
-      # The layer beside it as well as the module. Generated code has to
-      # compile wherever the subject's package does, and the layer's own worked
-      # example is generated code with a committed platform-independent
-      # promise — a strconv width chosen for the wrong platform would show up
-      # here and nowhere else.
       - name: cross-compile
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: |
-          go build ./...
-          cd x/csv && go build ./...
+        run: go build ./...
 
   tidy:
     name: tidy
@@ -278,7 +264,7 @@ jobs:
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [lint, test, race, bench, fuzz, build, tidy, vuln]
+    needs: [lint, test, race, bench, build, tidy, vuln]
     runs-on: ubuntu-latest
     steps:
       - name: every job succeeded

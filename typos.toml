@@ -1,0 +1,38 @@
+# What the spell check may not "correct", because this repository writes it on
+# purpose. The entries map each word to itself, which is how typos is told a
+# word is not a mistake.
+
+[files]
+# A compressed binary asset; any word found in it is noise.
+extend-exclude = ["internal/words/english.bin"]
+
+# The exclusion again, for the file handed to typos by path: the pre-commit
+# hook names every staged file explicitly, and an excluded file named
+# explicitly is checked anyway unless its type says not to.
+[type.bin]
+extend-glob = ["*.bin"]
+check-file = false
+
+[default.extend-words]
+# compress/flate, and the writer the dictionary test builds over it.
+flate = "flate"
+# A goose genus and its irregular plural, fixtures for the dictionary
+# converter; and a doubling the converter must not invent, quoted in prose.
+anser = "anser"
+serieses = "serieses"
+openning = "openning"
+# Deliberately wrong words, quoted as the mistakes they are: the split a naive
+# scan makes of jsonValue, a pluralisation the dictionary refuses, a misspelled
+# directive a diagnostic exists to catch, and a test name whose possessive
+# dropped its apostrophe.
+alue = "alue"
+childs = "childs"
+fallbck = "fallbck"
+librarys = "librarys"
+# Truncated JSON literals, fixtures for a scanner that must refuse them.
+tru = "tru"
+fals = "fals"
+# The first three bytes of café, split from its escape in a Go string literal.
+caf = "caf"
+# A spelling this repository prefers over the checker's.
+unparseable = "unparseable"

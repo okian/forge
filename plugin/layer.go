@@ -56,21 +56,6 @@ type Assertion = layer.Assertion
 // nothing else — and the storage a refining layer needs beneath it is one of
 // forge's. [github.com/okian/forge/driver.Builtins] is where one comes from.
 //
-// Two layers may not claim one marker, and two markers of one name may not both
-// answer to the directive they share. The exception is the marker forge
-// published and did not implement: registering a layer that generates for one
-// takes it over from the placeholder, which is what a [StageStaged] marker is
-// for. Registration is refused between two layers that both generate, since
-// which of those an author meant is not a question the order of two calls
-// should answer.
-//
-// That refusal is worth knowing about if you claim one of forge's markers.
-// Registry.MustRegister panics on it, so a binary that used it and linked a
-// layer for a marker forge has since implemented itself stops at start-up
-// rather than at a call site. Registry.Register hands the same case back as an
-// error, and a main that means to survive the day forge ships that layer is
-// the one to use.
-//
 // The zero value is not one: a registry holds a map, and registering into an
 // empty struct panics. Use NewRegistry or the driver's Builtins.
 type Registry = layer.Registry
@@ -90,11 +75,6 @@ func NewRegistry() *Registry { return layer.New() }
 // [StageReady]. The others describe a marker forge publishes before its
 // generator is written, so that a declaration naming it type-checks and the
 // report can say the work is pending rather than that the author erred.
-//
-// Those markers are open to be implemented. A layer claiming one takes it over
-// from the placeholder when it registers, so a declaration written today
-// against a marker forge has only promised generates as soon as the binary
-// links a layer for it — see [Registry].
 type Stage = layer.Stage
 
 // The stages a layer may be at.

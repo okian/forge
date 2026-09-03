@@ -354,7 +354,12 @@ func summary(l layer.Layer) string {
 // from outside forge has no answer to a question about forge's roadmap and
 // answering it on their behalf would be forge inventing one.
 func unwritten(l layer.Layer) (pending, staged bool) {
-	stage := layer.StageOf(l)
+	described, ok := l.(layer.Described)
+	if !ok {
+		return false, false
+	}
+
+	stage := described.Stage()
 	return stage != layer.StageReady, stage == layer.StageStaged
 }
 

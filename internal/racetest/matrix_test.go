@@ -134,7 +134,7 @@ func concurrent(t *testing.T, registry *layer.Registry) []layer.Layer {
 
 	var out []layer.Layer
 	for _, one := range registry.All() {
-		if layer.StageOf(one) != layer.StageReady {
+		if described, ok := one.(layer.Described); ok && described.Stage() != layer.StageReady {
 			continue
 		}
 		if one.Shape(nil, shape.Shape{}).Caps.Has(shape.Concurrent) {

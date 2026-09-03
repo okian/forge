@@ -59,11 +59,10 @@ github.com/okian/forge/examples/people  IndexByHand            5  180304
 # both make the same strings, and about a sixth quicker.
 #
 # So the encoder's claim is memory and the decoder's is time, and neither is the
-# order-of-magnitude the pre-v2 generators had. Worth saying plainly, because a
-# generator that oversells itself is one nobody trusts the second time. The
-# reflective figures are held to a budget too, because a baseline that quietly
-# stopped doing the work would make the comparison meaningless while leaving
-# both lines green.
+# order-of-magnitude the pre-v2 generators had. That is the caveat prd.md §14
+# opens with, now with numbers under it. The reflective figures are held to a
+# budget too, because a baseline that quietly stopped doing the work would make
+# the comparison meaningless while leaving both lines green.
 github.com/okian/forge/examples/people  JSONEncode                0      0
 github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
@@ -166,19 +165,3 @@ github.com/okian/forge/internal/words  PluralFromTheDictionary  1    8
 github.com/okian/forge/internal/words  PluralFromTheRules       1    8
 github.com/okian/forge/internal/words  PluralOfACompoundName    2   32
 github.com/okian/forge/internal/words  SpellAMethodName         8  104
-
-# Reading the committed dictionary into the tables a lookup searches, which is
-# what keeping the file as text costs and where that cost is paid. It is one
-# decode per process, and only in a process that asks the dictionary something,
-# so this number is here to notice the day it stops being one.
-#
-# Forty-two allocations for five thousand entries. The blob is a single string
-# built into a builder sized from the file ahead of time, and what is left is
-# four slices of offsets growing — the parse walks the asset's own bytes, so no
-# line becomes a string on the way past. The draft that did that instead spent
-# five thousand more, one per entry, to build a structure holding one.
-#
-# The bytes are most of a megabyte's third and they are the tables themselves,
-# not garbage: the blob and the offsets are what the dictionary is for the life
-# of the process. A budget that fell would mean the dictionary had shrunk.
-github.com/okian/forge/internal/words  LoadTheDictionary       42  382065
