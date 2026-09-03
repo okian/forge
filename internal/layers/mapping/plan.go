@@ -2,6 +2,7 @@ package mapping
 
 import (
 	"errors"
+	"go/ast"
 	"go/types"
 	"strings"
 
@@ -29,6 +30,10 @@ type plan struct {
 	// members holds one binding per target field, in declaration order, which
 	// is the order the constructor assigns in.
 	members []binding
+
+	// srcParam and dstParam are the hint's parameter names, which its
+	// expressions are spelled against; empty when the declaration has no hint.
+	srcParam, dstParam string
 }
 
 // settled says how one target member is filled in.
@@ -42,6 +47,10 @@ const (
 
 	// settledMethod calls a source method: dst.X = src.From().
 	settledMethod
+
+	// settledHint takes the hint's assignment: the author wrote the
+	// expression, and the constructor carries it.
+	settledHint
 
 	// settledIgnored stays the zero value, on purpose: the author wrote
 	// ignore=X.
@@ -60,6 +69,14 @@ type binding struct {
 	// which the ledger says out loud: a reader comparing the two names should
 	// not have to notice the difference themselves.
 	folded bool
+
+	// hint is the assignment's right side, for settledHint, spelled against
+	// the hint's own parameter names until emission respells it.
+	hint ast.Expr
+
+	// overrode names the ladder match the hint displaced, recorded for the
+	// ledger: a reader should learn the automatic answer existed and lost.
+	overrode string
 }
 
 // planned settles every member of the declaration's target against its source,
@@ -91,10 +108,21 @@ func planned(ctx *plugin.Context) (*plan, error) {
 		ignored[name] = true
 	}
 
+	assigned, srcName, dstName, err := hinted(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out.srcParam, out.dstParam = srcName, dstName
+
+	var unsettled []plugin.Field
 	for _, field := range out.target.Fields {
-		member, err := settle(ctx, field, all, ignored)
+		member, miss, err := settle(ctx, field, all, ignored, assigned)
 		if err != nil {
 			return nil, err
+		}
+		if miss {
+			unsettled = append(unsettled, field)
+			continue
 		}
 		if member.via == settledInvalid {
 			// Every path out of settle either errors or says how the member
@@ -104,7 +132,31 @@ func planned(ctx *plugin.Context) (*plan, error) {
 		out.members = append(out.members, member)
 	}
 
+	if len(unsettled) > 0 {
+		return nil, unsettledDiag(ctx, unsettled)
+	}
+
 	return out, nil
+}
+
+// unsettledDiag reports every member nothing settles in one complaint, because
+// the author's next edit answers them together: a hint holds any number of
+// assignments, and ignore holds any number of names.
+func unsettledDiag(ctx *plugin.Context, fields []plugin.Field) error {
+	names := make([]string, len(fields))
+	for i, field := range fields {
+		names[i] = field.Name
+	}
+
+	verb := "is"
+	if len(names) > 1 {
+		verb = "are"
+	}
+
+	return plugin.New(codeUnsettled, fields[0].Pos,
+		"%s %s settled no way: nothing on %s matches them by name",
+		strings.Join(names, " and "), verb, plugin.TypeString(ctx.Model.Source)).
+		WithHint("match them by name, assign them in a //forge:map hint, or list them in ignore=")
 }
 
 // reachable refuses a target whose unexported fields the constructor could not
@@ -216,14 +268,24 @@ func match(field plugin.Field, all []candidate) (found candidate, fold, ok bool,
 	}
 }
 
-// settle decides one member: matched on the ladder, ignored on purpose, or
-// refused with the code that says which way it failed.
-func settle(ctx *plugin.Context, field plugin.Field, all []candidate, ignored map[string]bool) (binding, error) {
+// settle decides one member: matched on the ladder, taken from the hint,
+// ignored on purpose, or refused with the code that says which way it failed.
+// A member nothing settles is reported by the caller, together with the
+// others, so it comes back as a miss rather than an error.
+func settle(ctx *plugin.Context, field plugin.Field, all []candidate,
+	ignored map[string]bool, assigned map[string]ast.Expr,
+) (binding, bool, error) {
 	found, fold, ok, clash := match(field, all)
 
 	if ok && types.AssignableTo(found.typ, field.Type.Type) {
+		if expr, hinted := assigned[field.Name]; hinted {
+			// The hint outranks the ladder: the author wrote the assignment
+			// looking at the same match the ladder found, so silence about the
+			// match belongs in the ledger rather than in a refusal.
+			return binding{field: field, via: settledHint, hint: expr, overrode: found.name}, false, nil
+		}
 		if ignored[field.Name] {
-			return binding{}, plugin.New(codeIgnoreSaysNothing, ctx.Options.Pos,
+			return binding{}, false, plugin.New(codeIgnoreSaysNothing, ctx.Options.Pos,
 				"ignore names %s, which %s settles anyway", field.Name, found.name).
 				WithHint("drop %s from ignore, or rename the source member the mapping must not read", field.Name)
 		}
@@ -232,13 +294,17 @@ func settle(ctx *plugin.Context, field plugin.Field, all []candidate, ignored ma
 		if found.method {
 			via = settledMethod
 		}
-		return binding{field: field, via: via, from: found.name, folded: fold}, nil
+		return binding{field: field, via: via, from: found.name, folded: fold}, false, nil
 	}
 
-	// The ways out of every refusal below, so each is settled before it is
-	// refused: an ignore is the author saying the zero value is the mapping.
+	// The ways out of every refusal below, so each is settled before anything
+	// is refused: a hint is the author writing the member themselves, and an
+	// ignore is the author saying the zero value is the mapping.
+	if expr, hinted := assigned[field.Name]; hinted {
+		return binding{field: field, via: settledHint, hint: expr}, false, nil
+	}
 	if ignored[field.Name] {
-		return binding{field: field, via: settledIgnored}, nil
+		return binding{field: field, via: settledIgnored}, false, nil
 	}
 
 	switch {
@@ -247,21 +313,18 @@ func settle(ctx *plugin.Context, field plugin.Field, all []candidate, ignored ma
 		for i, one := range clash {
 			names[i] = one.name
 		}
-		return binding{}, plugin.New(codeAmbiguous, field.Pos,
+		return binding{}, false, plugin.New(codeAmbiguous, field.Pos,
 			"%s is claimed by %s, and the mapping cannot say which it means",
 			field.Name, strings.Join(names, " and ")).
 			WithHint("settle it with a //forge:map hint, or write ignore=%s", field.Name)
 
 	case ok:
-		return binding{}, plugin.New(codeUnassignable, field.Pos,
+		return binding{}, false, plugin.New(codeUnassignable, field.Pos,
 			"%s matches %s, and %s does not assign to %s", field.Name, found.name,
 			plugin.TypeString(found.typ), plugin.TypeString(field.Type.Type)).
 			WithHint("write a //forge:map hint that converts, or write ignore=%s", field.Name)
 
 	default:
-		return binding{}, plugin.New(codeUnsettled, field.Pos,
-			"%s is settled no way: nothing on %s matches it",
-			field.Name, plugin.TypeString(ctx.Model.Source)).
-			WithHint("add a //forge:map hint that sets it, or write ignore=%s", field.Name)
+		return binding{}, true, nil
 	}
 }
