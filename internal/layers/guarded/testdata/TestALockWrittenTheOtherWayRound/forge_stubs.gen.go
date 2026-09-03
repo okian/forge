@@ -83,6 +83,11 @@ var (
 	_ sync.Locker      = (*Persons)(nil)
 )
 
+var (
+	modelPersonJSONNameID   = jsontext.Value("\"ID\"")
+	modelPersonJSONNameName = jsontext.Value("\"Name\"")
+)
+
 func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
 
 func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }

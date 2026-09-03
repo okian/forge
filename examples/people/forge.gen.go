@@ -1763,6 +1763,15 @@ func fnvFloat(h uint64, f float64) uint64 {
 // cannot move under a library release.
 const fnvNaN uint64 = 0x7ff8000000000001
 
+// The member names this codec writes, quoted once here rather than on
+// every call. A name is the same bytes every time, and quoting it is a
+// scan the generator has already done.
+var (
+	peopleCredentialJSONNameOwner  = jsontext.Value("\"Owner\"")
+	peopleCredentialJSONNameState  = jsontext.Value("\"State\"")
+	peopleCredentialJSONNameSecret = jsontext.Value("\"Secret\"")
+)
+
 // encodePeopleCredentialJSONTo writes a Credential as JSON.
 //
 // The value's own method holds the body; this is what generated code
@@ -1781,13 +1790,13 @@ func (v Credential) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Owner")); err != nil {
+	if err := enc.WriteValue(peopleCredentialJSONNameOwner); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.Int(int64(v.Owner))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("State")); err != nil {
+	if err := enc.WriteValue(peopleCredentialJSONNameState); err != nil {
 		return err
 	}
 	{
@@ -1800,7 +1809,7 @@ func (v Credential) MarshalJSONTo(enc *jsontext.Encoder) error {
 			return err
 		}
 	}
-	if err := enc.WriteToken(jsontext.String("Secret")); err != nil {
+	if err := enc.WriteValue(peopleCredentialJSONNameSecret); err != nil {
 		return err
 	}
 	if v.Secret == nil {
@@ -1916,6 +1925,17 @@ func (v *Credential) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	return err
 }
 
+// The member names this codec writes, quoted once here rather than on
+// every call. A name is the same bytes every time, and quoting it is a
+// scan the generator has already done.
+var (
+	peoplePersonJSONNameID      = jsontext.Value("\"ID\"")
+	peoplePersonJSONNameName    = jsontext.Value("\"Name\"")
+	peoplePersonJSONNameEmail   = jsontext.Value("\"Email\"")
+	peoplePersonJSONNameAge     = jsontext.Value("\"Age\"")
+	peoplePersonJSONNameAliases = jsontext.Value("\"Aliases\"")
+)
+
 // encodePeoplePersonJSONTo writes a Person as JSON.
 //
 // The value's own method holds the body; this is what generated code
@@ -1934,31 +1954,31 @@ func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("ID")); err != nil {
+	if err := enc.WriteValue(peoplePersonJSONNameID); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.Int(int64(v.ID))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Name")); err != nil {
+	if err := enc.WriteValue(peoplePersonJSONNameName); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.String(string(v.Name))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Email")); err != nil {
+	if err := enc.WriteValue(peoplePersonJSONNameEmail); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.String(string(v.Email))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Age")); err != nil {
+	if err := enc.WriteValue(peoplePersonJSONNameAge); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.Int(int64(v.Age))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Aliases")); err != nil {
+	if err := enc.WriteValue(peoplePersonJSONNameAliases); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.BeginArray); err != nil {
@@ -2138,6 +2158,14 @@ func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	return err
 }
 
+// The member names this codec writes, quoted once here rather than on
+// every call. A name is the same bytes every time, and quoting it is a
+// scan the generator has already done.
+var (
+	peopleSecretJSONNameIssued = jsontext.Value("\"Issued\"")
+	peopleSecretJSONNameToken  = jsontext.Value("\"Token\"")
+)
+
 // encodePeopleSecretJSONTo writes a Secret as JSON.
 //
 // The value's own method holds the body; this is what generated code
@@ -2156,13 +2184,13 @@ func (v Secret) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Issued")); err != nil {
+	if err := enc.WriteValue(peopleSecretJSONNameIssued); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.String(string(v.Issued))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Token")); err != nil {
+	if err := enc.WriteValue(peopleSecretJSONNameToken); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.String(string(v.Token))); err != nil {

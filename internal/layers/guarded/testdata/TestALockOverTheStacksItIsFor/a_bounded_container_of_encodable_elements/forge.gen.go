@@ -383,6 +383,14 @@ var (
 	_ json.MarshalerTo = (*Persons)(nil)
 )
 
+// The member names this codec writes, quoted once here rather than on
+// every call. A name is the same bytes every time, and quoting it is a
+// scan the generator has already done.
+var (
+	modelPersonJSONNameID   = jsontext.Value("\"ID\"")
+	modelPersonJSONNameName = jsontext.Value("\"Name\"")
+)
+
 // encodeModelPersonJSONTo writes a Person as JSON.
 //
 // The value's own method holds the body; this is what generated code
@@ -401,13 +409,13 @@ func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if err := enc.WriteToken(jsontext.BeginObject); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("ID")); err != nil {
+	if err := enc.WriteValue(modelPersonJSONNameID); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.Int(int64(v.ID))); err != nil {
 		return err
 	}
-	if err := enc.WriteToken(jsontext.String("Name")); err != nil {
+	if err := enc.WriteValue(modelPersonJSONNameName); err != nil {
 		return err
 	}
 	if err := enc.WriteToken(jsontext.String(string(v.Name))); err != nil {

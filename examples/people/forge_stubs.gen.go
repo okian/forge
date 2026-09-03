@@ -392,6 +392,12 @@ func fnvFloat(h uint64, f float64) uint64 { panic("forge stub") }
 
 const fnvNaN uint64 = 0x7ff8000000000001
 
+var (
+	peopleCredentialJSONNameOwner  = jsontext.Value("\"Owner\"")
+	peopleCredentialJSONNameState  = jsontext.Value("\"State\"")
+	peopleCredentialJSONNameSecret = jsontext.Value("\"Secret\"")
+)
+
 func encodePeopleCredentialJSONTo(enc *jsontext.Encoder, v Credential) error { panic("forge stub") }
 
 func (v Credential) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
@@ -400,6 +406,14 @@ func decodePeopleCredentialJSONFrom(dec *jsontext.Decoder, v *Credential) error 
 
 func (v *Credential) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
 
+var (
+	peoplePersonJSONNameID      = jsontext.Value("\"ID\"")
+	peoplePersonJSONNameName    = jsontext.Value("\"Name\"")
+	peoplePersonJSONNameEmail   = jsontext.Value("\"Email\"")
+	peoplePersonJSONNameAge     = jsontext.Value("\"Age\"")
+	peoplePersonJSONNameAliases = jsontext.Value("\"Aliases\"")
+)
+
 func encodePeoplePersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
 
 func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
@@ -407,6 +421,11 @@ func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub")
 func decodePeoplePersonJSONFrom(dec *jsontext.Decoder, v *Person) error { panic("forge stub") }
 
 func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+
+var (
+	peopleSecretJSONNameIssued = jsontext.Value("\"Issued\"")
+	peopleSecretJSONNameToken  = jsontext.Value("\"Token\"")
+)
 
 func encodePeopleSecretJSONTo(enc *jsontext.Encoder, v Secret) error { panic("forge stub") }
 

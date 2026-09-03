@@ -2,6 +2,8 @@ package jsoncodec
 
 import (
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -37,11 +39,71 @@ type writer struct {
 	// names are the identifiers the bodies bind, allocated out of the way of
 	// the types they spell. See [locals].
 	names locals
+
+	// prefix is what the prepared name variables are declared under, and
+	// prepared lists the ones this codec asked for, in the order it asked. See
+	// [plain].
+	prefix   string
+	prepared []string
 }
 
 // newWriter returns a writer ready to assemble one codec.
 func newWriter(names locals) *writer {
 	return &writer{asking: make(map[*form]bool), names: names}
+}
+
+// member writes the call that puts one member's name on the wire.
+//
+// A name the encoder cannot change is written as bytes prepared once at the top
+// of the file; anything else is quoted on the spot, which is what the encoder
+// would have done anyway. See [plain] for why the line is drawn there.
+func (w *writer) member(name string) string {
+	if w.prefix == "" || !plain(name) {
+		return fmt.Sprintf("%s.WriteToken(jsontext.String(%s))", w.names.encoder, strconv.Quote(name))
+	}
+
+	held := nameVar(w.prefix, name)
+	if !slices.Contains(w.prepared, name) {
+		w.prepared = append(w.prepared, name)
+	}
+
+	return fmt.Sprintf("%s.WriteValue(%s)", w.names.encoder, held)
+}
+
+// prefacing returns the prepared-name declarations as source, for putting
+// above the bodies that use them.
+//
+// A writer of its own, because the bodies are what decide which names there
+// are: they have to be written before this can be, and printed after it.
+func (w *writer) prefacing() string {
+	if len(w.prepared) == 0 {
+		return ""
+	}
+
+	held := &writer{prefix: w.prefix, prepared: w.prepared}
+	held.preparing()
+
+	return held.String()
+}
+
+// preparing writes the declarations the prepared names live in.
+//
+// One block at the top of what this codec contributes, in the order the members
+// were written, so a reader sees them in the order the document holds them.
+func (w *writer) preparing() {
+	if len(w.prepared) == 0 {
+		return
+	}
+
+	w.line("// The member names this codec writes, quoted once here rather than on")
+	w.line("// every call. A name is the same bytes every time, and quoting it is a")
+	w.line("// scan the generator has already done.")
+	w.line("var (")
+	for _, one := range w.prepared {
+		w.line("%s = jsontext.Value(%s)", nameVar(w.prefix, one), strconv.Quote(quoted(one)))
+	}
+	w.line(")")
+	w.blank()
 }
 
 // line writes one line of the body. Indentation is left to gofmt, which the

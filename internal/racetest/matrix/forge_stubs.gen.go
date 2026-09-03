@@ -215,6 +215,11 @@ var (
 	_ sync.Locker      = (*GuardedPersonsExposeLocker)(nil)
 )
 
+var (
+	matrixPersonJSONNameID   = jsontext.Value("\"ID\"")
+	matrixPersonJSONNameName = jsontext.Value("\"Name\"")
+)
+
 func encodeMatrixPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
 
 func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }

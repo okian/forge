@@ -104,7 +104,7 @@ func (w *writer) writeMember(one member) {
 		closing++
 	}
 
-	w.line("if err := %s.WriteToken(jsontext.String(%s)); err != nil {", w.names.encoder, strconv.Quote(one.name))
+	w.line("if err := %s; err != nil {", w.member(one.name))
 	w.line("return err")
 	w.line("}")
 	w.writeValue(w.names.value+"."+one.path, &one.of, 0)
@@ -150,7 +150,7 @@ func (w *writer) buffered(one member) {
 	w.line(`case "null", "\"\"", "[]", "{}":`)
 	w.line("// Empty, so the member is not written at all.")
 	w.line("default:")
-	w.checked("%s.WriteToken(jsontext.String(%s))", w.names.encoder, strconv.Quote(one.name))
+	w.checked("%s", w.member(one.name))
 	w.checked("%s.WriteValue(buffered)", w.names.encoder)
 	w.line("}")
 	w.line("}")

@@ -168,6 +168,13 @@ func (v Code) String() string { panic("forge stub") }
 
 func (v Person) String() string { panic("forge stub") }
 
+var (
+	modelPersonJSONNameID     = jsontext.Value("\"ID\"")
+	modelPersonJSONNameName   = jsontext.Value("\"Name\"")
+	modelPersonJSONNameAge    = jsontext.Value("\"Age\"")
+	modelPersonJSONNameSecret = jsontext.Value("\"Secret\"")
+)
+
 func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
 
 func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }

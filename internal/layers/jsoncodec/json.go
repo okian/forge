@@ -289,6 +289,12 @@ func contribution(spelled string) string { return markerName + ": " + spelled }
 // codecFor builds the declarations for one type's codec.
 func codecFor(of *form) (plugin.Unit, error) {
 	w := newWriter(naming(spelled(of)...))
+
+	// What the prepared member names are declared under, which is the type this
+	// codec is for: two subjects in one package sharing a member name each get
+	// their own, and neither has to know about the other.
+	w.prefix = plugin.Camel(identifier(of.typ))
+
 	w.encoder(of)
 	w.decoder(of)
 
@@ -299,7 +305,7 @@ func codecFor(of *form) (plugin.Unit, error) {
 		return plugin.Unit{}, cannotOmit(w.refused[0])
 	}
 
-	decls, comments, fset, err := parsed(w.String(), of.spelled.Text)
+	decls, comments, fset, err := parsed(w.prefacing()+w.String(), of.spelled.Text)
 	if err != nil {
 		return plugin.Unit{}, err
 	}
