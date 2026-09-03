@@ -219,7 +219,7 @@ func (w *peopleCounting) Write(p []byte) (int, error) {
 // a newline, which is what an encoder leaves between the values of a stream.
 func (c People) WriteTo(w io.Writer) (int64, error) {
 	counted := peopleCounting{to: w}
-	enc := jsontext.NewEncoder(&counted)
+	enc := jsontext.NewEncoder(&counted, jsontext.AllowDuplicateNames(true))
 	if err := c.MarshalJSONTo(enc); err != nil {
 		return counted.n, err
 	}

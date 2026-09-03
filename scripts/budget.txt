@@ -68,7 +68,7 @@ github.com/okian/forge/examples/people  JSONEncode                0      0
 github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
 github.com/okian/forge/examples/people  JSONDecodeReflectively 2000  39920
-github.com/okian/forge/examples/people  JSONWriteTo              24   6784
+github.com/okian/forge/examples/people  JSONWriteTo              16   6544
 
 # The generated check over a value that satisfies its rules, which is the path
 # a check spends its life on: validation runs on every request and almost always

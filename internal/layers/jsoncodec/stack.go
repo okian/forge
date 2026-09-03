@@ -337,7 +337,24 @@ func (w *writer) containerWriteTo(held stack) {
 	w.line("func (%s %s) %s(w io.Writer) (int64, error) {",
 		w.names.receiver, held.receiver(), writeToMethod)
 	w.line("counted := %s{to: w}", held.counting())
-	w.line("%s := jsontext.NewEncoder(&counted)", w.names.encoder)
+
+	// Without the encoder's duplicate-name bookkeeping, which is a quarter of
+	// what writing a document costs and is checking something already known.
+	// An encoder tracks every name it writes in an object so it can refuse a
+	// repeated one, and to compare them it unquotes each one back out again.
+	// The names here are the ones this codec was generated from: a subject with
+	// two members under one JSON name is refused when the codec is written, and
+	// one whose name is decided twice — a tag against a field, an embedded
+	// member against an outer one — is settled there too, so exactly one member
+	// carries it. There is nothing left for the encoder to catch.
+	//
+	// Only where this builds the encoder. A caller who brings their own keeps
+	// whatever they set on it, which is theirs to decide.
+	//
+	// The reading half is the opposite case and keeps the check: the names in a
+	// document arrive from outside, so refusing a repeated one is the encoder
+	// protecting a caller from their input rather than from this codec.
+	w.line("%s := jsontext.NewEncoder(&counted, jsontext.AllowDuplicateNames(true))", w.names.encoder)
 	w.line("if err := %s.%s(%s); err != nil {", w.names.receiver, marshalMethod, w.names.encoder)
 	w.line("return counted.n, err")
 	w.line("}")

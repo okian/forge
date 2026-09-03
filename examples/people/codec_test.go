@@ -340,3 +340,48 @@ func TestTheCallersEncoderIsTheOneWrittenThrough(t *testing.T) {
 		t.Errorf("the caller's indentation did not reach the elements:\n%s", out.String())
 	}
 }
+
+// The encoder this writes through does not check for repeated names, and the
+// decoder does.
+//
+// The asymmetry is the point. Writing, the names are the ones the codec was
+// generated from: a subject with two members under one JSON name is refused
+// when the codec is written, so the encoder would be re-establishing something
+// already settled — and it costs about a quarter of what writing a document
+// takes, because it records every name it writes and unquotes each one back out
+// to compare. Reading, the names arrive from outside, so refusing a repeated
+// one is the decoder protecting a caller from their input rather than from this
+// codec.
+//
+// Written as one test because the two halves are one decision, and a change to
+// either that did not think about the other would pass a test that only knew
+// about its own half.
+func TestNamesAreCheckedReadingAndNotWriting(t *testing.T) {
+	held := filled(t)
+
+	// The document this writes is one the standard library reads, which is the
+	// only thing the option could have put at risk: an encoder that stopped
+	// tracking names would otherwise be free to write a document nothing else
+	// accepts.
+	var out bytes.Buffer
+	if _, err := held.WriteTo(&out); err != nil {
+		t.Fatalf("writing: %v", err)
+	}
+
+	var back []people.Person
+	if err := json.Unmarshal(out.Bytes(), &back); err != nil {
+		t.Fatalf("the standard library cannot read what WriteTo wrote: %v\n%s", err, out.String())
+	}
+	if len(back) != len(directory()) {
+		t.Errorf("the library read %d people, %d were written", len(back), len(directory()))
+	}
+
+	// And a document that repeats a name is still refused, which is the half
+	// the option must not have touched.
+	repeated := `[{"id":1,"id":2,"name":"a","email":"a@example.com","age":1}]`
+
+	into := people.NewRecent()
+	if _, err := into.ReadFrom(strings.NewReader(repeated)); err == nil {
+		t.Error("a document repeating a member name was read without complaint")
+	}
+}

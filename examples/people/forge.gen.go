@@ -451,7 +451,7 @@ func (w *recentCounting) Write(p []byte) (int, error) {
 // a newline, which is what an encoder leaves between the values of a stream.
 func (c *Recent) WriteTo(w io.Writer) (int64, error) {
 	counted := recentCounting{to: w}
-	enc := jsontext.NewEncoder(&counted)
+	enc := jsontext.NewEncoder(&counted, jsontext.AllowDuplicateNames(true))
 	if err := c.MarshalJSONTo(enc); err != nil {
 		return counted.n, err
 	}
@@ -1199,7 +1199,7 @@ func (w *credentialsCounting) Write(p []byte) (int, error) {
 // a newline, which is what an encoder leaves between the values of a stream.
 func (c Credentials) WriteTo(w io.Writer) (int64, error) {
 	counted := credentialsCounting{to: w}
-	enc := jsontext.NewEncoder(&counted)
+	enc := jsontext.NewEncoder(&counted, jsontext.AllowDuplicateNames(true))
 	if err := c.MarshalJSONTo(enc); err != nil {
 		return counted.n, err
 	}
