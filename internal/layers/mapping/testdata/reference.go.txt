@@ -1,0 +1,90 @@
+package model
+
+import "testing"
+
+// Every constructor is compared against the mapping a person would have
+// written, member for member. Not a golden file: a golden file says the output
+// has not changed, and what makes a constructor right is that it moves the
+// values a person meant to move.
+
+func byHandPerson(src *User) Person {
+	return Person{
+		ID:       src.ID,
+		Email:    src.Email,
+		Age:      src.Age,
+		FullName: src.FullName(),
+		Nickname: src.NickName(),
+	}
+}
+
+func TestPersonAgreesWithTheHandWrittenOne(t *testing.T) {
+	src := User{ID: 7, Email: "a@b", Age: 40}
+	if got, want := PersonFromUser(&src), byHandPerson(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+// reader is a Reader the test brings, since an interface holds no values of
+// its own.
+type reader struct {
+	id    int
+	label string
+}
+
+func (r reader) ID() int       { return r.id }
+func (r reader) Label() string { return r.label }
+
+func byHandCard(src Reader) Card {
+	return Card{ID: src.ID(), Label: src.Label()}
+}
+
+func TestCardAgreesWithTheHandWrittenOne(t *testing.T) {
+	src := reader{id: 3, label: "ace"}
+	if got, want := CardFromReader(src), byHandCard(src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandRenamed(src *User) Renamed {
+	return Renamed{ID: src.ID, Moniker: src.Email}
+}
+
+func TestTheHintSettlesRenamed(t *testing.T) {
+	src := User{ID: 5, Email: "m@n", Age: 1}
+	if got, want := RenamedFromUser(&src), byHandRenamed(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandConverted(src *User) Converted {
+	return Converted{Age: float64(src.Age)}
+}
+
+func TestTheHintConvertsConverted(t *testing.T) {
+	src := User{Age: 33}
+	if got, want := ConvertedFromUser(&src), byHandConverted(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandTitled(src *Entitled) Titled {
+	return Titled{ID: src.ID, title: src.Title}
+}
+
+func TestTheLocalUnexportedMemberIsMoved(t *testing.T) {
+	src := Entitled{ID: 2, Title: "dr"}
+	if got, want := TitledFromEntitled(&src), byHandTitled(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandSparse(src *Terse) Sparse {
+	return Sparse{ID: src.ID}
+}
+
+func TestTheIgnoredMemberStaysZero(t *testing.T) {
+	src := Terse{ID: 9}
+	if got, want := SparseFromTerse(&src), byHandSparse(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}

@@ -52,3 +52,41 @@ type Titled struct {
 	ID    int
 	title string
 }
+
+// Renamed is a target the ladder alone refuses: nothing on User is spelled
+// like Moniker, so a hint is the only way to settle it.
+type Renamed struct {
+	ID      int
+	Moniker string
+}
+
+// Converted is a target whose Age member needs a conversion: User's Age is an
+// int, and an int does not assign to a float64.
+type Converted struct {
+	Age float64
+}
+
+// Base carries the field Based promotes.
+type Base struct {
+	Core int
+}
+
+// Based has a promoted member: dst.Core type-checks, and Core is not a field
+// of Based itself, which is the one way a type-checked hint can assign a
+// member the target does not declare.
+type Based struct {
+	Base
+	Own int
+}
+
+// Terse offers less than Sparse asks for, which is what ignore is for.
+type Terse struct {
+	ID int
+}
+
+// Sparse has a member left unset on purpose: the declaration writes
+// ignore=Note.
+type Sparse struct {
+	ID   int
+	Note string
+}

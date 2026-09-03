@@ -2,31 +2,7 @@
 
 package model
 
-// Renamed is a target the ladder alone refuses: nothing on User is spelled
-// like Moniker, so a hint is the only way to settle it.
-type Renamed struct {
-	ID      int
-	Moniker string
-}
-
-// Converted is a target whose Age member needs a conversion: User's Age is an
-// int, and an int does not assign to a float64.
-type Converted struct {
-	Age float64
-}
-
-// Base carries the field Based promotes.
-type Base struct {
-	Core int
-}
-
-// Based has a promoted member: dst.Core type-checks, and Core is not a field
-// of Based itself, which is the one way a type-checked hint can assign a
-// member the target does not declare.
-type Based struct {
-	Base
-	Own int
-}
+import "strings"
 
 //forge:map hint
 func renamedFromUser(src *User, dst *Renamed) {
@@ -84,4 +60,12 @@ func promotes(src *User, dst *Based) {
 func twice(src *User, dst *Renamed) {
 	dst.Moniker = src.Email
 	dst.Moniker = "again"
+}
+
+// imported reaches through an import, which the constructor cannot carry: the
+// hint's file is compiled and never linked, and its imports stay with it.
+//
+//forge:map hint
+func imported(src *User, dst *Renamed) {
+	dst.Moniker = strings.ToUpper(src.Email)
 }

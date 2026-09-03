@@ -17,6 +17,7 @@ var (
 	codeAmbiguous    = plugin.Register(2036, "two source members claim one target member")
 	codeUnassignable = plugin.Register(2037, "a matched member's types do not assign")
 	codeOutOfReach   = plugin.Register(2038, "a target's unexported fields are out of reach")
+	codeUnnamedEnd   = plugin.Register(2039, "a bridge's end is not a named type")
 
 	codeIgnoreSaysNothing = plugin.Register(3031, "ignore names a member that is already settled")
 )

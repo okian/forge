@@ -62,9 +62,19 @@ func (Layer) Accepts(plugin.Shape) error { return nil }
 // nothing composes above a bridge, so nobody asks.
 func (Layer) Shape(_ *plugin.Context, below plugin.Shape) plugin.Shape { return below }
 
-// Generate returns the constructor for the declaration.
-func (Layer) Generate(*plugin.Context, plugin.Shape) (plugin.Unit, error) {
-	// Replaced when emission lands; an error rather than an empty unit, so a
-	// run that reaches it reports a failure instead of writing nothing.
-	return plugin.Unit{}, errors.New("mapping: generation is not written yet")
+// Generate returns the declared type and the constructor for the declaration.
+func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
+	if ctx == nil || ctx.Model == nil || ctx.Model.Subject == nil || ctx.Model.Source == nil {
+		// Not a diagnostic: a diagnostic points at a declaration, and the
+		// declaration is what is missing. Reaching here is forge calling
+		// itself wrongly rather than anybody writing anything.
+		return plugin.Unit{}, errors.New("mapping: asked to generate without a bridged declaration")
+	}
+
+	built, err := planned(ctx)
+	if err != nil {
+		return plugin.Unit{}, err
+	}
+
+	return written(ctx, built)
 }

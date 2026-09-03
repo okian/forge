@@ -30,7 +30,13 @@ func hinted(ctx *plugin.Context) (map[string]ast.Expr, string, string, error) {
 
 	one := ctx.Model.Hints[0]
 	src, dst := paramNames(one.Fn)
-	assigned, err := grammar(one.Fn, ctx.Model.Subject, dst, one.Pos)
+
+	var info *types.Info
+	if one.Pkg != nil {
+		info = one.Pkg.TypesInfo
+	}
+
+	assigned, err := grammar(one.Fn, ctx.Model.Subject, info, dst, one.Pos)
 	return assigned, src, dst, err
 }
 
@@ -55,7 +61,7 @@ func paramNames(fn *ast.FuncDecl) (src, dst string) {
 // one target member each. Narrow twice over — the left sides are how the layer
 // knows what the hint settles, and a later stage inlines each right side into
 // a fused writer, which only a pure expression survives.
-func grammar(fn *ast.FuncDecl, target *plugin.Struct, dst string, pos token.Position) (map[string]ast.Expr, error) {
+func grammar(fn *ast.FuncDecl, target *plugin.Struct, info *types.Info, dst string, pos token.Position) (map[string]ast.Expr, error) {
 	out := make(map[string]ast.Expr)
 
 	for _, stmt := range fn.Body.List {
@@ -85,11 +91,40 @@ func grammar(fn *ast.FuncDecl, target *plugin.Struct, dst string, pos token.Posi
 				"%s assigns %s twice", fn.Name.Name, member).
 				WithHint("one assignment per member; the last word is nobody's in a mapping")
 		}
+		if err := carried(assign.Rhs[0], info, fn, pos); err != nil {
+			return nil, err
+		}
 
 		out[member] = assign.Rhs[0]
 	}
 
 	return out, nil
+}
+
+// carried refuses an expression the constructor cannot carry: one that reaches
+// through an import. The hint's file is compiled and never linked, so its
+// imports stay with it — a qualifier copied into the generated file would have
+// no import line to bind it.
+func carried(expr ast.Expr, info *types.Info, fn *ast.FuncDecl, pos token.Position) error {
+	if info == nil {
+		return nil
+	}
+
+	var refused error
+	ast.Inspect(expr, func(node ast.Node) bool {
+		ident, ok := node.(*ast.Ident)
+		if ok && refused == nil {
+			if _, isPkg := info.Uses[ident].(*types.PkgName); isPkg {
+				refused = plugin.New(codeHintGrammar, pos,
+					"%s reaches through the import %s, which the constructor cannot carry",
+					fn.Name.Name, ident.Name).
+					WithHint("spell the value from the parameters and the language's own names")
+			}
+		}
+		return refused == nil
+	})
+
+	return refused
 }
 
 // dstField returns the member name of an assignment target shaped dst.<Member>.

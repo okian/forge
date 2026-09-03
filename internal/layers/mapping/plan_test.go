@@ -81,8 +81,14 @@ func lookup(t *testing.T, loaded *load.Session, pkgPath, name string) *types.Nam
 // ladder to settle it.
 func planFor(t *testing.T, p pair) (*plan, error) {
 	t.Helper()
+	return planned(contextFor(t, loadFixture(t), p))
+}
 
-	loaded := loadFixture(t)
+// contextFor builds the context the pipeline would hand the layer for one
+// pair.
+func contextFor(t *testing.T, loaded *load.Session, p pair) *plugin.Context {
+	t.Helper()
+
 	source := lookup(t, loaded, p.pkg, p.source)
 	target := lookup(t, loaded, p.pkg, p.target)
 
@@ -115,9 +121,9 @@ func planFor(t *testing.T, p pair) (*plan, error) {
 		hints = append(hints, hintNamed(t, loaded, p.pkg, p.hint))
 	}
 
-	return planned(&plugin.Context{
+	return &plugin.Context{
 		Model: &plugin.Model{
-			Name:    p.target + "From" + p.source,
+			Name:    p.target + "Mapping",
 			Form:    plugin.FormSpec,
 			Subject: built,
 			Source:  source,
@@ -126,7 +132,7 @@ func planFor(t *testing.T, p pair) (*plan, error) {
 			Hints:   hints,
 		},
 		Options: options,
-	})
+	}
 }
 
 // hintNamed builds the model.Hint the pipeline's matcher would hand over, by
@@ -391,6 +397,10 @@ func TestWhatAHintMayNotSay(t *testing.T) {
 		"a member assigned twice": {
 			pair: pair{pkg: modelPkg, source: "User", target: "Renamed", hint: "twice"},
 			code: "FRG3033", says: "Moniker",
+		},
+		"an expression reaching through an import": {
+			pair: pair{pkg: modelPkg, source: "User", target: "Renamed", hint: "imported"},
+			code: "FRG3032", says: "strings",
 		},
 	}
 
