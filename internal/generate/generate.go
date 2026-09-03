@@ -22,6 +22,7 @@ import (
 	"github.com/okian/forge/internal/options"
 	"github.com/okian/forge/internal/scalars"
 	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/internal/shared/jsonwire"
 	"github.com/okian/forge/internal/shared/seq"
 )
 
@@ -1182,12 +1183,17 @@ func helpers(pkg string, required []model.TypeRef, requests []Request) (merge.Un
 
 // provided returns the declarations of a helper a layer required.
 //
-// One helper, because there is one: the shared view every query surface hands
-// its results to. A second would want a registry, and a registry with one entry
-// is a lookup written twice.
+// Two helpers, and a switch rather than a registry: the shared view every
+// query surface hands its results to, and the JSON wire runtime every
+// generated codec writes bytes through. A registry would be worth having at
+// the point where a helper arrives from outside this repository, and until
+// then it is a lookup written twice.
 func provided(ref model.TypeRef, pkg string) (layer.Unit, error) {
-	if ref == seq.Ref(pkg) {
+	switch ref {
+	case seq.Ref(pkg):
 		return seq.Unit(token.Position{})
+	case jsonwire.Ref(pkg):
+		return jsonwire.Unit(token.Position{})
 	}
 	return layer.Unit{}, errNoProvider
 }
