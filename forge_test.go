@@ -244,6 +244,9 @@ func TestMarkerDeclarations(t *testing.T) {
 			inst := instantiate(t, named, person)
 
 			switch want {
+			case shapeBridge:
+				// Handled above, before the single-argument instantiation.
+
 			case shapeContainer:
 				slice, ok := inst.Underlying().(*types.Slice)
 				if !ok {

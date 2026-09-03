@@ -37,6 +37,7 @@ The shape of the stack: which layers may sit where, how many of each, and whethe
 | `FRG1006` | layer cannot sit on the stack beneath it |
 | `FRG1007` | layer takes more than one type argument |
 | `FRG1008` | transport is not the outermost layer |
+| `FRG1009` | a bridge stands alone over its two types |
 | `FRG1020` | a layer appears twice in one stack |
 | `FRG1021` | an inline declaration names a layer that cannot be its underlying type |
 | `FRG1022` | an inline declaration names more than one layer |
@@ -82,6 +83,12 @@ The type a stack is specialised to, and what a layer can and cannot make of its 
 | `FRG2031` | an unexported field carries a json tag |
 | `FRG2032` | a struct has no members to write |
 | `FRG2033` | a type has no default JSON representation |
+| `FRG2034` | a bridge's source has no members to read |
+| `FRG2035` | a target member is settled no way |
+| `FRG2036` | two source members claim one target member |
+| `FRG2037` | a matched member's types do not assign |
+| `FRG2038` | a target's unexported fields are out of reach |
+| `FRG2039` | a bridge's end is not a named type |
 
 ## Directives and options — `FRG3xxx`
 
@@ -113,6 +120,14 @@ What was written on a `//forge:` directive or in a struct tag, judged against wh
 | `FRG3022` | a display tag carries an option nothing reads |
 | `FRG3023` | a method the subject earns has the name of one of its fields |
 | `FRG3024` | hash directive on a field is not one |
+| `FRG3025` | a function directive the map layer does not take |
+| `FRG3026` | a map hint is not shaped like one |
+| `FRG3028` | two hints for one mapping |
+| `FRG3029` | a map hint matches no declaration |
+| `FRG3030` | a map hint lives outside the spec file |
+| `FRG3031` | ignore names a member that is already settled |
+| `FRG3032` | a hint says more than a hint may |
+| `FRG3033` | one member assigned twice in a hint |
 
 ## Emission — `FRG4xxx`
 

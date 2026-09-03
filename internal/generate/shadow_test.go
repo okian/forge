@@ -77,6 +77,12 @@ var theBound = []bound{
 	{layer: "builder", stack: []string{"Builder"}, names: []string{"b"}},
 	{layer: "ring", stack: []string{"Ring"}, args: "cap=8", names: []string{"r"}},
 	{layer: "slice", stack: []string{"Slice"}, inline: true, names: []string{"s"}},
+
+	// The bridge's target is the subject here, so it is the type the
+	// constructor spells in its signature and its literal. dst is bound only
+	// when a hint is respelled, and this case carries none — it asserts the
+	// allocation moves the name anyway.
+	{layer: "map", stack: []string{"Map"}, names: []string{"src", "dst", "held"}},
 }
 
 // A subject named after something a layer's bodies bind still generates code
@@ -146,6 +152,13 @@ func shadowSource(of bound, named string) string {
 			fmt.Sprintf("type Held []%s\n", named)
 	}
 
+	if of.layer == "map" {
+		// The bridge reads a source, which is the author's own type exactly
+		// as the subject is.
+		held += "\n// Origin is the source the bridge reads.\n" +
+			"type Origin struct {\n\tID int\n\tName string\n}\n"
+	}
+
 	return held
 }
 
@@ -190,11 +203,23 @@ func shadowing(of bound, named string) generate.Request {
 		text += " " + of.args
 	}
 
+	// A bridge reads a source beside its subject: the same shape, so the
+	// ladder settles both members by name and the constructor is written.
+	var source types.Type
+	if of.layer == "map" {
+		origin := types.NewTypeName(token.NoPos, pkg, "Origin", nil)
+		source = types.NewNamed(origin, types.NewStruct([]*types.Var{
+			types.NewField(token.NoPos, pkg, "ID", types.Typ[types.Int], false),
+			types.NewField(token.NoPos, pkg, "Name", types.Typ[types.String], false),
+		}, nil), nil)
+	}
+
 	return generate.Request{
 		Model: &model.Model{
 			Name: "Held", Form: form, Subject: subject, Stack: stack,
-			Pkg: &packages.Package{PkgPath: local},
-			Pos: declaredAt,
+			Source: source,
+			Pkg:    &packages.Package{PkgPath: local},
+			Pos:    declaredAt,
 		},
 		Directives: []discover.Directive{{
 			Layer: of.layer, Text: text, Args: of.args,

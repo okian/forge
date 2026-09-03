@@ -67,8 +67,6 @@ func Main(catalog *Registry) {
 	// Ending the process is the whole of what this adds, and it is why the rest
 	// is in Run: a function that exits can be called from a main and tested
 	// from nowhere.
-	//
-	//nolint:revive // ending the process is what this function is for
 	os.Exit(Run(catalog, os.Args[1:], os.Stdout, os.Stderr))
 }
 

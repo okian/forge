@@ -202,6 +202,14 @@ linters:
         - name: confusing-naming
           disabled: true
 
+        # The driver's Main exists to end the process: os.Exit around Run is
+        # its whole body, and Run is where the work is tested. That one
+        # deliberate deep exit is disabled here rather than nolinted at the
+        # call, because the rule is inert on some toolchains and the directive
+        # then reads as unused, which nolintlint refuses.
+        - name: deep-exit
+          disabled: true
+
         # A switch over a closed kind is exhaustive on purpose; `exhaustive`
         # checks that it stays that way, and a default clause added only to
         # satisfy a linter would hide the next kind somebody forgets.
