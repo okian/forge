@@ -32,9 +32,12 @@ type (
 
 	// Stamped keeps its Stamp: the field carries a codec the author wrote, and
 	// what forge does with one is call it — so both sides of the comparison
-	// reach the same hand-written codec, which is the claim being made.
+	// reach the same hand-written codec, which is the claim being made. Dated
+	// keeps its Epoch for the same reason, with the codec in the one shape
+	// generated code reaches through the standard library rather than calling.
 	StampedTwin Stamped
 	WeighedTwin Weighed
+	DatedTwin   Dated
 
 	// Omitting keeps its Address and Composites: what is under test here is
 	// whether a member is written at all, and both sides reach the same codec
@@ -65,6 +68,14 @@ type NestedTwin struct {
 type EmbeddedTwin struct {
 	AddressTwin
 	Name string
+}
+
+// AskedTwin carries the option its source carries, so the comparison is
+// between what forge does with ",embed" and what the standard library does
+// with it rather than between the option and Go's anonymity.
+type AskedTwin struct {
+	AddressTwin `json:",embed"`
+	Name        string
 }
 
 type RenamedTwin struct {
@@ -161,6 +172,15 @@ func TestEmbedded(t *testing.T) {
 	}
 }
 
+// TestAsked holds the written option to the same output the implied one gets.
+// Promotion is what embed means, so the members come out where the embedded
+// field is and not inside an object of their own.
+func TestAsked(t *testing.T) {
+	for _, held := range []Asked{{}, {Address: Address{City: "Lima", Post: "15074"}, Name: "n"}} {
+		agree(t, held, AskedTwin{AddressTwin: AddressTwin(held.Address), Name: held.Name})
+	}
+}
+
 func TestRenamed(t *testing.T) {
 	for _, held := range []Renamed{{}, {Address: Address{City: "Lisbon"}, Name: "n"}} {
 		agree(t, held, RenamedTwin{AddressTwin: AddressTwin(held.Address), Name: held.Name})
@@ -193,6 +213,46 @@ func TestStamped(t *testing.T) {
 
 	for _, held := range []Stamped{{}, {At: Stamp{Seconds: -1}, Also: &also, Name: "n"}} {
 		agree(t, held, StampedTwin(held))
+	}
+}
+
+// A codec that speaks the streaming interface is reached through the standard
+// library from forge's side and from reflection's, so both arrive at the same
+// hand-written methods by different roads.
+func TestDated(t *testing.T) {
+	for _, held := range []Dated{{}, {At: Epoch{S: -3}, Name: "n"}} {
+		agree(t, held, DatedTwin(held))
+	}
+
+	var forged Dated
+	var reflected DatedTwin
+	readAlike(t, `{"At":9,"Name":"x"}`, &forged, &reflected)
+	readAlike(t, `{"At":"nine"}`, &forged, &reflected)
+}
+
+// A borrowed read fills the same value the copying read fills; what differs is
+// only whose bytes the strings are, and this document outlives the value.
+func TestBorrowedReadsWhatCopyingReads(t *testing.T) {
+	doc := []byte(`{"At":5,"Also":7,"Name":"n"}`)
+
+	var copied, borrowed Stamped
+	if err := copied.UnmarshalJSON(doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := borrowed.UnmarshalJSONBorrowed(doc); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := json.Marshal(copied, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := json.Marshal(borrowed, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Errorf("the copying read holds %s and the borrowing one %s", first, second)
 	}
 }
 
@@ -294,11 +354,16 @@ func TestOmitting(t *testing.T) {
 			ZeroSlices: [2][]int{{1}, nil},
 			ZeroBehind: Behind{Address: &Address{City: "Suva"}, Name: "b"},
 			EmptyBehind: Behind{Name: "e"},
+			BothList: []int{1}, BothText: "b",
 		},
 		// Every one of them empty in the JSON sense but not obviously so in Go:
 		// an allocated slice and map are not nil, and a pointer to a zero value
 		// is not a nil pointer.
 		{List: []int{}, Lookup: map[string]int{}, Blob: []byte{}, ZeroList: []int{}, ZeroPtr: &Address{}},
+		// An allocated empty slice under both options. omitzero says it is not
+		// the zero value and omitempty says it is empty on the wire, so the
+		// disjunction leaves it out and taking only the first would write it.
+		{BothList: []int{}},
 	} {
 		agree(t, held, OmittingTwin(held))
 	}

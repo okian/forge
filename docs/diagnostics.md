@@ -79,6 +79,9 @@ The type a stack is specialised to, and what a layer can and cannot make of its 
 | `FRG2028` | a closed set was asked for and no constants are declared of the type |
 | `FRG2029` | a closed set was asked for over a type another package declares |
 | `FRG2030` | two members of a closed set are called the same thing |
+| `FRG2031` | an unexported field carries a json tag |
+| `FRG2032` | a struct has no members to write |
+| `FRG2033` | a type has no default JSON representation |
 
 ## Directives and options — `FRG3xxx`
 

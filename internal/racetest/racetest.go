@@ -453,9 +453,8 @@ func reading(w *strings.Builder, of Asked) {
 
 	if of.Encodes != "" {
 		w.WriteString("\n")
-		w.WriteString("\t\t\t\tvar out bytes.Buffer\n")
-		w.WriteString("\t\t\t\tif err := " + valueName + "." + of.Encodes +
-			"(jsontext.NewEncoder(&out)); err != nil {\n")
+		w.WriteString("\t\t\t\tif _, err := " + valueName + "." + of.Encodes +
+			"(); err != nil {\n")
 		w.WriteString("\t\t\t\t\tt.Errorf(\"writing the container: %v\", err)\n")
 		w.WriteString("\t\t\t\t\treturn\n")
 		w.WriteString("\t\t\t\t}\n")

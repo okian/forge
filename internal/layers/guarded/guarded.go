@@ -240,10 +240,16 @@ func (l Layer) methods(ctx *plugin.Context, below plugin.Shape) []plugin.Method 
 			how = "with the read lock held for the length of the write"
 		}
 
-		out = append(out, plugin.Method{
-			Name: marshalMethod, Signature: "(enc *jsontext.Encoder) error", Owner: l.Origin(), Pointer: true,
-			Doc: "writes the container as a JSON array, " + how,
-		})
+		out = append(out,
+			plugin.Method{
+				Name: appendMethod, Signature: "(dst []byte) ([]byte, error)", Owner: l.Origin(), Pointer: true,
+				Doc: "appends the container to dst as a JSON array, " + how,
+			},
+			plugin.Method{
+				Name: marshalMethod, Signature: "() ([]byte, error)", Owner: l.Origin(), Pointer: true,
+				Doc: "writes the container as a compact JSON array, " + how,
+			},
+		)
 	}
 
 	if locker(ctx) {

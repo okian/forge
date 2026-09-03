@@ -5,9 +5,13 @@ import (
 	"github.com/okian/forge/plugin"
 )
 
-// The method a JSON codec is entered through, which the elements have and this
-// layer writes for the container holding them.
-const marshalMethod = "MarshalJSONTo"
+// The methods a JSON codec is entered through, which the elements have and
+// this layer writes for the container holding them: the appender that is the
+// implementation, and the marshaller the standard library dispatches to.
+const (
+	appendMethod  = "AppendJSON"
+	marshalMethod = "MarshalJSON"
+)
 
 // viewName returns what a scope over this declaration hands over.
 func viewName(ctx *plugin.Context) string {

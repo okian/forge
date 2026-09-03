@@ -47,7 +47,7 @@ var catalog = map[string]entry{
 	"Json": {
 		kind: model.KindElement, stage: layer.StageReady,
 		requires: []shape.Cap{shape.Structured}, adds: []shape.Cap{shape.Encodable},
-		writes: []string{"MarshalJSONTo", "UnmarshalJSONFrom"},
+		writes: []string{"AppendJSON", "MarshalJSON", "UnmarshalJSON", "UnmarshalJSONBorrowed"},
 	},
 	"Validate": {
 		kind: model.KindElement, stage: layer.StageReady,

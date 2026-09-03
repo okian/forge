@@ -98,6 +98,16 @@ type Renamed struct {
 	Name    string
 }
 
+// Asked promotes a struct's members by writing the option rather than by
+// relying on Go's anonymity to imply it. The two mean the same thing and the
+// standard library treats them the same way, which is worth a fixture of its
+// own: the option is refused when it carries a name or company, and a refusal
+// with no acceptance beside it is one mistake away from refusing everything.
+type Asked struct {
+	Address `json:",embed"`
+	Name    string
+}
+
 // Behind embeds through a pointer, whose members are written only when it is
 // there and which is allocated when one arrives.
 type Behind struct {
@@ -133,25 +143,32 @@ type Stamp struct {
 	Seconds int64
 }
 
-// MarshalJSONTo writes the stamp as the number of seconds.
-func (s Stamp) MarshalJSONTo(enc *jsontext.Encoder) error {
-	return enc.WriteToken(jsontext.Int(s.Seconds))
+// AppendJSON writes the stamp as the number of seconds.
+func (s Stamp) AppendJSON(dst []byte) ([]byte, error) {
+	return strconv.AppendInt(dst, s.Seconds, 10), nil
 }
 
-// UnmarshalJSONFrom reads a number of seconds back.
-func (s *Stamp) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	token, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
+// MarshalJSON writes the same number, for the reader that asks by that name.
+func (s Stamp) MarshalJSON() ([]byte, error) {
+	return s.AppendJSON(nil)
+}
 
-	held, err := token.Int()
+// UnmarshalJSON reads a number of seconds back.
+func (s *Stamp) UnmarshalJSON(data []byte) error {
+	held, err := strconv.ParseInt(string(data), 10, 64)
 	if err != nil {
 		return err
 	}
 
 	s.Seconds = held
 	return nil
+}
+
+// UnmarshalJSONBorrowed reads the same number; a stamp keeps no bytes, so the
+// borrowing half and the copying one are the same read. Declaring it is what
+// makes a reader that was offered a borrow pass the offer along.
+func (s *Stamp) UnmarshalJSONBorrowed(data []byte) error {
+	return s.UnmarshalJSON(data)
 }
 
 // Stamped holds a field whose type brought its own codec.
@@ -171,19 +188,19 @@ type Weight struct {
 	Grams int64
 }
 
-// MarshalJSONTo writes the weight in grams.
-func (w *Weight) MarshalJSONTo(enc *jsontext.Encoder) error {
-	return enc.WriteToken(jsontext.Int(w.Grams))
+// AppendJSON writes the weight in grams.
+func (w *Weight) AppendJSON(dst []byte) ([]byte, error) {
+	return strconv.AppendInt(dst, w.Grams, 10), nil
 }
 
-// UnmarshalJSONFrom reads a weight in grams.
-func (w *Weight) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	token, err := dec.ReadToken()
-	if err != nil {
-		return err
-	}
+// MarshalJSON writes the same number, for the reader that asks by that name.
+func (w *Weight) MarshalJSON() ([]byte, error) {
+	return w.AppendJSON(nil)
+}
 
-	held, err := token.Int()
+// UnmarshalJSON reads a weight in grams.
+func (w *Weight) UnmarshalJSON(data []byte) error {
+	held, err := strconv.ParseInt(string(data), 10, 64)
 	if err != nil {
 		return err
 	}
@@ -195,6 +212,46 @@ func (w *Weight) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 // Weighed holds one by value.
 type Weighed struct {
 	Mass Weight
+	Name string
+}
+
+// Epoch carries the streaming codec of encoding/json/v2 and nothing else,
+// which is the one shape of hand-written codec generated code cannot call: the
+// methods want an encoder, and generated output carries none. What forge does
+// with one is reach it through the standard library, which knows how.
+type Epoch struct {
+	S int64
+}
+
+// MarshalJSONTo writes the epoch as its seconds.
+func (e Epoch) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return enc.WriteToken(jsontext.Int(e.S))
+}
+
+// UnmarshalJSONFrom reads the seconds back, refusing anything that is not a
+// number: the accessor panics on the wrong kind, so the kind is checked the
+// way any hand-written codec has to check it.
+func (e *Epoch) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	token, err := dec.ReadToken()
+	if err != nil {
+		return err
+	}
+	if token.Kind() != '0' {
+		return errors.New("an epoch is a number of seconds")
+	}
+
+	held, err := token.Int()
+	if err != nil {
+		return err
+	}
+
+	e.S = held
+	return nil
+}
+
+// Dated holds one, so the boundary is a member of an ordinary subject.
+type Dated struct {
+	At   Epoch
 	Name string
 }
 
@@ -451,6 +508,14 @@ type Omitting struct {
 	ZeroSlices  [2][]int `json:"zslices,omitzero"`
 	ZeroBehind  Behind   `json:"zbehind,omitzero"`
 	EmptyBehind Behind   `json:"ebehind,omitempty"`
+
+	// Both options on one member. The two are not alternatives: the standard
+	// library asks omitzero before the value is written and omitempty after,
+	// so a member carrying both is left out when either says to leave it out.
+	// They agree about a nil slice and disagree about an allocated empty one,
+	// which is the value that tells which of the two readings a codec took.
+	BothList []int  `json:"blist,omitzero,omitempty"`
+	BothText string `json:"btext,omitzero,omitempty"`
 }
 
 // Pointed holds a pointer to every shape whose read binds a temporary.

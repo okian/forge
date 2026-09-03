@@ -26,7 +26,7 @@
       "step": 2,
       "name": "Json",
       "kind": "element",
-      "effect": "streaming codec over the subject's own fields, and over the container holding them",
+      "effect": "append-based codec over the subject's own fields, and over the container holding them",
       "adds": [
         "Encodable"
       ],

@@ -152,12 +152,12 @@ func TestTheContainersCodec(t *testing.T) {
 	with.Caps = with.Caps.With(plugin.Encodable)
 
 	above := guarded.New().Shape(asked("Persons"), with)
-	if _, has := above.Method("MarshalJSONTo"); !has {
+	if _, has := above.Method("MarshalJSON"); !has {
 		t.Errorf("elements that can be encoded got no codec for the container, only %v", above.Names())
 	}
 
 	without := guarded.New().Shape(asked("Persons"), walking("Person"))
-	if _, has := without.Method("MarshalJSONTo"); has {
+	if _, has := without.Method("MarshalJSON"); has {
 		t.Error("elements that cannot be encoded were given a codec for the container")
 	}
 }

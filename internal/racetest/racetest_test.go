@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/goldentest"
-	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/racetest"
 )
 
@@ -22,11 +21,7 @@ func asked() racetest.Asked {
 		Walk:      "All",
 		Append:    "AppendSeq",
 		Reads:     []string{"Len", "Snapshot"},
-		Encodes:   "MarshalJSONTo",
-		Imports: []model.Import{
-			{Path: "bytes", Name: "bytes"},
-			{Path: "encoding/json/jsontext", Name: "jsontext"},
-		},
+		Encodes:   "MarshalJSON",
 	}
 }
 
@@ -93,7 +88,6 @@ func TestWhatTheHarnessWrites(t *testing.T) {
 const container = `package model
 
 import (
-	"encoding/json/jsontext"
 	"iter"
 	"slices"
 )
@@ -120,8 +114,8 @@ func (p *Persons) RDo(f func(v PersonsView)) { f(PersonsView{held: &p.held}) }
 func (p *Persons) Len() int         { return len(p.held) }
 func (p *Persons) Snapshot() []Person { return slices.Clone(p.held) }
 
-// MarshalJSONTo writes the container as a JSON array.
-func (p *Persons) MarshalJSONTo(enc *jsontext.Encoder) error { return nil }
+// MarshalJSON writes the container as a JSON array.
+func (p *Persons) MarshalJSON() ([]byte, error) { return []byte("[]"), nil }
 
 // PersonsView is what a scope hands over.
 type PersonsView struct {

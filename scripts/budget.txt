@@ -46,28 +46,50 @@ github.com/okian/forge/examples/people  IndexByHand            5  180304
 
 # The generated JSON codec over a thousand elements, and the reflective encoder
 # over the same elements beside it. Every one of these is warmed before it is
-# measured: an encoder grows its buffer once to fit the largest document it has
-# written, and a figure that included that growth would report it divided by
-# however many iterations the run happened to do.
+# measured: a buffer grows once to fit the largest document it has written, and
+# a figure that included that growth would report it divided by however many
+# iterations the run happened to do.
 #
-# What the pairs say, measured rather than assumed, is that the win is not where
-# the project first expected it. Writing costs nothing at all — no allocation
-# for a thousand elements, against two for the reflective path — and takes about
-# a quarter longer, because encoding/json/v2 writes a struct straight into its
-# buffer while a generated codec goes through the token API a caller could have
-# used themselves. Reading is the other way round: the same allocations, since
-# both make the same strings, and about a sixth quicker.
+# The codec appends bytes and scans them rather than driving the standard
+# library's token machinery, and the pairs say what that buys. Writing a
+# thousand elements allocates nothing and takes about a quarter of the
+# reflective time. Reading allocates what the strings cost — the same two
+# thousand the reflective path makes — in well under half its time; the
+# borrowing reader makes none of them and is faster again, which is what
+# pointing into the document instead of copying out of it is for. WriteTo
+# flushes a borrowed window and hands back a count with no allocation at all.
 #
-# So the encoder's claim is memory and the decoder's is time, and neither is the
-# order-of-magnitude the pre-v2 generators had. That is the caveat prd.md §14
-# opens with, now with numbers under it. The reflective figures are held to a
-# budget too, because a baseline that quietly stopped doing the work would make
-# the comparison meaningless while leaving both lines green.
+# The reflective figures are held to a budget too, because a baseline that
+# quietly stopped doing the work would make the comparison meaningless while
+# leaving both lines green.
 github.com/okian/forge/examples/people  JSONEncode                0      0
 github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
+github.com/okian/forge/examples/people  JSONDecodeBorrowed        0      0
 github.com/okian/forge/examples/people  JSONDecodeReflectively 2000  39920
-github.com/okian/forge/examples/people  JSONWriteTo              24   6784
+github.com/okian/forge/examples/people  JSONWriteTo               0      0
+
+# The wire runtime's own pieces, each against the standard library function it
+# replaces in generated output. None of them may allocate: they are the floor
+# every generated codec stands on.
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/short-plain/ours       0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/short-plain/jsontext   0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/short-escaped/ours     0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/short-escaped/jsontext 0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/long-plain/ours        0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/long-plain/jsontext    0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/long-escaped/ours      0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/long-escaped/jsontext  0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/multibyte/ours         0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/multibyte/jsontext     0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/fixed/ours              0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/fixed/jsontext          0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/exponent/ours           0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/exponent/jsontext       0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/long/ours               0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/long/jsontext           0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  ScanString/plain                    0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  ScanString/escaped                  0  0
 
 # The generated check over a value that satisfies its rules, which is the path
 # a check spends its life on: validation runs on every request and almost always

@@ -33,6 +33,10 @@ type writer struct {
 	// through pointers — a pointer is zero when it is nil, which is asked
 	// without looking inside — so it has nothing to reach itself through.
 	asking map[*form]bool
+
+	// marks counts the members written and retracted so far, so that two of
+	// them in one function do not bind one variable.
+	marks int
 }
 
 // newWriter returns a writer ready to assemble one codec.
@@ -52,18 +56,6 @@ func (w *writer) line(format string, args ...any) {
 
 // blank separates two declarations.
 func (w *writer) blank() { w.out.WriteByte('\n') }
-
-// checked writes a call whose error stops the function.
-//
-// Every write and every read is one of these, which is what makes the generated
-// code's error handling uniform: the first failure is returned and nothing after
-// it is attempted, because a JSON stream that has gone wrong cannot be written
-// further into.
-func (w *writer) checked(format string, args ...any) {
-	w.line("if err := "+format+"; err != nil {", args...)
-	w.line("return err")
-	w.line("}")
-}
 
 // String returns the assembled source.
 func (w *writer) String() string { return w.out.String() }

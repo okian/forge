@@ -38,16 +38,16 @@ func TestAFieldWhoseTypeThisRunGivesATextCodec(t *testing.T) {
 	if !strings.Contains(held, "held.MarshalText()") {
 		t.Errorf("the field was not written through its text codec:\n%s", held)
 	}
-	if !strings.Contains(held, "jsontext.String(string(text))") {
+	if !strings.Contains(held, "jsonAppendString(dst, string(text))") {
 		t.Errorf("the text was not written as a JSON string:\n%s", held)
 	}
-	if !strings.Contains(held, "UnmarshalText([]byte(raw.String()))") {
+	if !strings.Contains(held, "UnmarshalText(jsonName(b, lo, hi, esc, &scratch))") {
 		t.Errorf("the field is not read back through its text codec:\n%s", held)
 	}
 
 	// And the number it is underneath is not what goes out, which is the whole
 	// of what was wrong before this was asked.
-	if strings.Contains(held, "jsontext.Uint(uint64(v.Count))") {
+	if strings.Contains(held, "strconv.AppendUint(dst, uint64(v.Count), 10)") {
 		t.Errorf("the field is still written as the number behind it:\n%s", held)
 	}
 }
@@ -67,7 +67,7 @@ func TestOneHalfOfATextCodecIsNotOne(t *testing.T) {
 		if strings.Contains(held, "MarshalText") || strings.Contains(held, "UnmarshalText") {
 			t.Errorf("a type declaring only %v was written through it:\n%s", half, held)
 		}
-		if !strings.Contains(held, "jsontext.Uint(uint64(v.Count))") {
+		if !strings.Contains(held, "strconv.AppendUint(dst, uint64(v.Count), 10)") {
 			t.Errorf("a type declaring only %v was not written as its own form:\n%s", half, held)
 		}
 	}
@@ -121,7 +121,7 @@ func TestATextCodecIsCalledTheSameWayWhoeverWroteIt(t *testing.T) {
 	author := authored(t, "Coloured")
 	run := texting(t, "Named", "Counter", marshalText, unmarshalText)
 
-	for _, want := range []string{"held := v.", "text, err := held.MarshalText()"} {
+	for _, want := range []string{"held := v.", "text, failed := held.MarshalText()"} {
 		if !strings.Contains(author, want) {
 			t.Errorf("the author's codec does not carry %q:\n%s", want, author)
 		}

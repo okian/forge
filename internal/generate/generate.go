@@ -427,7 +427,11 @@ func sharing(path string, required []model.TypeRef, about map[string]layer.Unit,
 
 	made := make(map[string]claimable)
 
-	held := merge.Units(append(contributed(about), asUnit(built))...)
+	// Joined rather than flattened into one unit, because the helpers were
+	// parsed under file sets of their own: a comment is found by its position,
+	// and a position read against somebody else's file set lands a sentence in
+	// the middle of a stranger's function.
+	held := merge.Join(merge.Units(contributed(about)...), built)
 	if held.Empty() {
 		return merge.Unit{}, made, false
 	}
@@ -594,33 +598,6 @@ func contributed(about map[string]layer.Unit) []layer.Unit {
 	for _, what := range slices.Sorted(maps.Keys(about)) {
 		out = append(out, about[what])
 	}
-	return out
-}
-
-// asUnit puts a merged unit back into the shape a merge takes, so that what was
-// gathered from the layers and what this build wrote can be merged together.
-func asUnit(held merge.Unit) layer.Unit {
-	var out layer.Unit
-	for _, section := range held.Sections {
-		out.Decls = append(out.Decls, section.Decls...)
-		out.Comments = append(out.Comments, section.Comments...)
-
-		// One file set between them. Every section here came from one merge,
-		// and a unit carries a single set — so sections built from different
-		// ones cannot be flattened, which is what the check below refuses to do
-		// silently.
-		if out.Fset != nil && section.Fset != nil && out.Fset != section.Fset {
-			continue
-		}
-		if section.Fset != nil {
-			out.Fset = section.Fset
-		}
-	}
-
-	out.Imports = held.Imports
-	out.Assertions = held.Assertions
-	out.Requires = held.Requires
-
 	return out
 }
 
@@ -1260,7 +1237,11 @@ func renderStubs(pkg string, at token.Position, sections []emit.Section, imports
 		},
 	}
 
-	return file.Render()
+	out, err := file.Render()
+	if err != nil {
+		return nil, err
+	}
+	return spaced(out), nil
 }
 
 // tagged returns the build constraint a package's generated file carries.

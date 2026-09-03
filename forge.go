@@ -1,9 +1,10 @@
 package forge
 
-// Json generates a streaming, reflection-free JSON codec for the subject,
+// Json generates an append-based, reflection-free JSON codec for the subject,
 // driven by its json tags with encoding/json/v2 semantics. The subject gains
-// MarshalJSONTo and UnmarshalJSONFrom; a container above it encodes the whole
-// stack in a single pass, allocating nothing beyond the encoder's own buffer.
+// AppendJSON, MarshalJSON, UnmarshalJSON and UnmarshalJSONBorrowed; a container
+// above it carries the whole stack in a single pass, allocating nothing beyond
+// the growth of the caller's buffer.
 //
 // Fields whose type cannot be resolved statically — interfaces, any, and
 // unresolvable cycles — are reported as errors rather than quietly costing a

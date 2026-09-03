@@ -144,9 +144,7 @@ func (s *Persons) Reset() { *s = (*s)[:0] }
 // first tries, so a stack that stops satisfying one of these fails here
 // rather than at somebody's call site. And a reader who is not going to read
 // forty methods can see what they add up to.
-var (
-	_ sort.Interface = *new(Persons)
-)
+var _ sort.Interface = *new(Persons)
 
 // And the walk's own signature, checked without calling it.
 //

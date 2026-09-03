@@ -23,7 +23,7 @@ const contractHint = "this is a fault in the layer beneath rather than in the de
 	"report it with the declaration that produced it"
 
 // The methods of the streaming contract this layer writes a container's codec
-// over, and the two it adds beside the codec's own pair.
+// over, and the two it adds beside the codec's own entry points.
 //
 // Named here rather than at each use, because they are one contract: a layer
 // that renames its walk stops being something a codec can be written over, and
@@ -71,13 +71,10 @@ type stack struct {
 	elem     string
 	imports  []plugin.Import
 
-	// encodes and decodes are the calls that write and read one element, each
-	// with one verb left for the value's own name. A subject whose codec this
-	// layer writes is reached through the function beside it; one that declares
-	// a codec of its own is reached through its own method, which is what makes
-	// a hand-written codec authoritative here as well as inside a struct.
-	encodes string
-	decodes string
+	// subject is how one element is written and read: by the functions this
+	// layer also writes where the subject is a struct, and through the codec
+	// the subject declares for itself where it brought one.
+	subject *form
 
 	// pointer records that the walk is reached through a pointer, which is what
 	// decides the receiver the writing half takes. It follows the walk rather
@@ -127,12 +124,24 @@ func (s stack) binding() string {
 	return ""
 }
 
-// counting names the writer that counts what this container's WriteTo wrote.
+// reading names the function both reading entry points share, which holds the
+// body they differ from each other by one flag over.
 //
 // Named after the declaration and unexported, like every other helper a
-// declaration brings with it: it is plumbing for one type's method rather than
-// something a caller reaches.
-func (s stack) counting() string { return plugin.Around(false, "", s.declared, "counting") }
+// declaration brings with it: it is plumbing for one type's methods rather
+// than something a caller reaches.
+func (s stack) reading() string { return plugin.Around(false, "", s.declared, "read", "JSON") }
+
+// unconstructed is the sentence a bounded container that was never constructed
+// refuses every document with.
+func (s stack) unconstructed() string {
+	return s.declared + " holds nothing until it is constructed, so nothing can be read into it"
+}
+
+// stopped is the sentence a container that stopped taking elements leaves.
+func (s stack) stopped() string {
+	return s.declared + " stopped taking elements before the JSON array ended"
+}
 
 // streaming works out what codec the stack the declaration composed to can
 // carry.
@@ -147,17 +156,12 @@ func (s stack) counting() string { return plugin.Around(false, "", s.declared, "
 // for — a lock hands out no sequence, so nothing may be written that walks one
 // — and the decorator owns whatever replaces it.
 func streaming(ctx *plugin.Context, of *form) (stack, error) {
-	out := stack{declared: ctx.Declared(), elem: of.spelled.Text, imports: of.spelled.Imports}
+	out := stack{declared: ctx.Declared(), elem: of.spelled.Text, imports: of.spelled.Imports, subject: of}
 
 	switch of.how {
-	case writtenStruct:
-		out.encodes = encoderFor(of.typ) + "(" + encoderVar + ", %s)"
-		out.decodes = decoderFor(of.typ) + "(" + decoderVar + ", &%s)"
-
-	case writtenDelegate:
-		out.encodes = "%s." + marshalMethod + "(" + encoderVar + ")"
-		out.decodes = "%s." + unmarshalMethod + "(" + decoderVar + ")"
-
+	case writtenStruct, writtenDelegate:
+		// Either the codec this layer writes or the one the subject declared:
+		// both are reachable from a container's methods.
 	default:
 		// The subject is a struct — the layer refuses a stack that is not
 		// structured — so it is written as one or delegated to. Anything else
@@ -261,60 +265,56 @@ func notTheContract(ctx *plugin.Context, one plugin.Method, want string) error {
 // one JSON array.
 func (w *writer) container(held stack) {
 	if held.writes {
+		w.containerAppend(held)
 		w.containerMarshal(held)
-		w.containerCounter(held)
 		w.containerWriteTo(held)
 	}
 	if held.reads {
+		w.containerReading(held)
 		w.containerUnmarshal(held)
 		w.containerReadFrom(held)
 	}
 }
 
-// containerMarshal writes the method that puts a container on the wire.
-func (w *writer) containerMarshal(held stack) {
-	w.line("// %s writes the container as a JSON array.", marshalMethod)
+// containerAppend writes the method that puts a container on the wire, which
+// everything else in its writing half reaches.
+func (w *writer) containerAppend(held stack) {
+	w.line("// %s appends the container to dst as a JSON array, and returns the", appendJSONMethod)
+	w.line("// extended buffer.")
 	w.line("//")
-	w.line("// One pass over the elements and straight into the encoder. No part of the")
+	w.line("// One pass over the elements and straight into the buffer. No part of the")
 	w.line("// document is assembled anywhere else first, so what it costs to write a")
 	w.line("// container is what it costs to write its elements and nothing besides.")
-	w.line("func (%s %s) %s(%s *jsontext.Encoder) error {",
-		receiverVar, held.receiver(), marshalMethod, encoderVar)
-	w.checked("%s.WriteToken(jsontext.BeginArray)", encoderVar)
+	w.line("func (%s %s) %s(%s []byte) ([]byte, error) {",
+		receiverVar, held.receiver(), appendJSONMethod, bufVar)
+	if held.subject.how == writtenStruct || held.subject.writes == appendJSONMethod {
+		w.line("var err error")
+	}
+	w.line("mark := len(%s)", bufVar)
 	w.line("for %s := range %s.%s() {", valueVar, receiverVar, walkMethod)
-	w.checked(held.encodes, valueVar)
+	w.line("%s = append(%s, ',')", bufVar, bufVar)
+	w.appendValue(valueVar, held.subject, 0)
 	w.line("}")
-	w.line("return %s.WriteToken(jsontext.EndArray)", encoderVar)
+	w.line("if len(%s) == mark {", bufVar)
+	w.line("return append(%s, '[', ']'), nil", bufVar)
+	w.line("}")
+	w.line("%s[mark] = '['", bufVar)
+	w.line("return append(%s, ']'), nil", bufVar)
 	w.line("}")
 	w.blank()
 }
 
-// containerCounter writes the writer that counts what reached the caller's.
-//
-// The encoder buffers, so what it has been given and what has reached the
-// writer are two numbers, and io.WriterTo is a contract about the second: a
-// write that fails part way through has to report what got out rather than what
-// was composed. The encoder offers only the first, so the second is counted
-// here.
-func (w *writer) containerCounter(held stack) {
-	name := held.counting()
-
-	w.line("// %s counts the bytes a writer accepted.", name)
+// containerMarshal writes the method the standard library dispatches to.
+func (w *writer) containerMarshal(held stack) {
+	w.line("// %s writes the container as a compact JSON array.", marshalMethod)
 	w.line("//")
-	w.line("// The encoder buffers, so what it has written and what the writer beneath it")
-	w.line("// has taken are two numbers. This is the second, which is the one a caller")
-	w.line("// copying from the container is entitled to.")
-	w.line("type %s struct {", name)
-	w.line("to io.Writer")
-	w.line("n  int64")
-	w.line("}")
-	w.blank()
-
-	w.line("// Write passes the bytes on and counts the ones that were taken.")
-	w.line("func (w *%s) Write(p []byte) (int, error) {", name)
-	w.line("n, err := w.to.Write(p)")
-	w.line("w.n += int64(n)")
-	w.line("return n, err")
+	w.line("// The document is assembled in a borrowed buffer and copied out, so the")
+	w.line("// cost over %s is one exactly-sized allocation — the slice being", appendJSONMethod)
+	w.line("// returned.")
+	w.line("func (%s %s) %s() ([]byte, error) {", receiverVar, held.receiver(), marshalMethod)
+	w.line("scratch := jsonTakeScratch()")
+	w.line("held, err := %s.%s((*scratch)[:0])", receiverVar, appendJSONMethod)
+	w.line("return jsonFinish(scratch, held, err)")
 	w.line("}")
 	w.blank()
 }
@@ -324,25 +324,97 @@ func (w *writer) containerWriteTo(held stack) {
 	w.line("// %s writes the container to w as a JSON array, and reports how many bytes", writeToMethod)
 	w.line("// reached w.")
 	w.line("//")
-	w.line("// Straight to w rather than into a buffer this then copies, so a container of")
-	w.line("// any size costs the encoder's own buffer and no more. The document ends with")
-	w.line("// a newline, which is what an encoder leaves between the values of a stream.")
+	w.line("// The document is assembled in a borrowed window and handed over a flush at")
+	w.line("// a time, so a container of any size costs one window and no more. What is")
+	w.line("// reported is what w accepted rather than what was composed, which is the")
+	w.line("// count a caller copying from the container is entitled to. The document")
+	w.line("// ends with a newline, which is what a writer of a stream of them leaves")
+	w.line("// between two.")
 	w.line("func (%s %s) %s(w io.Writer) (int64, error) {",
 		receiverVar, held.receiver(), writeToMethod)
-	w.line("counted := %s{to: w}", held.counting())
-	w.line("%s := jsontext.NewEncoder(&counted)", encoderVar)
-	w.line("if err := %s.%s(%s); err != nil {", receiverVar, marshalMethod, encoderVar)
-	w.line("return counted.n, err")
+	w.line("scratch := jsonTakeScratch()")
+	w.line("%s := append((*scratch)[:0], '[')", bufVar)
+	w.line("var (")
+	w.line("counted int64")
+	w.line("failed  error")
+	w.line(")")
+	w.writeToLoop(held)
+	w.line("if failed != nil {")
+	w.line("*scratch = %s", bufVar)
+	w.line("jsonDropScratch(scratch)")
+	w.line("return counted, failed")
 	w.line("}")
-	w.line("return counted.n, nil")
+	w.line("%s = append(%s, ']', '\\n')", bufVar, bufVar)
+	w.line("n, err := w.Write(%s)", bufVar)
+	w.line("counted += int64(n)")
+	w.line("*scratch = %s", bufVar)
+	w.line("jsonDropScratch(scratch)")
+	w.line("return counted, err")
 	w.line("}")
 	w.blank()
 }
 
-// containerUnmarshal writes the method that reads a container back off the
-// wire.
-func (w *writer) containerUnmarshal(held stack) {
-	w.line("// %s reads a JSON array into the container.", unmarshalMethod)
+// writeToLoop writes the walk that fills the window and flushes it at the
+// threshold, recording rather than returning a failure: the window has to go
+// back and the count has to be reported whatever went wrong.
+func (w *writer) writeToLoop(held stack) {
+	w.line("first := true")
+	w.line("for %s := range %s.%s() {", valueVar, receiverVar, walkMethod)
+	w.line("if !first {")
+	w.line("%s = append(%s, ',')", bufVar, bufVar)
+	w.line("}")
+	w.line("first = false")
+	w.windowedElement(held)
+	w.line("if len(%s) < jsonFlushWindow {", bufVar)
+	w.line("continue")
+	w.line("}")
+	w.line("n, err := w.Write(%s)", bufVar)
+	w.line("counted += int64(n)")
+	w.line("if err != nil {")
+	w.line("failed = err")
+	w.line("break")
+	w.line("}")
+	w.line("%s = %s[:0]", bufVar, bufVar)
+	w.line("}")
+}
+
+// windowedElement writes one element into the window, recording rather than
+// returning a failure: the window has to be handed back and the count reported
+// whatever went wrong.
+func (w *writer) windowedElement(held stack) {
+	of := held.subject
+
+	switch {
+	case of.how == writtenStruct:
+		w.line("if %s, failed = %s(%s, %s); failed != nil {", bufVar, encoderFor(of.typ), bufVar, valueVar)
+		w.line("break")
+		w.line("}")
+
+	case of.writes == appendJSONMethod:
+		w.line("if %s, failed = %s.%s(%s); failed != nil {", bufVar, valueVar, appendJSONMethod, bufVar)
+		w.line("break")
+		w.line("}")
+
+	default:
+		// A subject whose codec speaks another interface is reached through
+		// the standard library, which knows how to call it and validates what
+		// it answers. Deterministically, because everything this codec writes
+		// is.
+		w.line("spliced, bad := json.Marshal(%s, json.Deterministic(true))", valueVar)
+		w.line("if bad != nil {")
+		w.line("failed = bad")
+		w.line("break")
+		w.line("}")
+		w.line("%s = append(%s, spliced...)", bufVar, bufVar)
+	}
+}
+
+// containerReading writes the function both reading entry points share.
+func (w *writer) containerReading(held stack) {
+	name := held.reading()
+
+	w.line("// %s reads a JSON array into the container, borrowing or copying as", name)
+	w.line("// the flag says.")
 	w.line("//")
 	w.line("// What the container held is dropped first, so reading into one twice leaves")
 	w.line("// the second document rather than both — which is what reading a document")
@@ -351,42 +423,154 @@ func (w *writer) containerUnmarshal(held stack) {
 	w.line("// array are read alike and both are written back as an empty array.")
 	w.line("//")
 	w.line("// The elements are handed over one at a time as they are read, so the")
-	w.line("// document is never held in memory beside the container being filled from")
-	w.line("// it.")
-	w.line("func (%s *%s) %s(%s *jsontext.Decoder) error {",
-		receiverVar, held.declared, unmarshalMethod, decoderVar)
+	w.line("// document is never assembled anywhere beside the container being filled")
+	w.line("// from it.")
+	w.line("func %s(%s *%s, data []byte, borrow bool) error {", name, receiverVar, held.declared)
 
 	w.containerRoom(held)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("i := jsonSkipSpace(data, 0)")
+	w.line("if next, ok := jsonScanNull(data, i); ok {")
+	w.line("if err := jsonAtEnd(data, next); err != nil {")
 	w.line("return err")
 	w.line("}")
 	w.line("%s.%s()", receiverVar, resetMethod)
 	w.line("return nil")
 	w.line("}")
 
-	// Checked rather than assumed, exactly as an object's reader checks for a
-	// brace: reading elements out of something that is not an array would fill
-	// the container from whatever the tokens happened to be.
-	w.line("if kind := %s.PeekKind(); kind != '[' {", decoderVar)
-	w.line("// A decoder that failed reports no kind at all, and reading is what")
-	w.line("// says why; a document of the wrong shape reads fine and is wrong.")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
+	w.line("if i >= len(data) || data[i] != '[' {")
+	w.line("return jsonCannotRead(%s, data, i)", strconv.Quote(held.declared))
 	w.line("}")
-	w.line("return fmt.Errorf(%s, kind)",
-		strconv.Quote("cannot read "+held.declared+" from a JSON %s"))
-	w.line("}")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
+	w.line("i++")
 	w.line("%s.%s()", receiverVar, resetMethod)
 	w.blank()
 
-	w.containerElements(held)
-	w.containerEnd(held)
+	w.readingElements(held)
+	w.readingEpilogue(held)
+	w.line("}")
+	w.blank()
+}
 
+// readingEpilogue writes what happens once the elements have been handed over:
+// the failures in the order worth reporting them, the container that stopped
+// early, and the check that the document was one array and nothing more.
+func (w *writer) readingEpilogue(held stack) {
+	w.containerEnd(held)
+	w.line("if !ended {")
+	w.line("next, done, err := jsonElementNext(data, i, first)")
+	w.line("if err != nil {")
+	w.line("return err")
+	w.line("}")
+	w.line("if !done {")
+	w.line("return errors.New(%s)", strconv.Quote(held.stopped()))
+	w.line("}")
+	w.line("i = next")
+	w.line("}")
+	w.line("return jsonAtEnd(data, i)")
+}
+
+// readingElements writes the sequence the elements reach the container
+// through, decoding each from the document in place.
+//
+// A sequence rather than a call per element, because a sequence is what the
+// contract's sink takes — and it is what lets the container decide how to take
+// them: a bounded one drops or refuses, and neither answer is the reader's to
+// make.
+func (w *writer) readingElements(held stack) {
+	w.line("var failed error")
+	w.line("first := true")
+	w.line("ended := false")
+	w.line("%s%s.%s(func(yield func(%s) bool) {", held.binding(), receiverVar, appendMethod, held.elem)
+	w.line("for {")
+	w.line("next, done, err := jsonElementNext(data, i, first)")
+	w.line("if err != nil {")
+	w.line("failed = err")
+	w.line("return")
+	w.line("}")
+	w.line("if done {")
+	w.line("i, ended = next, true")
+	w.line("return")
+	w.line("}")
+	w.line("first = false")
+	w.line("i = next")
+	w.line("var %s %s", valueVar, held.elem)
+	w.spannedElement(held, "data", "i", "borrow")
+	w.line("if !yield(%s) {", valueVar)
+	w.line("return")
+	w.line("}")
+	w.line("}")
+	w.line("})")
+	w.blank()
+}
+
+// spannedElement writes the statements that read one element out of data into
+// the loop's value, recording a failure rather than returning it: the sequence
+// the elements travel through answers with nothing.
+func (w *writer) spannedElement(held stack, data, at, borrow string) {
+	of := held.subject
+
+	if of.how == writtenStruct {
+		w.line("n, err := %s(%s, %s, 1, &%s, %s)", decoderFor(of.typ), data, at, valueVar, borrow)
+		w.line("if err != nil {")
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+		w.line("%s = n", at)
+		return
+	}
+
+	w.line("start := %s", at)
+	w.line("n, err := jsonSkipValue(%s, %s, 1)", data, at)
+	w.line("if err != nil {")
+	w.line("failed = err")
+	w.line("return")
+	w.line("}")
+
+	switch {
+	case of.reads != unmarshalMethod:
+		w.line("if err := json.Unmarshal(%s[start:n], &%s); err != nil {", data, valueVar)
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+
+	case of.borrows:
+		w.line("read := %s.%s", valueVar, unmarshalMethod)
+		w.line("if %s {", borrow)
+		w.line("read = %s.%s", valueVar, borrowedMethod)
+		w.line("}")
+		w.line("if err := read(%s[start:n]); err != nil {", data)
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+
+	default:
+		w.line("if err := %s.%s(%s[start:n]); err != nil {", valueVar, unmarshalMethod, data)
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+	}
+	w.line("%s = n", at)
+}
+
+// containerUnmarshal writes the two reading entry points, which differ by one
+// flag over the shared body.
+func (w *writer) containerUnmarshal(held stack) {
+	name := held.reading()
+
+	w.line("// %s reads one JSON array into the container. Everything read out", unmarshalMethod)
+	w.line("// of data is copied, so data is the caller's again the moment this returns.")
+	w.line("func (%s *%s) %s(data []byte) error {", receiverVar, held.declared, unmarshalMethod)
+	w.line("return %s(%s, data, false)", name, receiverVar)
+	w.line("}")
+	w.blank()
+
+	w.line("// %s reads one JSON array into the container, with the elements'", borrowedMethod)
+	w.line("// strings pointing into data rather than copied out of it. It is the")
+	w.line("// quickest way in and the sharpest: data must outlive the container and")
+	w.line("// must not be modified, or the elements change underneath it. Where that")
+	w.line("// cannot be promised, %s copies.", unmarshalMethod)
+	w.line("func (%s *%s) %s(data []byte) error {", receiverVar, held.declared, borrowedMethod)
+	w.line("return %s(%s, data, true)", name, receiverVar)
 	w.line("}")
 	w.blank()
 }
@@ -395,7 +579,7 @@ func (w *writer) containerUnmarshal(held stack) {
 // all, which is what keeps the document from deciding whether the program
 // stops.
 //
-// Asked before a token is read, so the answer does not depend on what arrived.
+// Asked before a byte is read, so the answer does not depend on what arrived.
 // A container that was never constructed refuses an empty document exactly as
 // it refuses a full one, which is the difference between a mistake somebody's
 // tests find and one their users do.
@@ -405,41 +589,15 @@ func (w *writer) containerRoom(held stack) {
 	}
 
 	w.line("if %s.%s() == 0 {", receiverVar, capMethod)
-	w.line("return errors.New(%s)", strconv.Quote(held.declared+
-		" holds nothing until it is constructed, so nothing can be read into it"))
+	w.line("return errors.New(%s)", strconv.Quote(held.unconstructed()))
 	w.line("}")
 }
 
-// containerElements writes the sequence the elements reach the container
-// through.
-//
-// A sequence rather than a call per element, because a sequence is what the
-// contract's sink takes — and it is what lets the container decide how to take
-// them: a bounded one drops or refuses, and neither answer is the reader's to
-// make.
-func (w *writer) containerElements(held stack) {
-	w.line("var failed error")
-	w.line("%s%s.%s(func(yield func(%s) bool) {", held.binding(), receiverVar, appendMethod, held.elem)
-	w.line("for %s.PeekKind() != ']' {", decoderVar)
-	w.line("var %s %s", valueVar, held.elem)
-	w.line("if err := "+held.decodes+"; err != nil {", valueVar)
-	w.line("failed = err")
-	w.line("return")
-	w.line("}")
-	w.line("if !yield(%s) {", valueVar)
-	w.line("return")
-	w.line("}")
-	w.line("}")
-	w.line("})")
-	w.blank()
-}
-
-// containerEnd writes what happens once the elements have been handed over: the
-// two ways it can have gone wrong, and the token that closes the array.
+// containerEnd writes the two ways handing the elements over can have gone
+// wrong: the reading failure first, because a container that refused an
+// element refused it because the element arrived, and the reason it arrived
+// wrongly is the one worth reporting.
 func (w *writer) containerEnd(held stack) {
-	// The reading failure first: a container that refused an element refused it
-	// because the element arrived, and the reason it arrived wrongly is the one
-	// worth reporting.
 	w.line("if failed != nil {")
 	w.line("return failed")
 	w.line("}")
@@ -448,18 +606,6 @@ func (w *writer) containerEnd(held stack) {
 		w.line("return refused")
 		w.line("}")
 	}
-
-	// A container that stopped taking elements without saying so leaves the
-	// document half-read and the value short of it, and neither is visible from
-	// anywhere else: the tokens left behind would be read as though they came
-	// after the array. A decoder that failed reports no kind at all, and the
-	// read below is what says why.
-	w.line("if kind := %s.PeekKind(); kind != ']' && kind != 0 {", decoderVar)
-	w.line("return errors.New(%s)",
-		strconv.Quote(held.declared+" stopped taking elements before the JSON array ended"))
-	w.line("}")
-	w.line("_, err := %s.ReadToken()", decoderVar)
-	w.line("return err")
 }
 
 // containerReadFrom writes the method that fills a container from a reader.
@@ -468,17 +614,154 @@ func (w *writer) containerReadFrom(held stack) {
 	w.line("// bytes that array took.")
 	w.line("//")
 	w.line("// One array rather than everything r holds, because a JSON document ends")
-	w.line("// where it ends. The decoder reads r in blocks, so bytes following the array")
-	w.line("// may already have been taken out of r and are dropped with it: this reads a")
-	w.line("// reader holding one document, and a stream of them is read through a decoder")
-	w.line("// that outlives each. A reader holding nothing reports io.EOF.")
+	w.line("// where it ends. The window is refilled in blocks, so bytes following the")
+	w.line("// array may already have been taken out of r and are dropped with it: this")
+	w.line("// reads a reader holding one document. What it holds at a time is bounded")
+	w.line("// by the largest single element rather than by the document, which is what")
+	w.line("// a streaming reader is for. A reader holding nothing reports io.EOF.")
 	w.line("func (%s *%s) %s(r io.Reader) (int64, error) {",
 		receiverVar, held.declared, readFromMethod)
-	w.line("%s := jsontext.NewDecoder(r)", decoderVar)
-	w.line("if err := %s.%s(%s); err != nil {", receiverVar, unmarshalMethod, decoderVar)
-	w.line("return %s.InputOffset(), err", decoderVar)
-	w.line("}")
-	w.line("return %s.InputOffset(), nil", decoderVar)
+
+	if held.bounded {
+		w.line("if %s.%s() == 0 {", receiverVar, capMethod)
+		w.line("return 0, errors.New(%s)", strconv.Quote(held.unconstructed()))
+		w.line("}")
+	}
+
+	w.readFromPrologue(held)
+	w.readFromElements(held)
+	w.readFromEpilogue(held)
 	w.line("}")
 	w.blank()
+}
+
+// readFromPrologue writes what a streaming read decides before the elements:
+// the null that means the container empties, and the wrong kind refused by
+// name.
+func (w *writer) readFromPrologue(held stack) {
+	w.line("feed := jsonNewFeed(r)")
+	w.line("defer feed.close()")
+
+	w.line("kind, err := feed.peek()")
+	w.line("if err != nil {")
+	w.line("return feed.offset(), err")
+	w.line("}")
+	w.line("if kind == 'n' {")
+	w.line("ok, err := feed.null()")
+	w.line("if err != nil {")
+	w.line("return feed.offset(), err")
+	w.line("}")
+	w.line("if ok {")
+	w.line("%s.%s()", receiverVar, resetMethod)
+	w.line("return feed.offset(), nil")
+	w.line("}")
+	w.line("}")
+	w.line("if kind != '[' {")
+	w.line("return feed.offset(), feed.cannotRead(%s)", strconv.Quote(held.declared))
+	w.line("}")
+	w.line("feed.take()")
+	w.line("%s.%s()", receiverVar, resetMethod)
+	w.blank()
+}
+
+// readFromElements writes the sequence the elements travel through, each
+// decoded from the feed's window as it completes.
+func (w *writer) readFromElements(held stack) {
+	w.line("var failed error")
+	w.line("first := true")
+	w.line("ended := false")
+	w.line("%s%s.%s(func(yield func(%s) bool) {", held.binding(), receiverVar, appendMethod, held.elem)
+	w.line("for {")
+	w.line("kind, err := feed.peek()")
+	w.line("if err != nil {")
+	w.line("failed = err")
+	w.line("return")
+	w.line("}")
+	w.line("switch {")
+	w.line("case kind == ']':")
+	w.line("feed.take()")
+	w.line("ended = true")
+	w.line("return")
+	w.line("case first:")
+	w.line("case kind != ',':")
+	w.line("failed = errJSONSyntax")
+	w.line("return")
+	w.line("default:")
+	w.line("feed.take()")
+	w.line("}")
+	w.line("first = false")
+	w.line("held, err := feed.element()")
+	w.line("if err != nil {")
+	w.line("failed = err")
+	w.line("return")
+	w.line("}")
+	w.line("var %s %s", valueVar, held.elem)
+	w.fedElement(held)
+	w.line("if !yield(%s) {", valueVar)
+	w.line("return")
+	w.line("}")
+	w.line("}")
+	w.line("})")
+	w.blank()
+}
+
+// readFromEpilogue writes what happens once the elements have been handed
+// over: the failures in the order worth reporting them, the container that
+// stopped early, and the bracket that closes the document.
+func (w *writer) readFromEpilogue(held stack) {
+	w.line("if failed != nil {")
+	w.line("return feed.offset(), failed")
+	w.line("}")
+	if held.refuses {
+		w.line("if refused != nil {")
+		w.line("return feed.offset(), refused")
+		w.line("}")
+	}
+	w.line("if !ended {")
+	w.line("kind, err := feed.peek()")
+	w.line("if err != nil {")
+	w.line("return feed.offset(), err")
+	w.line("}")
+	w.line("if kind != ']' {")
+	w.line("return feed.offset(), errors.New(%s)", strconv.Quote(held.stopped()))
+	w.line("}")
+	w.line("feed.take()")
+	w.line("}")
+	w.line("return feed.offset(), nil")
+}
+
+// fedElement writes the statements that read one element out of the feed's
+// window into the loop's value.
+//
+// Never borrowing, because the window is recycled underneath every element:
+// the bytes an element was read from are gone by the time the next one
+// arrives, which is the price of not holding the document.
+func (w *writer) fedElement(of stack) {
+	subject := of.subject
+
+	if subject.how == writtenStruct {
+		w.line("n, err := %s(held, 0, 1, &%s, false)", decoderFor(subject.typ), valueVar)
+		w.line("if err != nil {")
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+		w.line("if err := jsonAtEnd(held, n); err != nil {")
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+		return
+	}
+
+	if subject.reads != unmarshalMethod {
+		w.line("if err := json.Unmarshal(held, &%s); err != nil {", valueVar)
+		w.line("failed = err")
+		w.line("return")
+		w.line("}")
+		return
+	}
+
+	w.line("if err := %s.%s(held); err != nil {", valueVar, unmarshalMethod)
+	w.line("failed = err")
+	w.line("return")
+	w.line("}")
 }

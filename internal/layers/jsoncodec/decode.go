@@ -5,107 +5,156 @@ import (
 	"strconv"
 )
 
-// decoder writes the function that reads one type back off the wire.
+// decoder writes the functions that read one type back off the wire.
 //
-// The same arrangement as the encoder: the type carries the method where it
-// can, the function forwards to it, and generated code calls the function
-// either way. A pointer receiver, because reading writes.
+// The scanning body is always a package-level function, because it takes the
+// document, an offset, a depth and the borrow flag — none of which belongs in
+// a type's method set. Where the type can carry methods, the two the standard
+// library dispatches to and the borrowing variant beside them wrap that
+// function; a caller reads one value through whichever door fits.
 func (w *writer) decoder(of *form) {
 	name := decoderFor(of.typ)
 	spelled := of.spelled.Text
 
-	w.line("// %s reads a %s from JSON.", name, spelled)
 	if of.attach {
+		w.line("// %s reads one JSON value into the %s.", unmarshalMethod, spelled)
 		w.line("//")
-		w.line("// The value's own method holds the body; this is what generated code")
-		w.line("// calls, so that a caller names one function whether or not the type")
-		w.line("// is one a method could be declared on.")
-		w.line("func %s(%s *jsontext.Decoder, %s *%s) error {", name, decoderVar, valueVar, spelled)
-		w.line("return %s.%s(%s)", valueVar, unmarshalMethod, decoderVar)
+		w.line("// A member the document does not mention keeps the value the destination")
+		w.line("// held, and on any error the destination holds what it held before the")
+		w.line("// call. Everything read out of data is copied, so data is the caller's")
+		w.line("// again the moment this returns.")
+		w.line("func (%s *%s) %s(data []byte) error {", valueVar, spelled, unmarshalMethod)
+		w.readEntry(name, false)
 		w.line("}")
 		w.blank()
 
-		w.line("// %s reads a JSON object into the %s.", unmarshalMethod, spelled)
-		w.line("//")
-		w.line("// A member the object holds and the type does not is skipped, which is")
-		w.line("// what keeps a reader working against a writer that has since added one.")
-		w.line("func (%s *%s) %s(%s *jsontext.Decoder) error {", valueVar, spelled, unmarshalMethod, decoderVar)
-		w.readBody(of)
+		w.line("// %s fills %s with strings that point into data rather than", borrowedMethod, valueVar)
+		w.line("// copies of it. It is the quickest way in and the sharpest: data must")
+		w.line("// outlive %s and must not be modified, or %s changes underneath its", valueVar, valueVar)
+		w.line("// holder. Where that cannot be promised, %s copies.", unmarshalMethod)
+		w.line("func (%s *%s) %s(data []byte) error {", valueVar, spelled, borrowedMethod)
+		w.readEntry(name, true)
 		w.line("}")
 		w.blank()
-		return
 	}
 
-	w.line("func %s(%s *jsontext.Decoder, %s *%s) error {", name, decoderVar, valueVar, spelled)
+	w.line("// %s reads one %s from b at i, and returns where the next value", name, spelled)
+	w.line("// begins.")
+	w.line("//")
+	w.line("// The scanning half of the codec, which the entry points wrap: it holds")
+	w.line("// the document to the grammar the standard library holds it to — syntax,")
+	w.line("// UTF-8, no duplicate member names — and stops at the first thing wrong")
+	w.line("// with it. depth is how many values this one is already inside, and")
+	w.line("// borrow decides whether strings point into b or copy out of it.")
+	w.line("func %s(b []byte, i, depth int, %s *%s, borrow bool) (int, error) {", name, valueVar, spelled)
 	w.readBody(of)
 	w.line("}")
 	w.blank()
 }
 
-// readBody writes what one decoder does.
-func (w *writer) readBody(of *form) {
-	if of.how != writtenStruct {
-		w.readValue("(*"+valueVar+")", of, 0)
-		w.line("return nil")
-		return
-	}
-
-	// A JSON null is a value the reader may legally be handed, and what it means
-	// is that there is no object — so the value becomes its zero value rather
-	// than keeping what it held. It matters because a target is often read into
-	// twice: a decoder that left the old value in place would answer a null
-	// with whatever the previous document happened to say.
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
-	w.line("var zero %s", of.spelled.Text)
-	w.line("*%s = zero", valueVar)
-	w.line("return nil")
-	w.line("}")
-
-	// Checked rather than assumed. Reading a member name out of an array would
-	// otherwise produce a value assembled from whatever the tokens happened to
-	// be, and an error naming what arrived is what says where to look.
-	//
-	// A decoder that failed is the other thing a peek answers, and it answers
-	// it with no kind at all — so a document that stops halfway would be
-	// reported as an object of no kind, which says nothing about where it
-	// stopped. Reading is what has the answer, and the read is only reached
-	// when there is no object to read.
-	w.line("if kind := %s.PeekKind(); kind != '{' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
-	w.line("return fmt.Errorf(%s, kind)", strconv.Quote("cannot read "+of.spelled.Text+" from a JSON %s"))
-	w.line("}")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
-	w.line("for %s.PeekKind() != '}' {", decoderVar)
-	w.line("name, err := %s.ReadToken()", decoderVar)
+// readEntry writes the body of an entry-point method: seed from the
+// destination, scan, hold the document to being one value, and assign on
+// success.
+//
+// The local seed is what preserves merge semantics — a member the document
+// does not mention keeps the value the destination held — and it is also what
+// makes failure atomic: a document refused halfway leaves no value assembled
+// from two documents behind it.
+func (w *writer) readEntry(name string, borrow bool) {
+	w.line("held := *%s", valueVar)
+	w.line("next, err := %s(data, 0, 0, &held, %v)", name, borrow)
 	w.line("if err != nil {")
 	w.line("return err")
 	w.line("}")
-	w.line("switch name.String() {")
+	w.line("if err := jsonAtEnd(data, next); err != nil {")
+	w.line("return err")
+	w.line("}")
+	w.line("*%s = held", valueVar)
+	w.line("return nil")
+}
 
-	for _, one := range of.members {
-		w.readMember(one)
+// readBody writes what one scanning function does.
+func (w *writer) readBody(of *form) {
+	w.readPrologue(of.spelled.Text)
+
+	w.line("var names jsonNames")
+	if len(of.members) > 0 {
+		w.line("var scratch []byte")
+	}
+	w.line("for first := true; ; first = false {")
+	w.line("next, done, err := jsonMemberNext(b, i, first)")
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+	w.line("if done {")
+	w.line("return next, nil")
+	w.line("}")
+	w.line("lo, hi, at, esc, err := jsonMemberName(b, next)")
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+	w.line("i = at")
+
+	if len(of.members) == 0 {
+		w.readUnknown()
+		w.line("}")
+		return
 	}
 
+	w.line("switch string(jsonName(b, lo, hi, esc, &scratch)) {")
+	for at, one := range of.members {
+		w.readMember(one, at)
+	}
 	w.line("default:")
-	w.line("if err := %s.SkipValue(); err != nil {", decoderVar)
-	w.line("return err")
+	w.readUnknown()
 	w.line("}")
 	w.line("}")
+}
+
+// readPrologue writes what happens before an object's members: the null that
+// means there is no object, the wrong kind refused by name, and the nesting
+// bound.
+//
+// A JSON null is a value the reader may legally be handed, and what it means
+// is that there is no object — so the value becomes its zero value rather than
+// keeping what it held. It matters because a target is often read into twice:
+// a decoder that left the old value in place would answer a null with whatever
+// the previous document happened to say.
+func (w *writer) readPrologue(spelled string) {
+	w.line("i = jsonSkipSpace(b, i)")
+	w.line("if next, ok := jsonScanNull(b, i); ok {")
+	w.line("*%s = %s{}", valueVar, spelled)
+	w.line("return next, nil")
 	w.line("}")
-	w.line("_, err := %s.ReadToken()", decoderVar)
-	w.line("return err")
+
+	w.line("if i >= len(b) || b[i] != '{' {")
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(spelled))
+	w.line("}")
+	w.line("depth++")
+	w.line("if depth > jsonMaxDepth {")
+	w.line("return 0, errJSONDeep")
+	w.line("}")
+	w.line("i++")
+}
+
+// readUnknown writes what happens to a member the type does not declare: its
+// name is held against the ones already seen, and its value is stepped over at
+// full grammar.
+func (w *writer) readUnknown() {
+	w.line("if names.unknown(b, lo, hi, esc) {")
+	w.line("return 0, errJSONDuplicate")
+	w.line("}")
+	w.line("if i, err = jsonSkipValue(b, i, depth); err != nil {")
+	w.line("return 0, err")
+	w.line("}")
 }
 
 // readMember writes the case that reads one member of an object.
-func (w *writer) readMember(one member) {
+func (w *writer) readMember(one member, at int) {
 	w.line("case %s:", strconv.Quote(one.name))
+	w.line("if names.declare(%d) {", at)
+	w.line("return 0, errJSONDuplicate")
+	w.line("}")
 
 	// An embedded pointer is allocated on the way in. A member arriving for a
 	// struct that is not there is what asks for it to be there, and the
@@ -116,45 +165,274 @@ func (w *writer) readMember(one member) {
 		w.line("}")
 	}
 
-	w.readValue(valueVar+"."+one.path, &one.of, 0)
+	w.readValue(valueVar+"."+one.path, &one.of, 0, 0)
 }
 
 // readValue writes the statements that read one value into a target.
 //
 // held is an assignable expression. depth distinguishes the variables a nested
-// composite binds, so that a slice of slices does not shadow its own.
-func (w *writer) readValue(held string, of *form, depth int) {
+// composite binds, so that a slice of slices does not shadow its own; nested
+// counts the objects and arrays this function's own emission has already
+// opened, which is what keeps the depth bound honest inside one function.
+func (w *writer) readValue(held string, of *form, depth, nested int) {
 	switch of.how {
-	case writtenBool, writtenString, writtenInt, writtenUint, writtenFloat:
-		w.readScalar(held, of, accessorFor(of), kindsFor(of), of.how != writtenBool && of.how != writtenString)
+	case writtenBool:
+		w.readScalar(held, of, depth, scalarBool)
 
-	case writtenBytes, writtenFallback:
-		w.checked("json.UnmarshalDecode(%s, &%s)", decoderVar, held)
+	case writtenString:
+		w.readScalar(held, of, depth, scalarString)
 
-	case writtenDelegate:
-		w.checked("%s.%s(%s)", held, unmarshalMethod, decoderVar)
+	case writtenInt:
+		w.readScalar(held, of, depth, scalarInt)
+
+	case writtenUint:
+		w.readScalar(held, of, depth, scalarUint)
+
+	case writtenFloat:
+		w.readScalar(held, of, depth, scalarFloat)
+
+	case writtenBytes:
+		w.readBytes(held, of, depth)
+
+	case writtenDelegate, writtenFallback:
+		w.readSpan(held, of, depth, nested)
 
 	case writtenText:
-		w.readText(held, of)
+		w.readText(held, of, depth)
 
 	case writtenStruct:
-		w.checked("%s(%s, &%s)", decoderFor(of.typ), decoderVar, held)
+		w.line("if i, err = %s(b, i, depth%s, &%s, borrow); err != nil {", decoderFor(of.typ), plus(nested), held)
+		w.line("return 0, err")
+		w.line("}")
 
 	case writtenPointer:
-		w.readPointer(held, of, depth)
+		w.readPointer(held, of, depth, nested)
 
 	case writtenSlice:
-		w.readSlice(held, of, depth)
+		w.readSlice(held, of, depth, nested)
 
 	case writtenArray:
-		w.readArray(held, of, depth)
+		w.readArray(held, of, depth, nested)
 
 	case writtenMap:
-		w.readMap(held, of, depth)
+		w.readMap(held, of, depth, nested)
 
 	case writtenInvalid:
 		// Refused already; nothing is emitted for it.
 	}
+}
+
+// plus writes a static depth offset as it appears after the depth variable.
+func plus(nested int) string {
+	if nested == 0 {
+		return ""
+	}
+	return "+" + strconv.Itoa(nested)
+}
+
+// scalarKind names the five scalar reads, which share their shape and differ
+// in the scan they call and the check on the byte that opens the value.
+type scalarKind int
+
+const (
+	scalarBool scalarKind = iota
+	scalarString
+	scalarInt
+	scalarUint
+	scalarFloat
+)
+
+// opens returns the condition that the byte at i does not open a value of this
+// kind, which is what turns a wrong-kind document into an error naming both
+// sides.
+func (k scalarKind) opens() string {
+	switch k {
+	case scalarBool:
+		return "b[i] != 't' && b[i] != 'f'"
+	case scalarString:
+		return `b[i] != '"'`
+	default:
+		return "(b[i] < '0' || b[i] > '9') && b[i] != '-'"
+	}
+}
+
+// readScalar reads one scalar into a target.
+//
+// A null is not a disagreement. It sets the zero value and reads on, which is
+// what the standard library does with a null into anything that cannot itself
+// be null. Anything of the wrong kind is refused by name, and a number is held
+// to the width of what it is going into rather than truncated to it.
+func (w *writer) readScalar(held string, of *form, depth int, kind scalarKind) {
+	one := loopVar("held", depth)
+	next := loopVar("next", depth+1)
+	spelled := of.spelled.Text
+
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
+	w.line("%s = %s", held, zeroLiteral(kind))
+	w.line("i = %s", next)
+	w.line("} else if i >= len(b) || %s {", kind.opens())
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(spelled))
+	w.line("} else {")
+
+	switch kind {
+	case scalarBool:
+		w.line("%s, %s, err := jsonScanBool(b, i)", one, next)
+
+	case scalarString:
+		w.line("lo, hi, %s, esc, err := jsonScanString(b, i)", next)
+
+	case scalarInt:
+		w.line("%s, %s, err := jsonScanInt(b, i, %s)", one, next, bitsOf(of))
+
+	case scalarUint:
+		w.line("%s, %s, err := jsonScanUint(b, i, %s)", one, next, bitsOf(of))
+
+	case scalarFloat:
+		w.line("%s, %s, err := jsonScanFloat(b, i, %s)", one, next, bitsOf(of))
+	}
+
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+
+	if kind == scalarString {
+		w.line("%s = %s(jsonString(b, lo, hi, esc, borrow))", held, spelled)
+	} else {
+		w.line("%s = %s(%s)", held, spelled, one)
+	}
+	w.line("i = %s", next)
+	w.line("}")
+}
+
+// zeroLiteral is what a null assigns: the untyped literal every basic kind
+// accepts.
+func zeroLiteral(kind scalarKind) string {
+	switch kind {
+	case scalarBool:
+		return "false"
+	case scalarString:
+		return `""`
+	default:
+		return "0"
+	}
+}
+
+// bitsOf returns the width a number is held to, written as the constant the
+// generated file names.
+//
+// int, uint and uintptr take the platform's word, which strconv spells; every
+// other width is part of the type. What jsonScanInt checks against the width
+// is the value, so a document carrying 300 for an int8 is refused rather than
+// wrapped.
+func bitsOf(of *form) string {
+	basic, ok := of.typ.Underlying().(*types.Basic)
+	if !ok {
+		return "64"
+	}
+
+	switch basic.Kind() {
+	case types.Int, types.Uint, types.Uintptr:
+		return "strconv.IntSize"
+	case types.Int8, types.Uint8:
+		return "8"
+	case types.Int16, types.Uint16:
+		return "16"
+	case types.Int32, types.Uint32, types.Float32:
+		return "32"
+	default:
+		return "64"
+	}
+}
+
+// readBytes reads a base64 string into a byte slice or a byte array.
+//
+// A slice reuses the capacity the target already holds and comes back empty
+// rather than nil for an empty encoding, which is the standard library's
+// distinction between "" and null. An array takes exactly its own length and
+// refuses anything else, because the length is part of the type.
+func (w *writer) readBytes(held string, of *form, depth int) {
+	next := loopVar("next", depth+1)
+	one := loopVar("held", depth)
+	spelled := of.spelled.Text
+	_, fixed := of.typ.Underlying().(*types.Array)
+
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
+	if fixed {
+		w.line("%s = %s{}", held, spelled)
+	} else {
+		w.line("%s = nil", held)
+	}
+	w.line("i = %s", next)
+	w.line(`} else if i >= len(b) || b[i] != '"' {`)
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(spelled))
+	w.line("} else {")
+	w.line("lo, hi, %s, esc, err := jsonScanString(b, i)", next)
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+
+	if fixed {
+		w.line("%s, err := jsonScanBytes(b, lo, hi, esc, nil)", one)
+		w.line("if err != nil {")
+		w.line("return 0, err")
+		w.line("}")
+		w.line("if len(%s) != len(%s) {", one, held)
+		w.line("return 0, errors.New(%s)", strconv.Quote("base64 of the wrong length for "+spelled))
+		w.line("}")
+		w.line("copy(%s[:], %s)", held, one)
+	} else {
+		w.line("%s, err := jsonScanBytes(b, lo, hi, esc, %s[:0])", one, held)
+		w.line("if err != nil {")
+		w.line("return 0, err")
+		w.line("}")
+		w.line("if %s == nil {", one)
+		w.line("%s = %s{}", one, spelled)
+		w.line("}")
+		w.line("%s = %s", held, one)
+	}
+	w.line("i = %s", next)
+	w.line("}")
+}
+
+// readSpan reads a value whose reader is somebody else's: the span of the next
+// value is found and validated here, and its bytes are handed over whole.
+//
+// A delegate declaring the borrowing reader is offered the borrow it was
+// declared for; anything else gets the copying half, which is the contract's
+// default. A type whose reader speaks the streaming interface is reached
+// through the standard library, which knows how to call it.
+func (w *writer) readSpan(held string, of *form, depth, nested int) {
+	start := loopVar("start", depth)
+	next := loopVar("next", depth)
+
+	w.line("%s := i", start)
+	w.line("%s, err := jsonSkipValue(b, i, depth%s)", next, plus(nested))
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+
+	switch {
+	case of.how == writtenFallback || of.reads != unmarshalMethod:
+		w.line("if err := json.Unmarshal(b[%s:%s], &%s); err != nil {", start, next, held)
+		w.line("return 0, err")
+		w.line("}")
+
+	case of.borrows:
+		w.line("if borrow {")
+		w.line("if err := %s.%s(b[%s:%s]); err != nil {", held, borrowedMethod, start, next)
+		w.line("return 0, err")
+		w.line("}")
+		w.line("} else if err := %s.%s(b[%s:%s]); err != nil {", held, unmarshalMethod, start, next)
+		w.line("return 0, err")
+		w.line("}")
+
+	default:
+		w.line("if err := %s.%s(b[%s:%s]); err != nil {", held, unmarshalMethod, start, next)
+		w.line("return 0, err")
+		w.line("}")
+	}
+
+	w.line("i = %s", next)
 }
 
 // readText reads a JSON string back through the type's own text codec.
@@ -170,175 +448,40 @@ func (w *writer) readValue(held string, of *form, depth int) {
 // being read is a field of a local, and a slice's or map's element is read into
 // a local of its own before being put in place — so the reader half, which is
 // declared on the pointer, has something to take the address of.
-func (w *writer) readText(held string, of *form) {
-	w.line("{")
-	w.line("raw, err := %s.ReadToken()", decoderVar)
-	w.line("if err != nil {")
-	w.line("return err")
-	w.line("}")
-
-	w.line("switch raw.Kind() {")
-	w.line("case 'n':")
-	w.line("var zero %s", of.spelled.Text)
-	w.line("%s = zero", held)
-
-	w.line("case '\"':")
-	w.checked("%s.%s([]byte(raw.String()))", held, textUnmarshalMethod)
-
-	w.line("default:")
-	w.line("return fmt.Errorf(%s, raw.Kind())",
-		strconv.Quote("cannot read "+of.spelled.Text+" from a JSON %s"))
-	w.line("}")
-	w.line("}")
-}
-
-// accessorFor names the jsontext accessor that reads a scalar of this form, and
-// kindsFor the token kinds it accepts, written as a switch's case list.
-//
-// A float32 has an accessor of its own, because it has a shortest form of its
-// own and because that accessor is what checks a float against the range of the
-// width it is going into.
-func accessorFor(of *form) string {
-	switch of.how {
-	case writtenBool:
-		return "Bool"
-	case writtenString:
-		return "String"
-	case writtenInt:
-		return "Int"
-	case writtenUint:
-		return "Uint"
-	case writtenFloat:
-		if basic, ok := of.typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
-			return "Float32"
-		}
-		return "Float"
-	default:
-		return ""
-	}
-}
-
-func kindsFor(of *form) string {
-	switch of.how {
-	case writtenBool:
-		return "'t', 'f'"
-	case writtenString:
-		return `'"'`
-	default:
-		return "'0'"
-	}
-}
-
-// readScalar reads one token into a target, checking that the token is one the
-// target could hold.
-//
-// The kind is checked rather than assumed. jsontext's accessors are documented
-// as panicking when the token is not of the kind they read, so a decoder that
-// called one straight off would crash on JSON it merely disagreed with — and
-// what a codec is usually pointed at is JSON somebody else wrote. Reading a
-// number into a string does not even panic: it returns the number's own text
-// and stores it, which is worse, because nothing says anything at all.
-//
-// A null is not a disagreement. It sets the zero value and reads on, which is
-// what the standard library does with a null into anything that cannot itself
-// be null.
-//
-// kinds is the token kinds the target accepts, written as the case list of a
-// switch. fallible says whether the accessor can fail for a token of the right
-// kind, which the numeric ones can: a JSON number with a fraction is an error
-// rather than a truncation. What jsontext checks is the range of the type it
-// reads into — an int64, a uint64 or a float64 — so a narrower target is
-// checked again by [writer.narrowed], without which the number would arrive
-// intact and be wrapped by the conversion.
-//
-// The temporaries are named for what they are and are deliberately not named
-// for anything a target can be. A target is a field selector or one of the
-// variables a composite binds, and a temporary sharing a name with one of those
-// shadows it — which the compiler accepts when the types agree, leaving a
-// decoder that reads the value and assigns it to itself.
-func (w *writer) readScalar(held string, of *form, accessor, kinds string, fallible bool) {
-	w.line("{")
-	w.line("raw, err := %s.ReadToken()", decoderVar)
-	w.line("if err != nil {")
-	w.line("return err")
-	w.line("}")
-
-	w.line("switch raw.Kind() {")
-	w.line("case 'n':")
-	w.line("var zero %s", of.spelled.Text)
-	w.line("%s = zero", held)
-
-	w.line("case %s:", kinds)
-	if fallible {
-		w.line("number, err := raw.%s()", accessor)
-		w.line("if err != nil {")
-		w.line("return err")
-		w.line("}")
-		w.narrowed(of)
-		w.line("%s = %s(number)", held, of.spelled.Text)
-	} else {
-		w.line("%s = %s(raw.%s())", held, of.spelled.Text, accessor)
-	}
-
-	w.line("default:")
-	w.line("return fmt.Errorf(%s, raw.Kind())",
-		strconv.Quote("cannot read "+of.spelled.Text+" from a JSON %s"))
-	w.line("}")
-	w.line("}")
-}
-
-// narrowed refuses a number the target cannot hold.
-//
-// jsontext reads an integer as an int64 or a uint64 and checks it against that,
-// so a value out of range for an int8 arrives intact and is wrapped by the
-// conversion — a document silently becoming a different number. Every width
-// narrower than what was read needs its own check, and int, uint and uintptr
-// need one on every platform, because their width is the platform's.
-//
-// Written as a conversion and back rather than as a pair of bounds, so that the
-// check is the same sentence for every width and names no constant that could be
-// the wrong one.
-//
-// Floats are not here. A float32 is read by the accessor for its own width,
-// which checks its own range — and narrowing a float loses precision by design,
-// so a conversion and back would refuse every value that is merely inexact.
-func (w *writer) narrowed(of *form) {
-	basic, ok := of.typ.Underlying().(*types.Basic)
-	if !ok {
-		return
-	}
-
+func (w *writer) readText(held string, of *form, depth int) {
+	next := loopVar("next", depth+1)
+	zero := loopVar("zero", depth)
 	spelled := of.spelled.Text
 
-	switch basic.Kind() {
-	case types.Int, types.Int8, types.Int16, types.Int32:
-		w.line("if int64(%s(number)) != number {", spelled)
-		w.line("return fmt.Errorf(%s, number)", strconv.Quote("%d is out of range for "+spelled))
-		w.line("}")
-
-	case types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uintptr:
-		w.line("if uint64(%s(number)) != number {", spelled)
-		w.line("return fmt.Errorf(%s, number)", strconv.Quote("%d is out of range for "+spelled))
-		w.line("}")
-
-	default:
-		// As wide as what was read, or not a number at all: nothing can be lost
-		// on the way in, so there is nothing to check.
-	}
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
+	w.line("var %s %s", zero, spelled)
+	w.line("%s = %s", held, zero)
+	w.line("i = %s", next)
+	w.line(`} else if i >= len(b) || b[i] != '"' {`)
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(spelled))
+	w.line("} else {")
+	w.line("lo, hi, %s, esc, err := jsonScanString(b, i)", next)
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+	w.line("if err := %s.%s(jsonName(b, lo, hi, esc, &scratch)); err != nil {", held, textUnmarshalMethod)
+	w.line("return 0, err")
+	w.line("}")
+	w.line("i = %s", next)
+	w.line("}")
 }
 
 // readPointer allocates for a value and leaves nil for a null.
-func (w *writer) readPointer(held string, of *form, depth int) {
+func (w *writer) readPointer(held string, of *form, depth, nested int) {
 	one := loopVar("held", depth)
+	next := loopVar("next", depth+1)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
 	w.line("%s = nil", held)
+	w.line("i = %s", next)
 	w.line("} else {")
 	w.line("var %s %s", one, of.elem.spelled.Text)
-	w.readValue(one, of.elem, depth+1)
+	w.readValue(one, of.elem, depth+1, nested)
 	w.line("%s = &%s", held, one)
 	w.line("}")
 }
@@ -355,24 +498,34 @@ func (w *writer) readPointer(held string, of *form, depth int) {
 // takes an allocation the reuse would otherwise have saved — because reslicing
 // a nil slice to nothing leaves it nil, and writing that back out again would
 // turn every [] a reader saw into a null.
-func (w *writer) readSlice(held string, of *form, depth int) {
+func (w *writer) readSlice(held string, of *form, depth, nested int) {
 	out := loopVar("out", depth)
 	one := loopVar("one", depth)
+	next := loopVar("next", depth+1)
+	first := loopVar("first", depth)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
 	w.line("%s = nil", held)
+	w.line("i = %s", next)
+	w.line("} else if i >= len(b) || b[i] != '[' {")
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(of.spelled.Text))
 	w.line("} else {")
-	w.openArray()
+	w.openArray(nested)
 	w.line("%s := %s[:0]", out, held)
-	w.line("for %s.PeekKind() != ']' {", decoderVar)
+	w.line("for %s := true; ; %s = false {", first, first)
+	w.line("%s, done, err := jsonElementNext(b, i, %s)", next, first)
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+	w.line("if done {")
+	w.line("i = %s", next)
+	w.line("break")
+	w.line("}")
+	w.line("i = %s", next)
 	w.line("var %s %s", one, of.elem.spelled.Text)
-	w.readValue(one, of.elem, depth+1)
+	w.readValue(one, of.elem, depth+1, nested+1)
 	w.line("%s = append(%s, %s)", out, out, one)
 	w.line("}")
-	w.closeToken()
 	w.line("if %s == nil {", out)
 	w.line("%s = %s{}", out, of.spelled.Text)
 	w.line("}")
@@ -390,75 +543,98 @@ func (w *writer) readSlice(held string, of *form, depth int) {
 //
 // A null is not a short array. It zeroes the whole of it, which is what a null
 // does everywhere else.
-func (w *writer) readArray(held string, of *form, depth int) {
+func (w *writer) readArray(held string, of *form, depth, nested int) {
 	index := loopVar("at", depth)
 	one := loopVar("one", depth)
+	next := loopVar("next", depth+1)
+	first := loopVar("first", depth)
 	spelled := of.spelled.Text
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
-	w.line("var zero %s", spelled)
-	w.line("%s = zero", held)
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
+	w.line("%s = %s{}", held, spelled)
+	w.line("i = %s", next)
+	w.line("} else if i >= len(b) || b[i] != '[' {")
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(spelled))
 	w.line("} else {")
-
-	w.openArray()
+	w.openArray(nested)
 	w.line("%s := 0", index)
-	w.line("for %s.PeekKind() != ']' {", decoderVar)
-	w.line("if %s >= len(%s) {", index, held)
-	w.line("return fmt.Errorf(%s)", strconv.Quote("too many array elements for "+spelled))
+	w.line("for %s := true; ; %s = false {", first, first)
+	w.line("%s, done, err := jsonElementNext(b, i, %s)", next, first)
+	w.line("if err != nil {")
+	w.line("return 0, err")
 	w.line("}")
+	w.line("if done {")
+	w.line("i = %s", next)
+	w.line("break")
+	w.line("}")
+	w.line("if %s >= len(%s) {", index, held)
+	w.line("return 0, errors.New(%s)", strconv.Quote("too many array elements for "+spelled))
+	w.line("}")
+	w.line("i = %s", next)
 	w.line("var %s %s", one, of.elem.spelled.Text)
-	w.readValue(one, of.elem, depth+1)
+	w.readValue(one, of.elem, depth+1, nested+1)
 	w.line("%s[%s] = %s", held, index, one)
 	w.line("%s++", index)
 	w.line("}")
 	w.line("if %s < len(%s) {", index, held)
-	w.line("return fmt.Errorf(%s)", strconv.Quote("too few array elements for "+spelled))
+	w.line("return 0, errors.New(%s)", strconv.Quote("too few array elements for "+spelled))
 	w.line("}")
-	w.closeToken()
 	w.line("}")
 }
 
 // readMap reads a JSON object into a map.
-func (w *writer) readMap(held string, of *form, depth int) {
+//
+// Its member names are held to the same no-duplicates rule as a struct's,
+// because the standard library holds them to it: a document writing one key
+// twice is describing two values for one place.
+func (w *writer) readMap(held string, of *form, depth, nested int) {
 	built := loopVar("into", depth)
+	names := loopVar("names", depth)
 	key := loopVar("key", depth)
 	value := loopVar("value", depth)
+	next := loopVar("next", depth+1)
+	first := loopVar("first", depth)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
+	w.line("if %s, ok := jsonScanNull(b, i); ok {", next)
 	w.line("%s = nil", held)
+	w.line("i = %s", next)
+	w.line("} else if i >= len(b) || b[i] != '{' {")
+	w.line("return 0, jsonCannotRead(%s, b, i)", strconv.Quote(of.spelled.Text))
 	w.line("} else {")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
+	w.openArray(nested)
 	w.line("%s := make(%s)", built, of.spelled.Text)
-	w.line("for %s.PeekKind() != '}' {", decoderVar)
-	w.line("var %s %s", key, of.key.spelled.Text)
-	w.readValue(key, of.key, depth+1)
+	w.line("var %s jsonNames", names)
+	w.line("for %s := true; ; %s = false {", first, first)
+	w.line("%s, done, err := jsonMemberNext(b, i, %s)", next, first)
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+	w.line("if done {")
+	w.line("i = %s", next)
+	w.line("break")
+	w.line("}")
+	w.line("lo, hi, at, esc, err := jsonMemberName(b, %s)", next)
+	w.line("if err != nil {")
+	w.line("return 0, err")
+	w.line("}")
+	w.line("if %s.unknown(b, lo, hi, esc) {", names)
+	w.line("return 0, errJSONDuplicate")
+	w.line("}")
+	w.line("i = at")
+	w.line("%s := %s(jsonString(b, lo, hi, esc, borrow))", key, of.key.spelled.Text)
 	w.line("var %s %s", value, of.elem.spelled.Text)
-	w.readValue(value, of.elem, depth+1)
+	w.readValue(value, of.elem, depth+1, nested+1)
 	w.line("%s[%s] = %s", built, key, value)
 	w.line("}")
-	w.closeToken()
 	w.line("%s = %s", held, built)
 	w.line("}")
 }
 
-// openArray reads the token that opens a JSON array, and closeToken the one
-// that closes whatever was opened.
-func (w *writer) openArray() {
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
+// openArray steps over the byte that opens a composite and holds the document
+// to the nesting bound, which one more level has just been added to.
+func (w *writer) openArray(nested int) {
+	w.line("if depth%s > jsonMaxDepth {", plus(nested+1))
+	w.line("return 0, errJSONDeep")
 	w.line("}")
-}
-
-func (w *writer) closeToken() {
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
-	w.line("return err")
-	w.line("}")
+	w.line("i++")
 }

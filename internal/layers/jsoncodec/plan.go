@@ -23,6 +23,11 @@ var (
 	codeNameCollides = plugin.Register(2009, "two fields claim one name on the wire")
 	codeCannotOmit   = plugin.Register(2010, "a member cannot be tested for the value it would be omitted at")
 	codeHalfCodec    = plugin.Register(2011, "a type declares one half of a codec")
+
+	// Three the standard library refuses and this layer used to let past.
+	codeTaggedUnexported = plugin.Register(2031, "an unexported field carries a json tag")
+	codeNoMembers        = plugin.Register(2032, "a struct has no members to write")
+	codeNoRepresentation = plugin.Register(2033, "a type has no default JSON representation")
 )
 
 // halfHint says what to do about a type carrying one half of a codec.
@@ -120,6 +125,20 @@ type form struct {
 	// what a plan is for: which half a type has is a question about the type,
 	// and the writer's business is turning an answer into lines.
 	text string
+
+	// writes and reads name the methods a delegate is written and read
+	// through, and borrows records that it offers the borrowing reader as
+	// well. Set only where [form.how] is [writtenDelegate].
+	//
+	// AppendJSON and UnmarshalJSON are called straight. Either name from the
+	// streaming pair means the call goes through the standard library instead,
+	// because calling those needs an encoder generated output does not carry —
+	// and MarshalJSON goes the same way, since the library validates what the
+	// method answers and this codec's own output must stay valid whatever an
+	// author's method returns.
+	writes  string
+	reads   string
+	borrows bool
 
 	// whole records that the members are the whole struct: nothing was left off
 	// the wire, so what the members say about the value is what the value is.
@@ -332,8 +351,10 @@ func (p *planner) owned(out *form, where blamed) bool {
 		return false
 	}
 
-	if p.declaresCodec(out.typ) {
+	if writes, reads := p.codecHalves(out.typ); writes != "" && reads != "" {
 		out.how = writtenDelegate
+		out.writes, out.reads = writes, reads
+		out.borrows = p.declares(out.typ, borrowedMethod)
 		return true
 	}
 
@@ -368,8 +389,53 @@ func (p *planner) owned(out *form, where blamed) bool {
 	return false
 }
 
+// isDuration reports whether a type is time.Duration itself.
+//
+// Not whether it is an int64, and not whether it is named over one: a duration
+// is one type, and the standard library recognises it by identity for the same
+// reason this does — a count of nanoseconds is what a duration holds and not
+// what every int64 means.
+func isDuration(t types.Type) bool {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj != nil && obj.Name() == "Duration" &&
+		obj.Pkg() != nil && obj.Pkg().Path() == "time"
+}
+
+// named returns what a complaint about a type should call it: the field's name
+// where the type was reached through one, and the type's own where the subject
+// itself is what is wrong.
+func named(where blamed, out *form) string {
+	if where.name != "" {
+		return where.name
+	}
+	return out.spelled.Text
+}
+
 // fill decides one form, having already recorded it.
 func (p *planner) fill(out *form, where blamed) {
+	// A duration is asked about before anything else, because the standard
+	// library asks about it before anything else: time.Duration outranks every
+	// method a type could carry, and it has no default representation at all.
+	// encoding/json/v2 refuses rather than choose between a count of
+	// nanoseconds and a string like "1h30m", and this layer wrote the count —
+	// which is what v1 wrote, so a document written here and read by anything
+	// current disagrees about what the number meant.
+	//
+	// By identity rather than by underlying kind: every int64 is not a
+	// duration.
+	if isDuration(out.typ) {
+		p.diags.Add(plugin.New(codeNoRepresentation, where.pos,
+			"%s is a time.Duration, which has no one JSON form", named(where, out)).
+			WithHint("say which form the document carries: format:units for \"1h30m\", " +
+				"or format:sec, format:milli, format:micro or format:nano for a number"))
+		out.how = writtenInvalid
+		return
+	}
+
 	if p.owned(out, where) {
 		return
 	}
@@ -473,6 +539,37 @@ func (p *planner) fillStruct(out *form, where blamed) {
 	out.whole = !p.dropped
 
 	p.dropped, p.filling = outer, chain
+
+	// A struct with fields and nothing to write is refused rather than written
+	// as an empty object, which is what the standard library does and for the
+	// reason that matters here: {} read back into the same type gives the same
+	// value, so a codec that wrote it would satisfy every round trip while
+	// carrying none of the value. Nothing that tests a codec against itself
+	// could ever see it.
+	//
+	// A struct with no fields at all is a different thing and is written: {} is
+	// what it holds rather than what was lost. A field carrying a json tag is
+	// one the author meant something by, so a struct with one of those has its
+	// own complaint made elsewhere and is not made to answer this one.
+	if len(out.members) == 0 && len(held.Fields) > 0 && !anyTagged(held) {
+		p.diags.Add(plugin.New(codeNoMembers, where.pos,
+			"%s has no members to write", named(where, out)).
+			WithHint("export a field, or give one a json tag, so that there is " +
+				"something for the document to carry"))
+		out.how = writtenInvalid
+	}
+}
+
+// anyTagged reports whether any of a struct's fields carries a json tag, which
+// is what the standard library takes as the author having meant something by a
+// struct that otherwise has nothing to write.
+func anyTagged(held *plugin.Struct) bool {
+	for _, field := range held.Fields {
+		if _, ok := field.Tag(jsonKey); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // fillMap decides a map, which JSON can carry only when its keys are strings.
@@ -561,6 +658,135 @@ const (
 	optionFormat    = "format"
 	optionCase      = "case"
 )
+
+// knownOptions are the options a json tag may carry, which is the set a
+// misspelling is recognised against.
+var knownOptions = []string{
+	optionCase, optionEmbed, optionFormat,
+	optionOmitEmpty, optionOmitZero, optionString,
+}
+
+// normalizedOption is the standard library's comparison for an option that
+// might be a known one written some other way: lowercased, with underscores
+// dropped.
+func normalizedOption(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, "_", ""))
+}
+
+// misspelledOption reports an option that is a known one in every respect
+// except how it is written.
+//
+// An option nobody recognises at all is left alone, because the standard
+// library leaves it alone: a tag may carry a word this grammar has no meaning
+// for and still be a tag. What it may not carry is omitEmpty, because a reader
+// seeing that word expects the member to be left out and both this codec and
+// the standard library would write it.
+func (p *planner) misspelledOption(field plugin.Field) (plugin.Diagnostic, bool) {
+	tag, ok := field.Tag(jsonKey)
+	if !ok {
+		return plugin.Diagnostic{}, false
+	}
+
+	for _, option := range tag.Options {
+		if option.Name == "" {
+			continue
+		}
+		normalized := normalizedOption(option.Name)
+		for _, known := range knownOptions {
+			if option.Name == known || normalized != known {
+				continue
+			}
+			return plugin.New(codeTagOption, field.Pos,
+				"%s is written with %q, which is %q spelled another way",
+				field.Name, option.Name, known).
+				WithHint("the standard library reads this option only as %q; "+
+					"write it that way, or remove it", known), true
+		}
+	}
+
+	return plugin.Diagnostic{}, false
+}
+
+// repeatedOption reports an option written more than once.
+//
+// Which occurrence a lookup returns is a lookup's question and internal/tags
+// answers it by taking the first, because that is the only answer a lookup can
+// give. Whether the tag was allowed to say it twice is a different question and
+// this is where it is asked: a tag carrying two values for one option describes
+// two wire formats, and choosing between them is not a generator's to make
+// quietly.
+func (p *planner) repeatedOption(field plugin.Field) (plugin.Diagnostic, bool) {
+	tag, ok := field.Tag(jsonKey)
+	if !ok {
+		return plugin.Diagnostic{}, false
+	}
+
+	for _, known := range knownOptions {
+		if tag.Count(known) < 2 {
+			continue
+		}
+		return plugin.New(codeTagOption, field.Pos,
+			"%s writes %q more than once", field.Name, known).
+			WithHint("an option may be written once; keep the one that says " +
+				"what the wire format is and remove the other"), true
+	}
+
+	return plugin.Diagnostic{}, false
+}
+
+// impureEmbed reports an embed written with a name or with company.
+//
+// embed says the field's members are the enclosing struct's members. A name
+// would be the name of an object that is never written, and an option deciding
+// whether to write that object decides about the same nothing. The standard
+// library refuses both rather than picking one to ignore, and so does this.
+func (p *planner) impureEmbed(field plugin.Field) (plugin.Diagnostic, bool) {
+	tag, ok := field.Tag(jsonKey)
+	if !ok || !tag.Has(optionEmbed) {
+		return plugin.Diagnostic{}, false
+	}
+
+	switch {
+	case tag.Name != "":
+		return plugin.New(codeTagOption, field.Pos,
+			"%s is embedded under the name %q, which nothing is written under",
+			field.Name, tag.Name).
+			WithHint("%s", impureEmbedHint), true
+	case len(tag.Options) > 1:
+		return plugin.New(codeTagOption, field.Pos,
+			"%s is embedded and asked for %q as well", field.Name, tag.Raw).
+			WithHint("%s", impureEmbedHint), true
+	}
+
+	return plugin.Diagnostic{}, false
+}
+
+const impureEmbedHint = "embed promotes a field's members into the enclosing object, " +
+	`so it is written on its own: json:",embed"`
+
+// taggedUnexported reports a tag on a field generated code cannot read.
+//
+// The field is left out either way, so the tag describes a member that will
+// never be written. Left alone it reads as an instruction that was followed,
+// which is worse than an error: the author's own source says the member is
+// there. json:"-" is the one tag that stays legal on one, because it asks for
+// exactly what happens.
+func (p *planner) taggedUnexported(field plugin.Field) (plugin.Diagnostic, bool) {
+	if field.Exported {
+		return plugin.Diagnostic{}, false
+	}
+
+	tag, ok := field.Tag(jsonKey)
+	if !ok || tag.Ignored {
+		return plugin.Diagnostic{}, false
+	}
+
+	return plugin.New(codeTaggedUnexported, field.Pos,
+		"%s is unexported and carries %s, which asks for a member nothing writes",
+		field.Name, tag.String()).
+		WithHint("generated code cannot read an unexported field from outside its " +
+			`package; export the field, or write json:"-" to say it is left out on purpose`), true
+}
 
 // flatten returns a struct's members as they appear in one JSON object.
 //
@@ -740,6 +966,22 @@ const (
 // date layout produces timestamps in the wrong format, which is exactly the
 // kind of wrong that reaches production.
 func (p *planner) unsupported(field plugin.Field) (plugin.Diagnostic, bool) {
+	// A tag that is wrong about itself is reported before a tag that asks for
+	// something this layer does not generate. The order matters for one case
+	// in particular: case:ignore written beside case:strict is a contradiction
+	// rather than a request for loose matching, and reporting it as the latter
+	// would tell an author to remove an option they wrote twice on purpose.
+	for _, check := range []func(plugin.Field) (plugin.Diagnostic, bool){
+		p.taggedUnexported,
+		p.misspelledOption,
+		p.repeatedOption,
+		p.impureEmbed,
+	} {
+		if wrong, found := check(field); found {
+			return wrong, true
+		}
+	}
+
 	if option, ok := tagOption(field, optionFormat); ok {
 		return plugin.New(codeTagOption, field.Pos,
 			"%s is written with %s, which this Go release does not support", field.Name, option.Raw).

@@ -52,7 +52,7 @@ const (
 	walkMethod  = "All"
 	addMethod   = "AppendSeq"
 	countMethod = "Len"
-	codecMethod = "MarshalJSONTo"
+	codecMethod = "MarshalJSON"
 )
 
 // The stack every concurrent layer is put through, beneath the layer itself.
@@ -274,13 +274,6 @@ func asking(t *testing.T, registry *layer.Registry, req generate.Request, held r
 
 	out.Copies = copying(composed.Exposed, held.Subject)
 
-	if out.Encodes != "" {
-		out.Imports = []model.Import{
-			{Path: "bytes", Name: "bytes"},
-			{Path: "encoding/json/jsontext", Name: "jsontext"},
-		}
-	}
-
 	out.Reads = rest(t, composed.Exposed, held.Name, out)
 
 	return out
@@ -342,6 +335,12 @@ func rest(t *testing.T, exposed shape.Shape, declared string, of racetest.Asked)
 	t.Helper()
 
 	accounted := []string{of.Scope, of.ReadScope, of.Counts, of.Copies, of.Encodes}
+	if of.Encodes != "" {
+		// The appender is the marshaller's implementation: the harness calling
+		// MarshalJSON stresses AppendJSON on every call, so the way in is
+		// checked under the name the harness can call it by.
+		accounted = append(accounted, "AppendJSON")
+	}
 
 	var out []string
 	for _, one := range exposed.Surface {

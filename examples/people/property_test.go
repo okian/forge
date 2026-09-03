@@ -90,18 +90,18 @@ func TestTheComparisonComparesTwoImplementations(t *testing.T) {
 		generated any = people.Person{}
 	)
 
-	if _, is := reflected.(json.MarshalerTo); is {
+	if _, is := reflected.(json.Marshaler); is {
 		t.Error("the twin carries a codec, so nothing here is compared against reflection")
 	}
-	if _, is := generated.(json.MarshalerTo); !is {
+	if _, is := generated.(json.Marshaler); !is {
 		t.Error("the subject carries no codec, so nothing here is comparing what forge wrote")
 	}
 
 	// And the same for the reading half, which is declared on the pointer.
-	if _, is := any(&twin{}).(json.UnmarshalerFrom); is {
+	if _, is := any(&twin{}).(json.Unmarshaler); is {
 		t.Error("the twin carries a reader, so nothing here is compared against reflection")
 	}
-	if _, is := any(&people.Person{}).(json.UnmarshalerFrom); !is {
+	if _, is := any(&people.Person{}).(json.Unmarshaler); !is {
 		t.Error("the subject carries no reader, so nothing here is comparing what forge wrote")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"slices"
 
+	"github.com/okian/forge/internal/shared/jsonwire"
 	"github.com/okian/forge/plugin"
 )
 
@@ -27,15 +28,24 @@ const optionNames = "names"
 // Written down rather than derived from the paths, because a path does not say
 // what it binds: encoding/json/v2 binds json, which is exactly the name the
 // last element of the path does not give.
+//
+// The list is the union of what the per-type codecs may name and what the
+// shared wire runtime names, because it is also what [Layer.Binds] answers
+// with: every one of these is a name the subject's own types are moved out of
+// the way of, and a file that binds one of them twice does not compile.
 var imports = []plugin.Import{
 	{Path: "bytes", Name: "bytes"},
-	{Path: "encoding/json/jsontext", Name: "jsontext"},
+	{Path: "encoding/base64", Name: "base64"},
 	{Path: "encoding/json/v2", Name: "json"},
 	{Path: "errors", Name: "errors"},
 	{Path: "fmt", Name: "fmt"},
 	{Path: "io", Name: "io"},
-	{Path: "maps", Name: "maps"},
+	{Path: "math", Name: "math"},
 	{Path: "slices", Name: "slices"},
+	{Path: "strconv", Name: "strconv"},
+	{Path: "sync", Name: "sync"},
+	{Path: "unicode/utf8", Name: "utf8"},
+	{Path: "unsafe", Name: "unsafe"},
 }
 
 // Layer generates a streaming JSON codec for a subject.
@@ -62,17 +72,19 @@ func (Layer) Binds() []plugin.Import { return slices.Clone(imports) }
 
 // Writes names the codec this layer puts on the subject.
 //
-// It puts the same pair on every struct the subject reaches, and says so
+// It puts the same four on every struct the subject reaches, and says so
 // nowhere: what is asked here is answered against the subject, so a neighbour
 // asking about a type the subject merely holds gets nothing. Nothing is the
 // right answer — such a struct is one this layer is already writing a codec
 // for, and it writes that codec inline rather than delegating to a method it
 // has not been told about.
 //
-// The container's four are not here either. Those go on the declared type,
+// The container's six are not here either. Those go on the declared type,
 // which a surface is the question about — and the layer cannot say whether it
 // will write them until it knows whether there is a container above it to walk.
-func (Layer) Writes() []string { return []string{marshalMethod, unmarshalMethod} }
+func (Layer) Writes() []string {
+	return []string{appendJSONMethod, marshalMethod, unmarshalMethod, borrowedMethod}
+}
 
 // Kind says where in a stack the layer may appear.
 //
@@ -93,7 +105,7 @@ func (Layer) Stage() plugin.Stage { return plugin.StageReady }
 
 // Doc returns the one-line summary the list command prints.
 func (Layer) Doc() string {
-	return "streaming codec over the subject's own fields, and over the container holding them"
+	return "append-based codec over the subject's own fields, and over the container holding them"
 }
 
 // OptionSchema declares every option the layer accepts.
@@ -194,6 +206,11 @@ func (l Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error
 	if err != nil {
 		return plugin.Unit{}, err
 	}
+
+	// Everything emitted calls into the shared wire runtime, which is emitted
+	// once per package however many declarations name it. Requiring it is what
+	// makes that happen; the stage that assembles the package provides it.
+	unit.Requires = append(unit.Requires, jsonwire.Ref(ctx.Model.Pkg.PkgPath))
 
 	return declaring(unit, over)
 }

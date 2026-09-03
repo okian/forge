@@ -12,8 +12,8 @@ package model
 import (
 	"cmp"
 	"encoding"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -29,24 +29,31 @@ type PeopleSeq struct {
 func (c People) Seq() PeopleSeq {
 	panic("forge stub")
 }
+
 func (c People) IDs() []int {
 	panic("forge stub")
 }
+
 func (c People) Names() []string {
 	panic("forge stub")
 }
+
 func (c People) Ages() []int {
 	panic("forge stub")
 }
+
 func (c People) Secrets() []string {
 	panic("forge stub")
 }
+
 func (c People) SortedByID() []Person {
 	panic("forge stub")
 }
+
 func (c People) Less(i, j int) bool {
 	panic("forge stub")
 }
+
 func (c People) Swap(i, j int) {
 	panic("forge stub")
 }
@@ -67,27 +74,26 @@ func (s *People) AppendSeq(seq iter.Seq[Person]) { panic("forge stub") }
 
 func (s *People) Reset() { panic("forge stub") }
 
-func (c People) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+func (c People) AppendJSON(dst []byte) ([]byte, error) { panic("forge stub") }
 
-type peopleCounting struct {
-	to io.Writer
-	n  int64
-}
-
-func (w *peopleCounting) Write(p []byte) (int, error) { panic("forge stub") }
+func (c People) MarshalJSON() ([]byte, error) { panic("forge stub") }
 
 func (c People) WriteTo(w io.Writer) (int64, error) { panic("forge stub") }
 
-func (c *People) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+func peopleReadJSON(c *People, data []byte, borrow bool) error { panic("forge stub") }
+
+func (c *People) UnmarshalJSON(data []byte) error { panic("forge stub") }
+
+func (c *People) UnmarshalJSONBorrowed(data []byte) error { panic("forge stub") }
 
 func (c *People) ReadFrom(r io.Reader) (int64, error) { panic("forge stub") }
 
 var (
-	_ io.WriterTo          = *new(People)
-	_ io.ReaderFrom        = (*People)(nil)
-	_ json.MarshalerTo     = *new(People)
-	_ json.UnmarshalerFrom = (*People)(nil)
-	_ sort.Interface       = *new(People)
+	_ io.WriterTo      = *new(People)
+	_ io.ReaderFrom    = (*People)(nil)
+	_ json.Marshaler   = *new(People)
+	_ json.Unmarshaler = (*People)(nil)
+	_ sort.Interface   = *new(People)
 )
 
 var _ func(*People) iter.Seq[Person] = (*People).All
@@ -160,21 +166,25 @@ func (s *lockedHeld) AppendSeq(seq iter.Seq[Person]) { panic("forge stub") }
 
 func (s *lockedHeld) Reset() { panic("forge stub") }
 
-var (
-	_ sync.Locker = (*Locked)(nil)
-)
+var _ sync.Locker = (*Locked)(nil)
 
 func (v Code) String() string { panic("forge stub") }
 
 func (v Person) String() string { panic("forge stub") }
 
-func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error { panic("forge stub") }
+func appendModelPersonJSON(dst []byte, v Person) ([]byte, error) { panic("forge stub") }
 
-func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error { panic("forge stub") }
+func (v Person) AppendJSON(dst []byte) ([]byte, error) { panic("forge stub") }
 
-func decodeModelPersonJSONFrom(dec *jsontext.Decoder, v *Person) error { panic("forge stub") }
+func (v Person) MarshalJSON() ([]byte, error) { panic("forge stub") }
 
-func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error { panic("forge stub") }
+func (v *Person) UnmarshalJSON(data []byte) error { panic("forge stub") }
+
+func (v *Person) UnmarshalJSONBorrowed(data []byte) error { panic("forge stub") }
+
+func decodeModelPersonJSON(b []byte, i, depth int, v *Person, borrow bool) (int, error) {
+	panic("forge stub")
+}
 
 func (v Person) LogValue() slog.Value { panic("forge stub") }
 
@@ -209,10 +219,185 @@ func (s Seq[U]) First() (U, bool) { panic("forge stub") }
 func (s Seq[U]) Reduce[A any](initial A, combine func(A, U) A) A { panic("forge stub") }
 
 var (
-	_ json.MarshalerTo     = *new(Person)
-	_ json.UnmarshalerFrom = (*Person)(nil)
-	_ fmt.Stringer         = *new(Person)
-	_ slog.LogValuer       = *new(Person)
+	errJSONSyntax    = errors.New("json: invalid syntax")
+	errJSONUTF8      = errors.New("json: invalid UTF-8")
+	errJSONEscape    = errors.New("json: invalid escape")
+	errJSONTruncated = errors.New("json: unexpected end of input")
+	errJSONDuplicate = errors.New("json: duplicate object member name")
+	errJSONSurrogate = errors.New("json: invalid surrogate pair")
+	errJSONRange     = errors.New("json: number out of range for its Go type")
+	errJSONDeep      = errors.New("json: value nested deeper than a reader reads")
+	errJSONNonfinite = errors.New("json: a non-finite number has no JSON form")
+)
+
+const jsonMaxDepth = 10000
+
+const jsonScratchCap = 1 << 16
+
+var jsonScratch = sync.Pool{New: func() any { b := make([]byte, 0, 256); return &b }}
+
+func jsonTakeScratch() *[]byte { panic("forge stub") }
+
+func jsonDropScratch(b *[]byte) { panic("forge stub") }
+
+func jsonAppendString(dst []byte, s string) ([]byte, error) { panic("forge stub") }
+
+const (
+	jsonOnes    = 0x0101010101010101
+	jsonHighs   = 0x8080808080808080
+	jsonQuotes  = 0x2222222222222222 // '"' in every byte
+	jsonSlashes = 0x5c5c5c5c5c5c5c5c // '\\' in every byte
+)
+
+func jsonPlainWords(s string, i int) int { panic("forge stub") }
+
+func jsonAnyZero(w uint64) uint64 { panic("forge stub") }
+
+func jsonBelow(w uint64, n byte) uint64 { panic("forge stub") }
+
+func jsonAppendEscape(dst []byte, c byte) []byte { panic("forge stub") }
+
+func jsonAppendFloat(dst []byte, f float64, bits int) []byte { panic("forge stub") }
+
+func jsonAppendFinite(dst []byte, f float64, bits int) ([]byte, error) { panic("forge stub") }
+
+func jsonSkipSpace(b []byte, i int) int { panic("forge stub") }
+
+func jsonAtEnd(b []byte, i int) error { panic("forge stub") }
+
+func jsonScanString(b []byte, i int) (lo, hi, next int, esc bool, err error) { panic("forge stub") }
+
+func jsonPlainBytes(b []byte, i int) int { panic("forge stub") }
+
+func jsonScanEscape(b []byte, i int) (int, error) { panic("forge stub") }
+
+func jsonScanUnicode(b []byte, i int) (int, error) { panic("forge stub") }
+
+func jsonUnescape(dst, b []byte) ([]byte, error) { panic("forge stub") }
+
+func jsonScanEscapedRune(b []byte) (rune, int, error) { panic("forge stub") }
+
+func jsonHex4(b []byte) (rune, error) { panic("forge stub") }
+
+func jsonScanNumber(b []byte, i int) (lo, hi int, err error) { panic("forge stub") }
+
+func jsonScanWhole(b []byte, i int) (int, error) { panic("forge stub") }
+
+func jsonScanFraction(b []byte, i int) (int, error) { panic("forge stub") }
+
+func jsonScanExponent(b []byte, i int) (int, error) { panic("forge stub") }
+
+func jsonIsDigit(c byte) bool { panic("forge stub") }
+
+func jsonScanInt(b []byte, i, bits int) (int64, int, error) { panic("forge stub") }
+
+func jsonScanUint(b []byte, i, bits int) (uint64, int, error) { panic("forge stub") }
+
+func jsonDigits(b []byte, i int) (uint64, int, error) { panic("forge stub") }
+
+func jsonScanFloat(b []byte, i, bits int) (float64, int, error) { panic("forge stub") }
+
+func jsonScanBool(b []byte, i int) (bool, int, error) { panic("forge stub") }
+
+func jsonScanNull(b []byte, i int) (int, bool) { panic("forge stub") }
+
+func jsonSkipValue(b []byte, i, depth int) (int, error) { panic("forge stub") }
+
+func jsonSkipObject(b []byte, i, depth int) (int, error) { panic("forge stub") }
+
+func jsonSkipArray(b []byte, i, depth int) (int, error) { panic("forge stub") }
+
+type jsonNames struct {
+	declared uint64
+	spilled  []uint64
+	few      [8]jsonSpan
+	n        int
+	more     []jsonSpan
+}
+
+type jsonSpan struct {
+	lo, hi int
+	esc    bool
+}
+
+func (n *jsonNames) declare(index int) bool { panic("forge stub") }
+
+func (n *jsonNames) saw(index int) bool { panic("forge stub") }
+
+func (n *jsonNames) unknown(b []byte, lo, hi int, esc bool) bool { panic("forge stub") }
+
+func jsonSameName(b []byte, a, c jsonSpan) bool { panic("forge stub") }
+
+func jsonMemberNext(b []byte, i int, first bool) (int, bool, error) { panic("forge stub") }
+
+func jsonMemberName(b []byte, i int) (lo, hi, next int, esc bool, err error) { panic("forge stub") }
+
+func jsonElementNext(b []byte, i int, first bool) (int, bool, error) { panic("forge stub") }
+
+func jsonName(b []byte, lo, hi int, esc bool, scratch *[]byte) []byte { panic("forge stub") }
+
+func jsonString(b []byte, lo, hi int, esc, borrow bool) string { panic("forge stub") }
+
+func jsonAppendBytes(dst, held []byte) []byte { panic("forge stub") }
+
+func jsonScanBytes(b []byte, lo, hi int, esc bool, dst []byte) ([]byte, error) { panic("forge stub") }
+
+func jsonWroteEmpty(b []byte, at int) bool { panic("forge stub") }
+
+var jsonKeysScratch = sync.Pool{New: func() any { held := make([]string, 0, 16); return &held }}
+
+func jsonSortedKeys[K ~string, V any](m map[K]V) *[]string { panic("forge stub") }
+
+func jsonTakeKeys() *[]string { panic("forge stub") }
+
+func jsonDropKeys(keys *[]string) { panic("forge stub") }
+
+func jsonFinish(scratch *[]byte, b []byte, err error) ([]byte, error) { panic("forge stub") }
+
+func jsonCannotRead(what string, b []byte, i int) error { panic("forge stub") }
+
+func jsonKindName(b []byte, i int) string { panic("forge stub") }
+
+const jsonFlushWindow = 1 << 12
+
+type jsonScanState struct {
+	depth int
+	str   bool
+	esc   bool
+}
+
+func jsonValueEnd(b []byte, i int, st *jsonScanState) (int, bool) { panic("forge stub") }
+
+type jsonFeed struct {
+	r    io.Reader
+	buf  *[]byte
+	i    int
+	done int64
+}
+
+func jsonNewFeed(r io.Reader) jsonFeed { panic("forge stub") }
+
+func (f *jsonFeed) close() { panic("forge stub") }
+
+func (f *jsonFeed) offset() int64 { panic("forge stub") }
+
+func (f *jsonFeed) more() error { panic("forge stub") }
+
+func (f *jsonFeed) peek() (byte, error) { panic("forge stub") }
+
+func (f *jsonFeed) take() { panic("forge stub") }
+
+func (f *jsonFeed) null() (bool, error) { panic("forge stub") }
+
+func (f *jsonFeed) cannotRead(what string) error { panic("forge stub") }
+
+func (f *jsonFeed) element() ([]byte, error) { panic("forge stub") }
+
+var (
+	_ json.Marshaler   = *new(Person)
+	_ json.Unmarshaler = (*Person)(nil)
+	_ fmt.Stringer     = *new(Person)
+	_ slog.LogValuer   = *new(Person)
 )
 
 var (

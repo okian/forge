@@ -30,7 +30,7 @@ func TestWhatACodecRefusesToWrite(t *testing.T) {
 	}{
 		"Opaque":       {"FRG2007", "Anything", "fallback=stdlib"},
 		"Interfaced":   {"FRG2007", "Reader", "fallback=stdlib"},
-		"Foreign":      {"FRG2007", "time.Time", "fallback=stdlib"},
+		"Foreign":      {"FRG2007", "strings.Builder", "fallback=stdlib"},
 		"Channelled":   {"FRG2007", "Updates", "fallback=stdlib"},
 		"Keyed":        {"FRG2007", "map[int]string", "fallback=stdlib"},
 		"Formatted":    {"FRG2008", "format:RFC3339", "withdrawn"},
@@ -47,6 +47,20 @@ func TestWhatACodecRefusesToWrite(t *testing.T) {
 		"Held":         {"FRG2010", "One", "IsZero"},
 		"Looped":       {"FRG2007", "contains itself", "fallback=stdlib"},
 		"Labelled":     {"FRG2007", "contains itself", "fallback=stdlib"},
+
+		// A tag the standard library refuses outright. Every one of these was
+		// ignored before, which is the worst of the three things a generator
+		// can do with an option it was given: refusing says so, generating for
+		// it obeys, and ignoring it reports success for a wire format the
+		// author did not ask for.
+		"MisspelledOption":  {"FRG2008", "omitEmpty", "omitempty"},
+		"RepeatedOption":    {"FRG2008", "omitempty", "once"},
+		"ContradictoryCase": {"FRG2008", "case", "once"},
+		"NamedEmbed":        {"FRG2008", "embed", "on its own"},
+		"DecoratedEmbed":    {"FRG2008", "embed", "on its own"},
+		"TaggedUnexported":  {"FRG2031", "unexported", `json:"-"`},
+		"Timed":             {"FRG2033", "time.Duration", "format:"},
+		"NoMembers":         {"FRG2032", "no members", "export"},
 	}
 
 	for name, want := range cases {
