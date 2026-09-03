@@ -34,6 +34,13 @@ type Model struct {
 	// type argument, held separately because it is not a layer.
 	Subject *Struct
 
+	// Source is the type a bridge reads, raw rather than modelled: what a
+	// bridge needs from it — exported fields, zero-parameter methods — is a
+	// question go/types answers directly, and a *Struct model of it would
+	// carry a fields list that is wrong for an interface. Nil for every
+	// declaration that is not a bridge.
+	Source types.Type
+
 	// Stack holds the layers the declaration names, outermost first. Stack[0]
 	// determines the public API and the generated type's name.
 	Stack []LayerRef

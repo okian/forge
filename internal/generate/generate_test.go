@@ -205,6 +205,9 @@ func TestWhatTheFingerprintIsAFunctionOf(t *testing.T) {
 		"an option changed": func(r *generate.Request, _ *generate.Config) {
 			r.Directives[0].Text = "//forge:collection sort=ID"
 		},
+		"a source gained": func(r *generate.Request, _ *generate.Config) {
+			r.Model.Source = types.Typ[types.String]
+		},
 		"a newer forge": func(_ *generate.Request, c *generate.Config) { c.Forge = "v2.0.0" },
 		"newer markers": func(_ *generate.Request, c *generate.Config) { c.Markers = "v2.0.0" },
 
@@ -230,6 +233,29 @@ func TestWhatTheFingerprintIsAFunctionOf(t *testing.T) {
 	// that keeps a check from reporting staleness forever.
 	if again := fingerprint(request("Persons", "//forge:collection sort=Name"), config()); again != was {
 		t.Errorf("the same declaration fingerprinted as %s and then as %s", was, again)
+	}
+}
+
+// A bridge's constructor is generated from the source's members, so reshaping
+// the source has to change the fingerprint even though the source's own name
+// did not move.
+func TestASourceReshapedChangesTheFingerprint(t *testing.T) {
+	pkg := types.NewPackage(local, "model")
+	user := func(field string) types.Type {
+		obj := types.NewTypeName(token.NoPos, pkg, "User", nil)
+		members := []*types.Var{types.NewField(token.NoPos, pkg, field, types.Typ[types.String], false)}
+		return types.NewNamed(obj, types.NewStruct(members, nil), nil)
+	}
+
+	sums := make(map[string]string, 2)
+	for _, field := range []string{"Name", "FullName"} {
+		held := request("Persons", "//forge:collection sort=Name")
+		held.Model.Source = user(field)
+		sums[field] = fingerprint(held, config())
+	}
+
+	if sums["Name"] == sums["FullName"] {
+		t.Errorf("renaming the source's field left the fingerprint at %s", sums["Name"])
 	}
 }
 

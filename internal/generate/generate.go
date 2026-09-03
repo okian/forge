@@ -1306,6 +1306,13 @@ func Fingerprint(sum *emit.Digest, req Request, pkg string, cfg Config) {
 	sum.AddString("declaration", held.Name)
 	sum.AddString("form", held.Form.String())
 	sum.AddString("stack", held.Layout().Text)
+	if held.Source != nil {
+		// Structure as well as identity: the constructor is generated from
+		// the source's members, so a field renamed there has to change the
+		// fingerprint even though the source's own name did not move.
+		sum.AddString("source", model.TypeIdentity(held.Source))
+		sum.AddString("source shape", model.TypeIdentity(held.Source.Underlying()))
+	}
 
 	sum.AddString("package name", pkg)
 	if held.Pkg != nil {

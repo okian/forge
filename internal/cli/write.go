@@ -207,6 +207,7 @@ func built(one request) *model.Model {
 		Name:    decl.Candidate.Name,
 		Form:    decl.Candidate.Form,
 		Subject: one.Model,
+		Source:  decl.Source,
 		Stack:   decl.Stack,
 		Pkg:     decl.Candidate.Pkg,
 		Pos:     decl.Candidate.Pos,
