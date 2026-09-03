@@ -1,6 +1,7 @@
 package load_test
 
 import (
+	"go/ast"
 	"go/types"
 	"path/filepath"
 	"strings"
@@ -536,5 +537,68 @@ func TestAMissingNameWhereForgeWritesNothing(t *testing.T) {
 		if held.Hint == "" {
 			t.Errorf("%q arrived with no hint at all", held.Message)
 		}
+	}
+}
+
+// A function carrying a forge directive keeps its body, because a stage reads
+// it: a hint's statements are the input, and a stripped hint is no input at
+// all. Everything else is stripped exactly as before — bodies are bulk the
+// pipeline never reads.
+func TestADirectiveCarryingFunctionKeepsItsBody(t *testing.T) {
+	session := loadFixture(t, "hints", "hintsfixture/app")
+
+	if !session.Diagnostics.Empty() {
+		t.Fatalf("hint fixture reported diagnostics:\n%s", session.Diagnostics.Render())
+	}
+	pkg := find(t, session, "hintsfixture/app")
+
+	held := make(map[string]*ast.FuncDecl)
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok {
+				held[fn.Name.Name] = fn
+			}
+		}
+	}
+
+	hint, ok := held["personFromUser"]
+	if !ok {
+		t.Fatal("the hint was not loaded")
+	}
+	if hint.Body == nil {
+		t.Fatal("the hint's body was stripped; its statements are a stage's input")
+	}
+	if got := len(hint.Body.List); got != 1 {
+		t.Fatalf("the hint's body holds %d statements, want 1", got)
+	}
+
+	// And the body was in front of the type-checker: the expression it reads
+	// from has a type.
+	assign, ok := hint.Body.List[0].(*ast.AssignStmt)
+	if !ok {
+		t.Fatalf("the hint's statement is a %T, want an assignment", hint.Body.List[0])
+	}
+	if tv, ok := pkg.TypesInfo.Types[assign.Rhs[0]]; !ok || tv.Type == nil {
+		t.Error("the hint's right-hand side carries no type; the body was not type-checked")
+	}
+
+	if fn, ok := held["helper"]; !ok {
+		t.Fatal("helper was not loaded")
+	} else if fn.Body != nil {
+		t.Error("helper kept its body; only a directive marks one worth keeping")
+	}
+}
+
+// A hint that does not type-check is a load diagnostic, not a generator
+// mystery: keeping the body puts it in front of the compiler forge already
+// runs.
+func TestABrokenHintFailsTheLoad(t *testing.T) {
+	session := loadFixture(t, "hints", "hintsfixture/broken")
+
+	if session.Diagnostics.Empty() {
+		t.Fatal("a hint reading a member the source does not have loaded clean")
+	}
+	if rendered := session.Diagnostics.Render(); !strings.Contains(rendered, "Missing") {
+		t.Errorf("the report does not name the missing member:\n%s", rendered)
 	}
 }

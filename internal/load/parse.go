@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 )
 
 // parseMode keeps what forge reads and drops what it does not.
@@ -42,12 +43,35 @@ func stripBodies(file *ast.File) {
 			continue
 		}
 
+		if directed(fn) {
+			// A stage reads this body; see [directed].
+			continue
+		}
 		if needsBody(fn) {
 			fn.Body = panicBody(fn.Body)
 			continue
 		}
 		fn.Body = nil
 	}
+}
+
+// directed reports whether a function's doc carries a forge directive, which
+// is what marks a body a stage will read: a hint's statements are input, and
+// stripping them would hand the generator a function with nothing in it. The
+// check is textual because this runs inside the parser, before anything has
+// resolved — the directive grammar proper is applied where the hint is read.
+func directed(fn *ast.FuncDecl) bool {
+	if fn.Doc == nil {
+		return false
+	}
+	for _, one := range fn.Doc.List {
+		// The prefix is model.DirectivePrefix, inlined so the loader stays
+		// free of forge's model: what it does here is not about layers.
+		if strings.HasPrefix(one.Text, "//forge:") {
+			return true
+		}
+	}
+	return false
 }
 
 // needsBody reports whether the type-checker insists this declaration have one.
