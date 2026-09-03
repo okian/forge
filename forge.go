@@ -229,3 +229,16 @@ type Atomic[T any] []T
 // naming it type-checks; generation reports it as not yet implemented.
 // Directive: //forge:csv.
 type Csv[T any] []T
+
+// Map generates a constructor that builds the second type from the first:
+// members matched by name where that is unambiguous and assignable, settled by
+// a //forge:map hint where it is not, and refused where they are neither. The
+// source may be a struct or an interface; the target gains nothing — the
+// constructor is a package function named from both, PersonFromUser for
+// Map[User, Person].
+//
+// Kind: bridge. Stage: v1. Directive: //forge:map.
+type Map[S, T any] struct {
+	_ [0]S
+	_ [0]T
+}

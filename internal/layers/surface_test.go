@@ -36,6 +36,7 @@ var against = map[string]string{
 	"clone":    "",
 	"embedded": "",
 	"enum":     "",
+	"mapping":  "",
 	"patch":    "",
 
 	"jsoncodec": "the shared JSON wire runtime the generated codecs call into",

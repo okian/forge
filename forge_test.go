@@ -26,6 +26,12 @@ type shape int
 const (
 	shapeContainer shape = iota
 	shapeElement
+
+	// shapeBridge is a marker over two types: a source it reads and a target
+	// it writes. Zero-sized like an element, and the one marker that takes two
+	// type parameters — a bridge composes with nothing, so no stack threads
+	// through it.
+	shapeBridge
 )
 
 // markers lists every marker the package declares, with the shape its kind
@@ -66,6 +72,9 @@ var markers = map[string]shape{
 
 	// Transport.
 	"Csv": shapeContainer,
+
+	// Bridge.
+	"Map": shapeBridge,
 }
 
 // refusingImporter rejects every import. Markers must be reachable from a spec
@@ -139,6 +148,32 @@ func checkSpec(fset *token.FileSet, markers *types.Package, src string) (*types.
 	return conf.Check("example.com/model", fset, []*ast.File{file}, nil)
 }
 
+// bridged asserts the shape a bridge marker must have: a zero-sized phantom
+// struct whose underlying type changes with either type parameter. Dropping
+// one parameter is checked by holding the other fixed, because two
+// instantiations differing in both would still differ with one dropped.
+func bridged(t *testing.T, named *types.Named, person, session types.Type) {
+	t.Helper()
+
+	inst := instantiate(t, named, person, session)
+	structure, ok := inst.Underlying().(*types.Struct)
+	if !ok {
+		t.Fatalf("%s[Person, Session] has underlying type %s, want a struct", named.Obj().Name(), inst.Underlying())
+	}
+	if size := types.SizesFor("gc", "amd64").Sizeof(structure); size != 0 {
+		t.Errorf("%s[Person, Session] occupies %d bytes, want a zero-sized placeholder", named.Obj().Name(), size)
+	}
+
+	if other := instantiate(t, named, person, person); types.Identical(structure, other.Underlying()) {
+		t.Errorf("%s[Person, Session] and %s[Person, Person] share underlying type %s; the second type parameter is unused",
+			named.Obj().Name(), named.Obj().Name(), structure)
+	}
+	if other := instantiate(t, named, session, session); types.Identical(structure, other.Underlying()) {
+		t.Errorf("%s[Person, Session] and %s[Session, Session] share underlying type %s; the first type parameter is unused",
+			named.Obj().Name(), named.Obj().Name(), structure)
+	}
+}
+
 // namedStruct builds a named struct type without running a type-checker, for
 // use as a distinctive type argument.
 func namedStruct(pkgPath, pkgName, typeName string) *types.Named {
@@ -147,13 +182,13 @@ func namedStruct(pkgPath, pkgName, typeName string) *types.Named {
 	return types.NewNamed(obj, types.NewStruct(nil, nil), nil)
 }
 
-// instantiate applies one type argument to a generic marker.
-func instantiate(t *testing.T, generic *types.Named, arg types.Type) types.Type {
+// instantiate applies concrete type arguments to a generic marker.
+func instantiate(t *testing.T, generic *types.Named, args ...types.Type) types.Type {
 	t.Helper()
 
-	inst, err := types.Instantiate(nil, generic, []types.Type{arg}, true)
+	inst, err := types.Instantiate(nil, generic, args, true)
 	if err != nil {
-		t.Fatalf("%s does not accept a concrete type argument: %v", generic.Obj().Name(), err)
+		t.Fatalf("%s does not accept concrete type arguments: %v", generic.Obj().Name(), err)
 	}
 	return inst
 }
@@ -181,17 +216,29 @@ func TestMarkerDeclarations(t *testing.T) {
 				t.Fatalf("%s has type %T, want a named type", name, obj.Type())
 			}
 
-			// Stacks stay linear because every marker takes exactly one type
-			// argument: the layer below it.
-			params := named.TypeParams()
-			if params.Len() != 1 {
-				t.Fatalf("%s takes %d type parameters, want exactly 1", name, params.Len())
+			// Stacks stay linear because a marker in one takes exactly one
+			// type argument: the layer below it. A bridge is in no stack and
+			// takes its two types instead.
+			expect := 1
+			if want == shapeBridge {
+				expect = 2
 			}
-			if got := params.At(0).Constraint().String(); got != "any" {
-				t.Errorf("%s constrains its type parameter to %s, want any", name, got)
+			params := named.TypeParams()
+			if params.Len() != expect {
+				t.Fatalf("%s takes %d type parameters, want exactly %d", name, params.Len(), expect)
+			}
+			for i := range params.Len() {
+				if got := params.At(i).Constraint().String(); got != "any" {
+					t.Errorf("%s constrains type parameter %d to %s, want any", name, i, got)
+				}
 			}
 			if n := named.NumMethods(); n != 0 {
 				t.Errorf("%s declares %d methods; a marker carries no behavior", name, n)
+			}
+
+			if want == shapeBridge {
+				bridged(t, named, person, session)
+				return
 			}
 
 			inst := instantiate(t, named, person)

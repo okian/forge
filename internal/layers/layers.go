@@ -9,6 +9,7 @@ import (
 	"github.com/okian/forge/internal/layers/enum"
 	"github.com/okian/forge/internal/layers/guarded"
 	"github.com/okian/forge/internal/layers/jsoncodec"
+	"github.com/okian/forge/internal/layers/mapping"
 	"github.com/okian/forge/internal/layers/patch"
 	"github.com/okian/forge/internal/layers/redact"
 	"github.com/okian/forge/internal/layers/ring"
@@ -35,6 +36,7 @@ func written() []layer.Layer {
 		enum.New(),
 		guarded.New(),
 		jsoncodec.New(),
+		mapping.New(),
 		patch.New(),
 		redact.New(),
 		ring.New(),

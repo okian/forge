@@ -85,6 +85,9 @@ var catalog = map[string]entry{
 		adds:     []shape.Cap{shape.Concurrent},
 		masks:    []shape.Cap{shape.Streamable, shape.Indexed},
 	},
+	"Map": {
+		kind: model.KindBridge, stage: layer.StageReady,
+	},
 
 	"Set": {
 		kind: model.KindStorage, stage: layer.StageStaged,

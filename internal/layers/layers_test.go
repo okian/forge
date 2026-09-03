@@ -57,6 +57,7 @@ func TestBuiltinsAreCompleteAndClassified(t *testing.T) {
 		"Redact":     model.KindElement,
 		"Enum":       model.KindElement,
 		"Guarded":    model.KindDecorator,
+		"Map":        model.KindBridge,
 	}
 
 	for name, kind := range v1 {
