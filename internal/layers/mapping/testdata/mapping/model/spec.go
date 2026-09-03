@@ -69,3 +69,11 @@ func twice(src *User, dst *Renamed) {
 func imported(src *User, dst *Renamed) {
 	dst.Moniker = strings.ToUpper(src.Email)
 }
+
+// stickerFromUser assigns the member Sticker's tag already pins, which is two
+// explicit answers for one member.
+//
+//forge:map hint
+func stickerFromUser(src *User, dst *Sticker) {
+	dst.Email = src.Email
+}

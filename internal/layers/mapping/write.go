@@ -157,20 +157,26 @@ func body(w *writer, built *plan, name, src, held, source, target string) {
 
 // ledger says how every member was settled, one clause per way.
 func ledger(built *plan) string {
-	var fields, methods, folds, hinted, ignored []string
+	var fields, methods, folds, pins, hinted, ignored []string
 
 	for _, member := range built.members {
 		switch member.via {
 		case settledField:
-			if member.folded {
+			switch {
+			case member.tagged:
+				pins = append(pins, fmt.Sprintf("%s (from %s)", member.field.Name, member.from))
+			case member.folded:
 				folds = append(folds, fmt.Sprintf("%s (from %s)", member.field.Name, member.from))
-			} else {
+			default:
 				fields = append(fields, member.field.Name)
 			}
 		case settledMethod:
-			if member.folded {
+			switch {
+			case member.tagged:
+				pins = append(pins, fmt.Sprintf("%s (from %s())", member.field.Name, member.from))
+			case member.folded:
 				folds = append(folds, fmt.Sprintf("%s (from %s())", member.field.Name, member.from))
-			} else {
+			default:
 				methods = append(methods, member.field.Name)
 			}
 		case settledHint:
@@ -192,6 +198,7 @@ func ledger(built *plan) string {
 		{"matched by field: ", fields},
 		{"by method: ", methods},
 		{"folded: ", folds},
+		{"pinned by tag: ", pins},
 		{"from the hint: ", hinted},
 		{"ignored: ", ignored},
 	} {

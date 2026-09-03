@@ -71,6 +71,10 @@ type binding struct {
 	// not have to notice the difference themselves.
 	folded bool
 
+	// tagged records that the member was pinned by its from tag rather than
+	// matched, so the ledger attributes it to the author.
+	tagged bool
+
 	// hint is the assignment's right side, for settledHint, spelled against
 	// the hint's own parameter names until emission respells it.
 	hint ast.Expr
@@ -115,9 +119,17 @@ func planned(ctx *plugin.Context) (*plan, error) {
 	}
 	out.srcParam, out.dstParam = srcName, dstName
 
+	// The name a qualified from entry picks the mapping by. A source that is
+	// not named — which the emitter refuses on its own — is reached only by
+	// bare entries.
+	sourceName := ""
+	if named, ok := types.Unalias(out.source).(*types.Named); ok {
+		sourceName = named.Obj().Name()
+	}
+
 	var unsettled []plugin.Field
 	for _, field := range out.target.Fields {
-		member, miss, err := settle(ctx, field, all, ignored, assigned)
+		member, miss, err := settle(ctx, field, all, ignored, assigned, sourceName)
 		if err != nil {
 			return nil, err
 		}
@@ -269,13 +281,17 @@ func match(field plugin.Field, all []candidate) (found candidate, fold, ok bool,
 	}
 }
 
-// settle decides one member: matched on the ladder, taken from the hint,
-// ignored on purpose, or refused with the code that says which way it failed.
-// A member nothing settles is reported by the caller, together with the
-// others, so it comes back as a miss rather than an error.
+// settle decides one member: pinned by its tag, matched on the ladder, taken
+// from the hint, ignored on purpose, or refused with the code that says which
+// way it failed. A member nothing settles is reported by the caller, together
+// with the others, so it comes back as a miss rather than an error.
 func settle(ctx *plugin.Context, field plugin.Field, all []candidate,
-	ignored map[string]bool, assigned map[string]ast.Expr,
+	ignored map[string]bool, assigned map[string]ast.Expr, source string,
 ) (binding, bool, error) {
+	if member, pinned, err := tagged(ctx, field, all, ignored, assigned, source); pinned || err != nil {
+		return member, false, err
+	}
+
 	found, fold, ok, clash := match(field, all)
 
 	if ok && types.AssignableTo(found.typ, field.Type.Type) {
@@ -320,12 +336,50 @@ func settle(ctx *plugin.Context, field plugin.Field, all []candidate,
 			WithHint("settle it with a //forge:map hint, or write ignore=%s", field.Name)
 
 	case ok:
-		return binding{}, false, plugin.New(codeUnassignable, field.Pos,
-			"%s matches %s, and %s does not assign to %s", field.Name, found.name,
-			plugin.TypeString(found.typ), plugin.TypeString(field.Type.Type)).
-			WithHint("write a //forge:map hint that converts, or write ignore=%s", field.Name)
+		return binding{}, false, unassignable(field, found, "matches")
 
 	default:
 		return binding{}, true, nil
 	}
+}
+
+// tagged settles one member against its from tag, if it carries one that
+// answers this mapping, refusing the tag that contradicts the hint or the
+// ignore beside it.
+func tagged(ctx *plugin.Context, field plugin.Field, all []candidate,
+	ignored map[string]bool, assigned map[string]ast.Expr, source string,
+) (binding, bool, error) {
+	held, pinned, err := fromTag(field, source)
+	if err != nil || !pinned {
+		return binding{}, false, err
+	}
+
+	if _, hinted := assigned[field.Name]; hinted {
+		return binding{}, true, plugin.New(codeTagAndHint, field.Pos,
+			"%s is settled twice over: the from tag names %s and the hint assigns it",
+			field.Name, held.entry).
+			WithHint("keep one of them; two explicit answers do not agree by accident")
+	}
+	if ignored[field.Name] {
+		return binding{}, true, plugin.New(codeIgnoreSaysNothing, ctx.Options.Pos,
+			"ignore names %s, which its from tag settles", field.Name).
+			WithHint("drop %s from ignore, or drop the tag", field.Name)
+	}
+
+	member, err := pin(field, held, all)
+	return member, true, err
+}
+
+// unassignable is the refusal a name match earns when the types do not agree,
+// however the name was arrived at.
+func unassignable(field plugin.Field, found candidate, how string) error {
+	return plugin.New(codeUnassignable, field.Pos,
+		"%s %s %s, and %s does not assign to %s", field.Name, how, found.name,
+		plugin.TypeString(found.typ), plugin.TypeString(field.Type.Type)).
+		WithHint("write a //forge:map hint that converts, or write ignore=%s", field.Name)
+}
+
+// assignable reports whether a candidate's value assigns to the field.
+func assignable(found candidate, field plugin.Field) bool {
+	return types.AssignableTo(found.typ, field.Type.Type)
 }

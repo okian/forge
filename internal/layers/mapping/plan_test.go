@@ -123,7 +123,7 @@ func contextFor(t *testing.T, loaded *load.Session, p pair) *plugin.Context {
 
 	return &plugin.Context{
 		Model: &plugin.Model{
-			Name:    p.target + "Mapping",
+			Name:    p.source + "To" + p.target,
 			Form:    plugin.FormSpec,
 			Subject: built,
 			Source:  source,
@@ -165,6 +165,7 @@ type settlement struct {
 	via      settled
 	from     string
 	folded   bool
+	tagged   bool
 	overrode string
 }
 
@@ -174,7 +175,7 @@ func settlements(built *plan) map[string]settlement {
 	for _, member := range built.members {
 		out[member.field.Name] = settlement{
 			via: member.via, from: member.from,
-			folded: member.folded, overrode: member.overrode,
+			folded: member.folded, tagged: member.tagged, overrode: member.overrode,
 		}
 	}
 	return out
@@ -448,5 +449,116 @@ func TestRespellingRenamesOnlyTheParameters(t *testing.T) {
 	// names.
 	if again := types.ExprString(assign.Rhs[0]); again != "src.Email" {
 		t.Errorf("the author's expression now prints %q; the tree was edited in place", again)
+	}
+}
+
+// A from tag pins a member to the source member it names: qualified entries
+// pick by source, parens assert a method, and a bare entry applies to
+// whichever source maps in.
+func TestATagPinsAMember(t *testing.T) {
+	account, err := planFor(t, pair{pkg: modelPkg, source: "Account", target: "Rolodex"})
+	if err != nil {
+		t.Fatalf("the tagged pair was refused: %v", err)
+	}
+	got := settlements(account)
+	if want := (settlement{via: settledField, from: "Contact", tagged: true}); got["Email"] != want {
+		t.Errorf("Email settled as %+v, want %+v", got["Email"], want)
+	}
+	if want := (settlement{via: settledField, from: "ID"}); got["ID"] != want {
+		t.Errorf("ID settled as %+v, want %+v", got["ID"], want)
+	}
+
+	company, err := planFor(t, pair{pkg: modelPkg, source: "Company", target: "Rolodex"})
+	if err != nil {
+		t.Fatalf("the tagged pair was refused: %v", err)
+	}
+	if want := (settlement{via: settledField, from: "EmailAddress", tagged: true}); settlements(company)["Email"] != want {
+		t.Errorf("Email settled as %+v, want %+v", settlements(company)["Email"], want)
+	}
+
+	badge, err := planFor(t, pair{pkg: modelPkg, source: "User", target: "Badge"})
+	if err != nil {
+		t.Fatalf("the method-pinned pair was refused: %v", err)
+	}
+	got = settlements(badge)
+	if want := (settlement{via: settledMethod, from: "NickName", tagged: true}); got["Name"] != want {
+		t.Errorf("Name settled as %+v, want %+v", got["Name"], want)
+	}
+	if want := (settlement{via: settledField, from: "Email", tagged: true}); got["Contact"] != want {
+		t.Errorf("Contact settled as %+v, want %+v", got["Contact"], want)
+	}
+}
+
+// Everything a from tag can get wrong, each with the code that refuses it.
+func TestWhatAFromTagMayNotSay(t *testing.T) {
+	cases := map[string]struct {
+		pair  pair
+		code  string
+		says  string
+		hints string
+	}{
+		"a member the source does not offer": {
+			pair: pair{pkg: refusedPkg, source: "Src", target: "Mistagged"},
+			code: "FRG3035", says: "Nothing", hints: "from",
+		},
+		"an entry that is not Source.Member": {
+			pair: pair{pkg: refusedPkg, source: "Src", target: "Malformed"},
+			code: "FRG3034", says: "a.b.c", hints: "Member",
+		},
+		"parens on a field": {
+			pair: pair{pkg: refusedPkg, source: "Src", target: "AssertedField"},
+			code: "FRG3035", says: "A()", hints: "method",
+		},
+		"two entries answering one mapping": {
+			pair: pair{pkg: refusedPkg, source: "Src", target: "TaggedTwice"},
+			code: "FRG3034", says: "Src.A", hints: "one entry",
+		},
+		"a pinned member whose types do not assign": {
+			pair: pair{pkg: refusedPkg, source: "Src", target: "AgedTag"},
+			code: "FRG2037", says: "int", hints: "hint",
+		},
+		"a tag and a hint both settling one member": {
+			pair: pair{pkg: modelPkg, source: "User", target: "Sticker", hint: "stickerFromUser"},
+			code: "FRG3036", says: "Email", hints: "one of them",
+		},
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := planFor(t, want.pair)
+			if err == nil {
+				t.Fatalf("a constructor was planned for %s", want.pair.target)
+			}
+
+			reported, ok := plugin.From(err)
+			if !ok {
+				t.Fatalf("%v is not a diagnostic", err)
+			}
+			if got := reported.Code.String(); got != want.code {
+				t.Errorf("reported as %s, want %s: %s", got, want.code, reported.Message)
+			}
+			if !strings.Contains(reported.Message, want.says) {
+				t.Errorf("the complaint does not mention %s:\n%s", want.says, reported.Message)
+			}
+			if !strings.Contains(reported.Hint, want.hints) {
+				t.Errorf("the hint does not say %q:\n%s", want.hints, reported.Hint)
+			}
+		})
+	}
+}
+
+// An ignore on a member the tag pins is the same contradiction as an ignore on
+// a member the ladder settles.
+func TestIgnoreOfATaggedMemberIsRefused(t *testing.T) {
+	_, err := planFor(t, pair{pkg: modelPkg, source: "User", target: "Sticker", ignore: "Email"})
+	if err == nil {
+		t.Fatal("an ignore of a tag-pinned member was accepted")
+	}
+	reported, ok := plugin.From(err)
+	if !ok {
+		t.Fatalf("%v is not a diagnostic", err)
+	}
+	if got := reported.Code.String(); got != "FRG3031" {
+		t.Errorf("reported as %s, want FRG3031: %s", got, reported.Message)
 	}
 }

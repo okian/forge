@@ -32,6 +32,9 @@ var gate = []pair{
 	{pkg: modelPkg, source: "User", target: "Converted", hint: "convertedFromUser"},
 	{pkg: modelPkg, source: "Entitled", target: "Titled"},
 	{pkg: modelPkg, source: "Terse", target: "Sparse", ignore: "Note"},
+	{pkg: modelPkg, source: "Account", target: "Rolodex"},
+	{pkg: modelPkg, source: "Company", target: "Rolodex"},
+	{pkg: modelPkg, source: "User", target: "Badge"},
 }
 
 // What the generated constructors are checked against is the mapping a person

@@ -79,6 +79,39 @@ type Based struct {
 	Own int
 }
 
+// Account is one of two sources mapped into Rolodex, so the tag on Email has
+// to say which member belongs to which.
+type Account struct {
+	ID      int
+	Contact string
+}
+
+// Company is the other source mapped into Rolodex.
+type Company struct {
+	ID           int
+	EmailAddress string
+}
+
+// Rolodex is bridged from two sources, and its Email member is spelled
+// differently on each: the tag carries one entry per source.
+type Rolodex struct {
+	ID    int
+	Email string `from:"Account.Contact, Company.EmailAddress"`
+}
+
+// Badge pins one member to a method, parens asserting it is one, and another
+// with a bare entry that applies to whatever source maps in.
+type Badge struct {
+	Name    string `from:"User.NickName()"`
+	Contact string `from:"Email"`
+}
+
+// Sticker pins a member the hint below also assigns, which is a contradiction
+// the tests attach on purpose.
+type Sticker struct {
+	Email string `from:"User.Email"`
+}
+
 // Terse offers less than Sparse asks for, which is what ignore is for.
 type Terse struct {
 	ID int

@@ -128,6 +128,9 @@ What was written on a `//forge:` directive or in a struct tag, judged against wh
 | `FRG3031` | ignore names a member that is already settled |
 | `FRG3032` | a hint says more than a hint may |
 | `FRG3033` | one member assigned twice in a hint |
+| `FRG3034` | a from tag is not shaped like one |
+| `FRG3035` | a from tag names a member the source does not offer |
+| `FRG3036` | a from tag and a hint both settle one member |
 
 ## Emission — `FRG4xxx`
 

@@ -43,3 +43,29 @@ type Sealed struct {
 	ID     int
 	secret string
 }
+
+// Mistagged pins a member the source does not offer.
+type Mistagged struct {
+	A int `from:"Src.Nothing"`
+}
+
+// Malformed carries an entry that is not Source.Member or Member.
+type Malformed struct {
+	A int `from:"a.b.c"`
+}
+
+// AssertedField writes parens on a member that turns out to be a field.
+type AssertedField struct {
+	A int `from:"Src.A()"`
+}
+
+// TaggedTwice carries two entries that both answer one mapping.
+type TaggedTwice struct {
+	A int `from:"Src.A, Src.A"`
+}
+
+// AgedTag pins a member whose type does not assign, so the way out the ladder
+// would have offered — matching nothing — is closed on purpose.
+type AgedTag struct {
+	A string `from:"Src.A"`
+}

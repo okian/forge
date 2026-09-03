@@ -88,3 +88,36 @@ func TestTheIgnoredMemberStaysZero(t *testing.T) {
 		t.Errorf("the constructor built %+v, want %+v", got, want)
 	}
 }
+
+func byHandRolodexFromAccount(src *Account) Rolodex {
+	return Rolodex{ID: src.ID, Email: src.Contact}
+}
+
+func TestTheTagPicksTheAccountMember(t *testing.T) {
+	src := Account{ID: 4, Contact: "c@d"}
+	if got, want := RolodexFromAccount(&src), byHandRolodexFromAccount(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandRolodexFromCompany(src *Company) Rolodex {
+	return Rolodex{ID: src.ID, Email: src.EmailAddress}
+}
+
+func TestTheTagPicksTheCompanyMember(t *testing.T) {
+	src := Company{ID: 6, EmailAddress: "e@f"}
+	if got, want := RolodexFromCompany(&src), byHandRolodexFromCompany(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandBadge(src *User) Badge {
+	return Badge{Name: src.NickName(), Contact: src.Email}
+}
+
+func TestTheTagPinsAMethodAndABareMember(t *testing.T) {
+	src := User{ID: 8, Email: "g@h"}
+	if got, want := BadgeFromUser(&src), byHandBadge(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
