@@ -51,7 +51,7 @@ forge's internal pipeline (discover → resolve → model → compose → genera
 - Produces: `forge.Map[S, T any]`, a zero-sized two-parameter element-style
   phantom struct. Later tasks refer to it as `model.TypeRef{Pkg: model.MarkerPkg, Name: "Map"}`.
 
-- [ ] **Step 1: Write the failing test.** In `forge_test.go`, extend the
+- [x] **Step 1: Write the failing test.** In `forge_test.go`, extend the
   `markers` map (line ~35, shape values `shapeElement`/`shapeContainer` — read
   the file for the exact enum first) with a new shape or a special case:
 
@@ -95,13 +95,13 @@ to variadic `args ...types.Type`). The element-shape assertions (zero-sized;
 two instantiations do not share an underlying type) must also run for
 `shapeBridge` — follow the existing element branch at forge_test.go:209-224.
 
-- [ ] **Step 2: Run to verify it fails.**
+- [x] **Step 2: Run to verify it fails.**
 
 Run: `go test . -run 'TestMarker' -count=1`
 Expected: FAIL — `Map` is in the table but `forge.go` declares no such type
 (lookup failure), or the parameter-count fatal if the lookup is lazy.
 
-- [ ] **Step 3: Declare the marker.** Append to `forge.go`:
+- [x] **Step 3: Declare the marker.** Append to `forge.go`:
 
 ```go
 // Map generates a constructor that builds the second type from the first:
@@ -118,7 +118,7 @@ type Map[S, T any] struct {
 }
 ```
 
-- [ ] **Step 4: Run the marker tests.**
+- [x] **Step 4: Run the marker tests.**
 
 Run: `go test . -count=1`
 Expected: `TestMarkerSetMatchesTheCatalog` and `TestEveryMarkerIsClaimedByALayer`
@@ -131,7 +131,7 @@ consults `layers.Builtins()`; if so, Task 7's stub registration (Layer with
 task as a minimal `internal/layers/mapping/mapping.go` so the package always
 has a green tree. Decide by running; a red intermediate commit is not allowed.
 
-- [ ] **Step 5: Commit** (possibly folded with the minimal layer stub):
+- [x] **Step 5: Commit** (possibly folded with the minimal layer stub):
 
 ```bash
 git add forge.go forge_test.go
@@ -155,18 +155,18 @@ git commit -m "feat: declare the two-parameter Map marker"
   (diagnostic `FRG1009`, message `a bridge stands alone over its two types`).
 - Consumes: nothing from earlier tasks.
 
-- [ ] **Step 1: Write failing tests.** In the model package's kind test, add
+- [x] **Step 1: Write failing tests.** In the model package's kind test, add
   `KindBridge` to whatever table asserts `String()`/`Valid()`. In the compose
   rules test, add a case: a stack `[{Origin: Ring}, {Origin: Map-as-bridge}]`
   (build `model.LayerRef` values by hand as the neighbouring tests do) must
   report `FRG1009`; a stack of exactly one bridge entry must pass the rule.
 
-- [ ] **Step 2: Run to verify failure.**
+- [x] **Step 2: Run to verify failure.**
 
 Run: `go test ./internal/model/ ./internal/compose/ -count=1`
 Expected: FAIL — `KindBridge` undefined.
 
-- [ ] **Step 3: Implement.** In `internal/model/kind.go`, append to the enum
+- [x] **Step 3: Implement.** In `internal/model/kind.go`, append to the enum
   (after `KindTransport`, never reordering existing values):
 
 ```go
@@ -222,7 +222,7 @@ inline declaration is refused with its own sentence:
 Note stage 2 will relax `bridges` to allow exactly `[Map, Json]`; keep the
 function's shape amenable (it already reports only when `len(stack) > 1`).
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `go test ./internal/model/ ./internal/compose/ ./plugin/ -count=1`
 Expected: PASS. Also confirm `defaulted()` needs no change: read
@@ -231,7 +231,7 @@ Expected: PASS. Also confirm `defaulted()` needs no change: read
 `(!refining && !elements)` returns the stack unchanged. Add one test in the
 compose package proving a single-bridge stack gets **no** implicit Slice.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add internal/model/kind.go plugin/layer.go plugin/surface_test.go internal/compose/
@@ -257,7 +257,7 @@ git commit -m "feat: give a two-type bridge a kind of its own"
   `Declaration.Subject` is `Person`'s. The stack holds one
   `model.LayerRef{Origin: {MarkerPkg, "Map"}}`.
 
-- [ ] **Step 1: Write the failing test.** Add a fixture file to the resolve
+- [x] **Step 1: Write the failing test.** Add a fixture file to the resolve
   testdata module (beside the arity fixture; note the fixture uses its own
   marker package, so add a two-parameter `Map[S, T any] struct{ _ [0]S; _ [0]T }`
   to `stacksfixture/markers` — check how the fixture's markers are claimed in
@@ -306,14 +306,14 @@ type UserPerson markers.Map[User, Person]
 (Match the existing fixtures' package layout and build tags exactly — read
 `testdata/stacks/arity/arity.go` first.)
 
-- [ ] **Step 2: Run to verify failure.**
+- [x] **Step 2: Run to verify failure.**
 
 Run: `go test ./internal/resolve/ -run TestABridgeCarriesItsSource -count=1`
 Expected: FAIL — today `args.Len() > 1` reports FRG1007 and drops the
 declaration, so `resolved` returns nothing (or `Source` is undefined at
 compile time first).
 
-- [ ] **Step 3: Implement.** Add the field to `Declaration` (resolve.go:25):
+- [x] **Step 3: Implement.** Add the field to `Declaration` (resolve.go:25):
 
 ```go
 	// Source is the type a bridge reads, carried beside the stack because a
@@ -394,13 +394,13 @@ const arityHint = "every layer takes exactly one type argument, the layer below 
 	"sort fields are written as //forge: options"
 ```
 
-- [ ] **Step 4: Run the resolve suite.**
+- [x] **Step 4: Run the resolve suite.**
 
 Run: `go test ./internal/resolve/ -count=1`
 Expected: PASS, including the pre-existing FRG1007 arity tests (they use a
 fixture `Pipeline[string, int]`, not Map, so they still refuse).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add internal/resolve/
@@ -426,7 +426,7 @@ git commit -m "feat: resolve the bridge marker's two arguments"
 - Produces: `model.Model.Source types.Type` (nil when not a bridge), reachable
   in a layer as `ctx.Model.Source`. The fingerprint changes when S changes.
 
-- [ ] **Step 1: Add the field** to `model.Model` (read model.go:20-50 first;
+- [x] **Step 1: Add the field** to `model.Model` (read model.go:20-50 first;
   place it after `Subject`):
 
 ```go
@@ -438,7 +438,7 @@ git commit -m "feat: resolve the bridge marker's two arguments"
 	Source types.Type
 ```
 
-- [ ] **Step 2: Thread it.** In `internal/cli/write.go` `built()` add
+- [x] **Step 2: Thread it.** In `internal/cli/write.go` `built()` add
   `Source: decl.Source,` to the `model.Model` literal; make the identical
   change in `internal/cli/explain.go` `specialised()`. In
   `internal/generate/generate.go`, where the fingerprint adds the form, add:
@@ -452,13 +452,13 @@ git commit -m "feat: resolve the bridge marker's two arguments"
 (Verify `model.TypeIdentity` exists — jsoncodec's `key()` calls
 `plugin.TypeIdentity`; use the model-package original.)
 
-- [ ] **Step 3: Build and test.**
+- [x] **Step 3: Build and test.**
 
 Run: `go build ./... && go test ./internal/cli/ ./internal/generate/ ./internal/model/ -count=1`
 Expected: PASS (nothing consumes Source yet; this step guards against a
 missed literal-field compile error and fingerprint drift).
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ```bash
 git add internal/model/model.go internal/cli/ internal/generate/
@@ -480,7 +480,7 @@ git commit -m "feat: carry a bridge's source beside its subject"
   `pkg.TypesInfo` holds types for every expression in it. Everything else is
   stripped exactly as before.
 
-- [ ] **Step 1: Write the failing tests** (in the load package's existing
+- [x] **Step 1: Write the failing tests** (in the load package's existing
   test-fixture style — read how current strip tests build sources first):
 
 ```go
@@ -506,12 +506,12 @@ func TestABrokenHintFailsTheLoad(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure.**
+- [x] **Step 2: Run to verify failure.**
 
 Run: `go test ./internal/load/ -run 'Hint|KeepsItsBody' -count=1`
 Expected: FAIL — body is nil today.
 
-- [ ] **Step 3: Implement** in `internal/load/parse.go`. Extend `needsBody`
+- [x] **Step 3: Implement** in `internal/load/parse.go`. Extend `needsBody`
   (it has no fset, so the check is textual over the doc group — the parse mode
   keeps comments):
 
@@ -574,7 +574,7 @@ init get `panicBody`. A hint must keep its REAL body. So the change is in
 	}
 ```
 
-- [ ] **Step 4: Run the load suite and the world.**
+- [x] **Step 4: Run the load suite and the world.**
 
 Run: `go test ./internal/load/ -count=1 && go build ./... && go test ./internal/discover/ -count=1`
 Expected: PASS. (Discover must still report FRG3001 for the unclaimed
@@ -583,7 +583,7 @@ another package now fails because a kept body changed diagnostics, read
 `internal/load/errors.go:59` and `:242-259` — the unused-import forgiveness
 becomes unnecessary for hint files but must not break for others.)
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add internal/load/
@@ -622,7 +622,7 @@ git commit -m "feat: keep the body of a function a directive marks"
     matcher lives (they need S and T to say anything useful); 3029/3030 at the
     matcher too (it sees all hints and all declarations).
 
-- [ ] **Step 1: Failing discover test** (mirror the existing stray-directive
+- [x] **Step 1: Failing discover test** (mirror the existing stray-directive
   tests — find them via `grep -rn '3001' internal/discover`):
 
 ```go
@@ -636,9 +636,9 @@ func TestAFunctionDirectiveIsClaimed(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure** (`go test ./internal/discover/ -run Claimed -count=1`).
+- [x] **Step 2: Run to verify failure** (`go test ./internal/discover/ -run Claimed -count=1`).
 
-- [ ] **Step 3: Implement discovery.** In `inFile`'s walk (or a sibling pass
+- [x] **Step 3: Implement discovery.** In `inFile`'s walk (or a sibling pass
   over `file.Decls`), collect:
 
 ```go
@@ -663,7 +663,7 @@ existing `claimed` map; append one `Hint` per directive with `Form` from
 `Declarations` to return `([]Candidate, []Hint, diag.Set)` and fix its two
 callers — `internal/cli/pipeline.go:239` and any test callers).
 
-- [ ] **Step 4: Implement matching in the pipeline.** In
+- [x] **Step 4: Implement matching in the pipeline.** In
   `internal/cli/pipeline.go`, after modelling (the `requests` loop at :256-278),
   match hints to requests:
 
@@ -733,12 +733,12 @@ Add `Hints []Hint` + `type Hint struct { Fn *ast.FuncDecl; Pkg *packages.Package
 to `internal/model/model.go` with a doc comment saying hints ride the model
 because the layer that reads them is handed the model and nothing else.
 
-- [ ] **Step 5: Run.**
+- [x] **Step 5: Run.**
 
 Run: `go test ./internal/discover/ ./internal/cli/ ./internal/load/ -count=1 && go build ./...`
 Expected: PASS.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add internal/discover/ internal/model/ internal/cli/
@@ -764,7 +764,7 @@ git commit -m "feat: discover map hints and hand each to its declaration"
   `Writes() == nil`; `Binds() == nil`; `Doc()` one line; `Generate` stubbed to
   return a clear error until Task 10 replaces it.
 
-- [ ] **Step 1: Write the layer skeleton** (enum is the template — read
+- [x] **Step 1: Write the layer skeleton** (enum is the template — read
   `internal/layers/enum/enum.go` fully first):
 
 ```go
@@ -845,7 +845,7 @@ var _ = slices.Clone[[]int] // drop with the first real use of slices
 (Drop the `slices` filler if unused; keep imports minimal and real. Check
 `plugin.Stage`/`StageReady` spelling against enum.)
 
-- [ ] **Step 2: Register and satisfy the rosters.** Add `mapping.New()` to
+- [x] **Step 2: Register and satisfy the rosters.** Add `mapping.New()` to
   `written()` in `internal/layers/layers.go`; add the catalog row:
 
 ```go
@@ -859,7 +859,7 @@ var _ = slices.Clone[[]int] // drop with the first real use of slices
 kind to `layers_test.go`'s map; add `"mapping": ""` to `surface_test.go`'s
 `against`.
 
-- [ ] **Step 3: Run the rosters and the marker tests.**
+- [x] **Step 3: Run the rosters and the marker tests.**
 
 Run: `go test ./internal/layers/ . -count=1`
 Expected: PASS — including Task 1's `TestEveryMarkerIsClaimedByALayer`, now
@@ -867,7 +867,7 @@ that a layer claims Map. If `TestMarkerSetMatchesTheCatalog` reads the marker
 doc footers, the `Kind: bridge.` footer written in Task 1 must match the
 catalog row — fix whichever is wrong.
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ```bash
 git add internal/layers/ forge.go forge_test.go
@@ -923,7 +923,7 @@ type binding struct {
 
 with the entry point `planned(ctx *plugin.Context) (*plan, error)`.
 
-- [ ] **Step 1: Write the fixture module.** `testdata/mapping/go.mod`:
+- [x] **Step 1: Write the fixture module.** `testdata/mapping/go.mod`:
 
 ```
 module mapfixture
@@ -977,7 +977,7 @@ member, ambiguous fold, non-assignable match, plus an `Ignored` pair for the
 option tests). Write each with a doc comment naming the refusal it is for,
 matching the voice of `internal/layers/jsoncodec/testdata/codec/refused/refused.go`.
 
-- [ ] **Step 2: Write the failing ladder tests** (fixture loader copied from
+- [x] **Step 2: Write the failing ladder tests** (fixture loader copied from
   jsoncodec's `fixture_test.go`, pointed at `testdata/mapping`):
 
 ```go
@@ -997,7 +997,7 @@ func TestIgnoreSettlesAMemberOnPurpose(t *testing.T)     { /* ignore=X removes t
 Use the refused-table shape from `internal/layers/jsoncodec/refused_test.go:25-90`
 verbatim (code + message substring + hint substring, `plugin.From(err)`).
 
-- [ ] **Step 3: Run to verify failure**, then **Step 4: implement `plan.go`.**
+- [x] **Step 3: Run to verify failure**, then **Step 4: implement `plan.go`.**
   The core, concretely:
 
 ```go
@@ -1114,8 +1114,8 @@ names come from `ctx.Options.List("ignore")`; each must name a target field
 (already validated by ValueFields) that is NOT otherwise settled — an ignore
 on a field the ladder settles is `codeIgnoreSaysNothing`.
 
-- [ ] **Step 5: Run** `go test ./internal/layers/mapping/ -count=1` → PASS.
-- [ ] **Step 6: Commit** `git commit -m "feat: settle a bridge's members on the ladder"`.
+- [x] **Step 5: Run** `go test ./internal/layers/mapping/ -count=1` → PASS.
+- [x] **Step 6: Commit** `git commit -m "feat: settle a bridge's members on the ladder"`.
 
 ---
 
@@ -1133,7 +1133,7 @@ on a field the ladder settles is `codeIgnoreSaysNothing`.
   can respell them; `FRG3026` for any statement outside the grammar; `FRG3027`
   for a member assigned twice within the hint.
 
-- [ ] **Step 1: Failing tests.** Extend the fixture's spec-file side: give the
+- [x] **Step 1: Failing tests.** Extend the fixture's spec-file side: give the
   fixture module a `model/spec.go` under `//go:build forgespec` with a hint,
   and target pairs whose ladder alone would refuse (a renamed member, a
   conversion). Tests:
@@ -1153,7 +1153,7 @@ Note the fixture loader must run over the fixture MODULE with forge's `load`
 change. Build `model.Hint` values for the context by finding the fixture's
 hint FuncDecl in `pkg.Syntax` the same way the pipeline does.
 
-- [ ] **Step 2: Implement `hint.go`:**
+- [x] **Step 2: Implement `hint.go`:**
 
 ```go
 // grammar holds a hint to the narrow shape the layer reads: plain assignments,
@@ -1252,7 +1252,7 @@ idents as above rather than assigning `ident.Name`, because the same AST is
 shared with the load session. Add a test asserting the original FuncDecl still
 prints its own names after respelling.)
 
-- [ ] **Step 3: Fold into the plan.** In `planned()`, after the ladder: run
+- [x] **Step 3: Fold into the plan.** In `planned()`, after the ladder: run
   each hint through `grammar`; each returned member either fills an unsettled
   binding (`settledHint`) or overrides a matched one (record the override for
   the ledger); anything still unsettled and unignored → `codeUnsettled`
@@ -1260,9 +1260,9 @@ prints its own names after respelling.)
   with hint "match them by name, assign them in a //forge:map hint, or list
   them in ignore=".
 
-- [ ] **Step 4: Run** `go test ./internal/layers/mapping/ ./... -count=1` (the
+- [x] **Step 4: Run** `go test ./internal/layers/mapping/ ./... -count=1` (the
   full run catches duplicate code registration). Expected: PASS.
-- [ ] **Step 5: Commit** `git commit -m "feat: read a mapping's hints and hold them to the grammar"`.
+- [x] **Step 5: Commit** `git commit -m "feat: read a mapping's hints and hold them to the grammar"`.
 
 ---
 
@@ -1284,7 +1284,7 @@ prints its own names after respelling.)
   Signature `func PersonFromUser(src *User) Person` — for an interface source,
   `func CardFromReader(src Reader) Card`.
 
-- [ ] **Step 1: Write the reference fixture test** (`testdata/reference.go.txt`,
+- [x] **Step 1: Write the reference fixture test** (`testdata/reference.go.txt`,
   embedded like `internal/layers/jsoncodec/testdata/agreement.go.txt` via
   `fixture_test`-style `//go:embed`): a real `_test.go` body for the fixture
   module comparing generated constructors against hand-written expectations:
@@ -1311,7 +1311,7 @@ func TestTheConstructorAgreesWithTheHandWrittenOne(t *testing.T) {
 // hinted pair, each against its own byHand twin.
 ```
 
-- [ ] **Step 2: Write the driver** (mirror
+- [x] **Step 2: Write the driver** (mirror
   `internal/layers/jsoncodec/codec_test.go:37-57` exactly: `t.TempDir()`,
   `copied`, `write` the generated file as `model/zz_map.go` and the reference
   as `model/reference_test.go`, `exec go test ./...` with `GOFLAGS=-mod=mod`,
@@ -1321,7 +1321,7 @@ func TestTheConstructorAgreesWithTheHandWrittenOne(t *testing.T) {
   `model.Options` the way `internal/generate/shadow_test.go:154-206` builds a
   directive).
 
-- [ ] **Step 3: Implement `write.go`.** Text assembly, one fresh fset, in the
+- [x] **Step 3: Implement `write.go`.** Text assembly, one fresh fset, in the
   house style (`internal/layers/validate/write.go` is the model). The whole
   emission:
 
@@ -1391,7 +1391,7 @@ overrides the match on Name"). Hint bindings need `srcName`/`dstName` (the
 author's parameter spellings) carried on the binding from Task 9 — add those
 two fields there if not already present.
 
-- [ ] **Step 4: Wire `Generate`:**
+- [x] **Step 4: Wire `Generate`:**
 
 ```go
 func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) {
@@ -1406,13 +1406,13 @@ func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) 
 }
 ```
 
-- [ ] **Step 5: Run everything.**
+- [x] **Step 5: Run everything.**
 
 Run: `go test ./internal/layers/mapping/ -count=1` (includes the temp-module
 run), then `go test ./... -count=1`.
 Expected: PASS.
 
-- [ ] **Step 6: Commit** `git commit -m "feat: write the bridge's constructor, ledger and all"`.
+- [x] **Step 6: Commit** `git commit -m "feat: write the bridge's constructor, ledger and all"`.
 
 ---
 
@@ -1428,7 +1428,7 @@ Expected: PASS.
 **Interfaces:**
 - Consumes: everything above.
 
-- [ ] **Step 1: The shadow row.** Add to `theBound`:
+- [x] **Step 1: The shadow row.** Add to `theBound`:
 
 ```go
 	{layer: "map", stack: []string{"Map"}, names: []string{"src", "dst", "held"}},
@@ -1444,10 +1444,10 @@ hints are absent in the shadow case, keep `dst` in the row anyway: the locals
 allocation must still move it, and the case then asserts the allocation, not
 the emission). Run and adjust until each name-case generates and compiles.
 
-- [ ] **Step 2: diagnostics.md rows** — one line per new code, matching the
+- [x] **Step 2: diagnostics.md rows** — one line per new code, matching the
   file's existing table format (read the 2031–2033 rows added recently).
 
-- [ ] **Step 3: The whole gate.**
+- [x] **Step 3: The whole gate.**
 
 Run, in order, and fix anything that falls out:
 
@@ -1464,9 +1464,9 @@ Coverage note: if the global gate dips below 90, the uncovered lines are
 almost certainly refusal branches — extend the refused fixture table rather
 than writing filler tests.
 
-- [ ] **Step 4: Commit** `git commit -m "test: hold the map layer to the shadow and the gate"`.
+- [x] **Step 4: Commit** `git commit -m "test: hold the map layer to the shadow and the gate"`.
 
-- [ ] **Step 5: Update the plan's own checkboxes and stop.** Stage 2 (the
+- [x] **Step 5: Update the plan's own checkboxes and stop.** Stage 2 (the
   `Map[S, Json[T]]` fusion) is a separate plan, written after this one ships:
   it will relax the `bridges` compose rule to admit exactly `[Map, Json]`,
   reuse the jsoncodec emitters with member paths rewritten from the plan's
