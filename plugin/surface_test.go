@@ -25,7 +25,7 @@ var surface = []string{
 	"Layer", "Kind", "Stage", "Registry", "NewRegistry",
 	"Described", "Transparent", "Enclosing", "Constructing",
 	"KindInvalid", "KindStorage", "KindRefining", "KindElement",
-	"KindDecorator", "KindTransport",
+	"KindDecorator", "KindTransport", "KindBridge",
 	"StageReady", "StageStub", "StageStaged",
 
 	// What it is asked about, and what it answers with.

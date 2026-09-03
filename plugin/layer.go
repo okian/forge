@@ -31,6 +31,7 @@ const (
 	KindElement   = model.KindElement
 	KindDecorator = model.KindDecorator
 	KindTransport = model.KindTransport
+	KindBridge    = model.KindBridge
 )
 
 // Context is what a layer generates against: the declaration, its options, and

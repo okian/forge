@@ -409,3 +409,76 @@ func TestALayerThatSaysItIsTheSubject(t *testing.T) {
 		t.Errorf("the complaint does not name the layer:\n%s", rendered)
 	}
 }
+
+// spanning is a layer that says it is a bridge, standing in for the mapping
+// layer until that one is registered.
+//
+// A stub rather than the real thing so the rule is tested where it lives:
+// composition is written entirely in kinds, and what these tests say must stay
+// true of any bridge a third party registers, not only of the one forge ships.
+type spanning struct{}
+
+func (spanning) Binds() []model.Import { return nil }
+func (spanning) Writes() []string      { return nil }
+func (spanning) Origin() model.TypeRef {
+	return model.TypeRef{Pkg: model.MarkerPkg, Name: "Spans"}
+}
+
+func (spanning) Kind() model.Kind                { return model.KindBridge }
+func (spanning) OptionSchema() []layer.OptionDef { return nil }
+func (spanning) Accepts(shape.Shape) error       { return nil }
+
+func (spanning) Shape(_ *layer.Context, below shape.Shape) shape.Shape { return below }
+
+func (spanning) Generate(*layer.Context, shape.Shape) (layer.Unit, error) {
+	return layer.Unit{}, nil
+}
+
+// A bridge with company is refused, and the complaint stands at the bridge.
+//
+// A bridge reads one type and writes about another, so there is no stream in
+// the stack for anything else to hold or refine — the entry whose meaning
+// forbids the arrangement is the bridge, and the caret says so.
+func TestABridgeComposesWithNothingElse(t *testing.T) {
+	registry := layers.Builtins()
+	registry.MustRegister(spanning{})
+
+	decl := written(model.FormSpec, "Spans", "Ring")
+
+	_, diags := compose.Compose(decl, compose.Catalog{Registry: registry})
+
+	rendered := diags.Render()
+	if !strings.Contains(rendered, "FRG1009") {
+		t.Fatalf("a bridge with a storage beneath it was not refused:\n%s", rendered)
+	}
+	if !strings.Contains(said(rendered), "Spans") {
+		t.Errorf("the complaint does not name the bridge:\n%s", rendered)
+	}
+	if !underlines(rendered, "Spans") {
+		t.Errorf("the caret does not sit under the bridge:\n%s", rendered)
+	}
+}
+
+// A bridge alone composes, and nothing is filled in beneath it.
+//
+// The implicit storage exists for refining layers left over nothing; a bridge
+// holds no elements, so a slice slid under one would be a container nobody can
+// reach and a report about a layer nobody wrote.
+func TestABridgeAloneGetsNoStorage(t *testing.T) {
+	registry := layers.Builtins()
+	registry.MustRegister(spanning{})
+
+	decl := written(model.FormSpec, "Spans")
+
+	held, diags := compose.Compose(decl, compose.Catalog{
+		Registry:       registry,
+		DefaultStorage: layers.DefaultStorage(),
+	})
+
+	if !diags.Empty() {
+		t.Fatalf("a bridge alone was refused:\n%s", diags.Render())
+	}
+	if got := named(held); len(got) != 1 || got[0] != "Spans" {
+		t.Errorf("composed stack = %v, want the bridge alone", got)
+	}
+}

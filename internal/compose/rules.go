@@ -43,6 +43,8 @@ var (
 	codeLayerTwice     = diag.Register(1020, "a layer appears twice in one stack")
 	codeNotTransparent = diag.Register(1021, "an inline declaration names a layer that cannot be its underlying type")
 	codeNestedInline   = diag.Register(1022, "an inline declaration names more than one layer")
+
+	codeBridgeAlone = diag.Register(1009, "a bridge stands alone over its two types")
 )
 
 // validate reports every way the shape of a stack is wrong.
@@ -68,7 +70,7 @@ func validate(stack []model.LayerRef, layers []layer.Layer, decl Declaration, la
 	var diags diag.Set
 
 	for _, rule := range []func([]model.LayerRef, []layer.Layer, Declaration, model.Layout, *diag.Set){
-		once, subjects, elements, storages, decorators, transports, transparent, nested,
+		once, subjects, elements, storages, decorators, transports, bridges, transparent, nested,
 	} {
 		rule(stack, layers, decl, layout, &diags)
 	}
@@ -254,6 +256,28 @@ func transports(stack []model.LayerRef, _ []layer.Layer, decl Declaration, layou
 	}
 }
 
+// bridges holds a bridge to being the only layer of its stack.
+//
+// A bridge reads one type and writes about another; there is no stream for a
+// storage to hold or a refiner to query, so a stack around one describes
+// machinery with nothing to attach to. Reported at the bridge, because the
+// bridge is the entry whose meaning forbids the company.
+func bridges(stack []model.LayerRef, _ []layer.Layer, decl Declaration, layout model.Layout, diags *diag.Set) {
+	if len(stack) < 2 {
+		return
+	}
+
+	for i, ref := range stack {
+		if ref.Kind != model.KindBridge {
+			continue
+		}
+
+		at(diags, codeBridgeAlone, decl, layout, i,
+			"declare the bridge on its own: type X Map[Source, Target]",
+			"%s is a bridge and composes with nothing else in a stack", ref.Origin.Name)
+	}
+}
+
 // transparent holds an inline declaration to layers that can live with the
 // underlying type it has.
 //
@@ -305,11 +329,16 @@ func transparent(stack []model.LayerRef, layers []layer.Layer, decl Declaration,
 // its elements and its head index is not in it, so an append through the
 // declared type leaves the ring holding a length it did not agree to.
 func opaque(ref model.LayerRef) string {
-	if ref.Kind == model.KindElement {
+	switch ref.Kind {
+	case model.KindElement:
 		return "attaches to the subject rather than holding one, so a declaration naming it " +
 			"has that marker as its underlying type rather than a container"
+	case model.KindBridge:
+		return "is a form over two types rather than a container, so a declaration naming it " +
+			"has a phantom struct as its underlying type"
+	default:
+		return "keeps invariants that the underlying type of a declaration written this way does not protect"
 	}
-	return "keeps invariants that the underlying type of a declaration written this way does not protect"
 }
 
 // nested holds an inline declaration to one layer.

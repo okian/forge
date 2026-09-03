@@ -36,3 +36,5 @@ fals = "fals"
 caf = "caf"
 # A spelling this repository prefers over the checker's.
 unparseable = "unparseable"
+# The prefix of mis-shaped, hyphenated where misshaped would double its s.
+mis = "mis"

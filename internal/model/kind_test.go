@@ -15,6 +15,7 @@ func TestKindString(t *testing.T) {
 		model.KindRefining:  "refining",
 		model.KindDecorator: "decorator",
 		model.KindTransport: "transport",
+		model.KindBridge:    "bridge",
 		model.Kind(99):      "kind(99)",
 	}
 
@@ -30,6 +31,7 @@ func TestKindValid(t *testing.T) {
 		model.KindInvalid:   false,
 		model.KindSubject:   true,
 		model.KindTransport: true,
+		model.KindBridge:    true,
 		model.Kind(99):      false,
 	}
 
@@ -44,15 +46,15 @@ func TestKindValid(t *testing.T) {
 // being able to tell two of them apart.
 func TestKindNamesAreDistinct(t *testing.T) {
 	seen := make(map[string]model.Kind)
-	for kind := model.KindInvalid; kind <= model.KindTransport; kind++ {
+	for kind := model.KindInvalid; kind <= model.KindBridge; kind++ {
 		name := kind.String()
 		if other, ok := seen[name]; ok {
 			t.Errorf("Kind(%d) and Kind(%d) both render as %q", uint8(other), uint8(kind), name)
 		}
 		seen[name] = kind
 	}
-	if len(seen) != 7 {
-		t.Errorf("got %d distinct kind names, want 7", len(seen))
+	if len(seen) != 8 {
+		t.Errorf("got %d distinct kind names, want 8", len(seen))
 	}
 }
 

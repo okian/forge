@@ -48,6 +48,12 @@ const (
 	// KindTransport terminates a stack with an encoding or an I/O boundary. At
 	// most one appears in a stack, and it must be the outermost entry.
 	KindTransport
+
+	// KindBridge spans two types rather than sitting over one: it reads a
+	// source and writes about a target, and composes with nothing else. It
+	// neither holds elements nor refines a stream, so no storage is defaulted
+	// beneath it.
+	KindBridge
 )
 
 // kindNames gives each kind the spelling that appears in diagnostics and in
@@ -60,6 +66,7 @@ var kindNames = [...]string{
 	KindRefining:  "refining",
 	KindDecorator: "decorator",
 	KindTransport: "transport",
+	KindBridge:    "bridge",
 }
 
 // String returns the kind's lower-case name.
