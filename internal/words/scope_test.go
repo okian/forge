@@ -2,6 +2,7 @@ package words_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/okian/forge/internal/words"
@@ -197,5 +198,36 @@ func TestNamingTheLocalsOfANestedWalk(t *testing.T) {
 		if got := block.Nested(one.depth, one.parts...); got != one.want {
 			t.Errorf("Nested(%d, %q) = %q, want %q", one.depth, one.parts, got, one.want)
 		}
+	}
+}
+
+// What a type's spelling mentions is every word in it that could be a name.
+//
+// The load-bearing case is the type argument. A block seeded only from the
+// front of a spelling would reserve Box and leave the element to collide, which
+// is a generated file that does not compile.
+func TestWhatASpellingMentions(t *testing.T) {
+	cases := map[string][]string{
+		"record":                   {"record"},
+		"other.Person":             {"other", "Person"},
+		"Box[record]":              {"Box", "record"},
+		"Box[other.Kind]":          {"Box", "other", "Kind"},
+		"map[string][]*other.Kind": {"map", "string", "other", "Kind"},
+		"[]record":                 {"record"},
+		"chan record":              {"chan", "record"},
+		"func(record) error":       {"func", "record", "error"},
+		"struct{ X record }":       {"struct", "X", "record"},
+		"[4]byte":                  {"4", "byte"},
+		"held_2":                   {"held_2"},
+		"":                         nil,
+		"Map[K, V]":                {"Map", "K", "V"},
+	}
+
+	for spelling, want := range cases {
+		t.Run(spelling, func(t *testing.T) {
+			if got := words.Mentioned(spelling); !slices.Equal(got, want) {
+				t.Errorf("%q mentions %v, want %v", spelling, got, want)
+			}
+		})
 	}
 }

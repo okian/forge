@@ -9,12 +9,25 @@ import (
 // specialise rewrites a template's declarations in place, or says what about
 // them cannot be rewritten.
 //
-// Three passes, in an order that matters. The type parameters go first, because
-// the result is not generic and everything after would otherwise keep stepping
-// around them. Then every place a name is used with type arguments, because
-// those are single nodes whose parts would be rewritten separately and wrongly.
-// Only then are the remaining identifiers renamed.
+// Four passes, in an order that matters.
+//
+// The receivers go first, and separately from the rename map, because a
+// receiver is not a package-level name: through the map it would rename every
+// other use of that word in the file. First rather than last because the
+// subject has not been substituted yet — afterwards, a template written over T
+// spells the subject wherever T was, and a receiver rename would catch those
+// too and turn func(T) V into func(c2) V. While T is still T, the only thing
+// in the declaration wearing the receiver name is the receiver.
+//
+// Then the type parameters, because the result is not generic and everything
+// after would otherwise keep stepping around them. Then every place a name is
+// used with type arguments, because those are single nodes whose parts would be
+// rewritten separately and wrongly. Then the remaining identifiers.
 func specialise(decls []ast.Decl, r Rewrite, renamed map[string]string) string {
+	for i := range decls {
+		decls[i] = receiving(decls[i], r.Receiver)
+	}
+
 	for _, decl := range decls {
 		concrete(decl, r)
 	}
@@ -31,6 +44,53 @@ func specialise(decls []ast.Decl, r Rewrite, renamed map[string]string) string {
 		decls[i] = identifiers(decls[i], renamed)
 	}
 	return ""
+}
+
+// receiving renames a method's receiver, and every use of it in that method.
+//
+// One declaration at a time, which is the whole reason it is not done through
+// the rename map: the name is in scope over this body and means something else
+// everywhere outside it.
+//
+// A method whose receiver is already called this is left alone rather than
+// walked, so that the common case costs nothing.
+func receiving(decl ast.Decl, to string) ast.Decl {
+	if to == "" {
+		return decl
+	}
+
+	fn, ok := decl.(*ast.FuncDecl)
+	if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return decl
+	}
+
+	names := fn.Recv.List[0].Names
+	if len(names) == 0 || names[0] == nil || names[0].Name == to {
+		return decl
+	}
+
+	from := names[0].Name
+
+	// The blank receiver names nothing, so nothing in the body can be reading
+	// it and renaming it would introduce a name where there was none.
+	if from == "_" {
+		return decl
+	}
+
+	method := methodName(decl)
+
+	rewritten := astutil.Apply(decl, func(c *astutil.Cursor) bool {
+		if untouchable(c, method) {
+			return false
+		}
+
+		if name, held := c.Node().(*ast.Ident); held && name.Name == from {
+			name.Name = to
+		}
+		return true
+	}, nil)
+
+	return declOf(decl, rewritten)
 }
 
 // concrete removes the template's own type parameter from what it declared.

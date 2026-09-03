@@ -6,14 +6,6 @@ import (
 	"strings"
 )
 
-// The names the generated code binds, written once so that the two halves and
-// every nested loop agree on them.
-const (
-	encoderVar = "enc"
-	decoderVar = "dec"
-	valueVar   = "v"
-)
-
 // encoder writes the function that puts one type on the wire.
 //
 // Every type gets a function, including the ones that also get a method. The
@@ -31,8 +23,8 @@ func (w *writer) encoder(of *form) {
 		w.line("// The value's own method holds the body; this is what generated code")
 		w.line("// calls, so that a caller names one function whether or not the type")
 		w.line("// is one a method could be declared on.")
-		w.line("func %s(%s *jsontext.Encoder, %s %s) error {", name, encoderVar, valueVar, spelled)
-		w.line("return %s.%s(%s)", valueVar, marshalMethod, encoderVar)
+		w.line("func %s(%s *jsontext.Encoder, %s %s) error {", name, w.names.encoder, w.names.value, spelled)
+		w.line("return %s.%s(%s)", w.names.value, marshalMethod, w.names.encoder)
 		w.line("}")
 		w.blank()
 
@@ -41,14 +33,14 @@ func (w *writer) encoder(of *form) {
 		w.line("// Members are written in the order the fields are declared, an embedded")
 		w.line("// struct's where the embedded field is. A field that takes a name from a")
 		w.line("// shallower one keeps its own place rather than the excluded one's.")
-		w.line("func (%s %s) %s(%s *jsontext.Encoder) error {", valueVar, spelled, marshalMethod, encoderVar)
+		w.line("func (%s %s) %s(%s *jsontext.Encoder) error {", w.names.value, spelled, marshalMethod, w.names.encoder)
 		w.body(of)
 		w.line("}")
 		w.blank()
 		return
 	}
 
-	w.line("func %s(%s *jsontext.Encoder, %s %s) error {", name, encoderVar, valueVar, spelled)
+	w.line("func %s(%s *jsontext.Encoder, %s %s) error {", name, w.names.encoder, w.names.value, spelled)
 	w.body(of)
 	w.line("}")
 	w.blank()
@@ -58,16 +50,16 @@ func (w *writer) encoder(of *form) {
 func (w *writer) body(of *form) {
 	switch of.how {
 	case writtenStruct:
-		w.line("if err := %s.WriteToken(jsontext.BeginObject); err != nil {", encoderVar)
+		w.line("if err := %s.WriteToken(jsontext.BeginObject); err != nil {", w.names.encoder)
 		w.line("return err")
 		w.line("}")
 		for _, one := range of.members {
 			w.writeMember(one)
 		}
-		w.line("return %s.WriteToken(jsontext.EndObject)", encoderVar)
+		w.line("return %s.WriteToken(jsontext.EndObject)", w.names.encoder)
 
 	default:
-		w.writeValue(valueVar, of, 0)
+		w.writeValue(w.names.value, of, 0)
 		w.line("return nil")
 	}
 }
@@ -81,11 +73,11 @@ func (w *writer) writeMember(one member) {
 	// for a promoted member rather than a choice. The guards nest, because an
 	// inner one cannot be read before the outer one is known to be there.
 	for _, held := range one.guards {
-		w.line("if %s.%s != nil {", valueVar, held.path)
+		w.line("if %s.%s != nil {", w.names.value, held.path)
 		closing++
 	}
 
-	held := w.omitted(one, valueVar+"."+one.path)
+	held := w.omitted(one, w.names.value+"."+one.path)
 	switch {
 	case !held.can && one.omitEmpty:
 		// Empty is a question about what was written, and this is a member
@@ -112,10 +104,10 @@ func (w *writer) writeMember(one member) {
 		closing++
 	}
 
-	w.line("if err := %s.WriteToken(jsontext.String(%s)); err != nil {", encoderVar, strconv.Quote(one.name))
+	w.line("if err := %s.WriteToken(jsontext.String(%s)); err != nil {", w.names.encoder, strconv.Quote(one.name))
 	w.line("return err")
 	w.line("}")
-	w.writeValue(valueVar+"."+one.path, &one.of, 0)
+	w.writeValue(w.names.value+"."+one.path, &one.of, 0)
 
 	for range closing {
 		w.line("}")
@@ -149,7 +141,7 @@ func (w *writer) buffered(one member) {
 	w.line("{")
 	w.line("var into bytes.Buffer")
 	w.line("if err := json.MarshalEncode(jsontext.NewEncoder(&into, %s.Options()), %s.%s); err != nil {",
-		encoderVar, valueVar, one.path)
+		w.names.encoder, w.names.value, one.path)
 	w.line("return err")
 	w.line("}")
 	w.line("buffered := bytes.TrimRight(into.Bytes(), \"\\n\")")
@@ -158,8 +150,8 @@ func (w *writer) buffered(one member) {
 	w.line(`case "null", "\"\"", "[]", "{}":`)
 	w.line("// Empty, so the member is not written at all.")
 	w.line("default:")
-	w.checked("%s.WriteToken(jsontext.String(%s))", encoderVar, strconv.Quote(one.name))
-	w.checked("%s.WriteValue(buffered)", encoderVar)
+	w.checked("%s.WriteToken(jsontext.String(%s))", w.names.encoder, strconv.Quote(one.name))
+	w.checked("%s.WriteValue(buffered)", w.names.encoder)
 	w.line("}")
 	w.line("}")
 }
@@ -543,7 +535,7 @@ func (w *writer) writeValue(held string, of *form, depth int) {
 		// produce the same line. A byte slice is a base64 string rather than an
 		// array, which the token layer does not build; a fallback field is one
 		// nothing here can see through.
-		w.checked("json.MarshalEncode(%s, %s)", encoderVar, held)
+		w.checked("json.MarshalEncode(%s, %s)", w.names.encoder, held)
 
 	case writtenDelegate:
 		w.delegate(held, of, depth)
@@ -552,7 +544,7 @@ func (w *writer) writeValue(held string, of *form, depth int) {
 		w.text(held, of, depth)
 
 	case writtenStruct:
-		w.checked("%s(%s, %s)", encoderFor(of.typ), encoderVar, held)
+		w.checked("%s(%s, %s)", encoderFor(of.typ), w.names.encoder, held)
 
 	case writtenPointer:
 		w.writePointer(held, of, depth)
@@ -618,14 +610,14 @@ func (w *writer) writeScalar(held string, of *form) bool {
 // It is also what a person writing this by hand would do.
 func (w *writer) delegate(held string, of *form, depth int) {
 	if valueMethod(of.typ, marshalMethod) {
-		w.checked("%s.%s(%s)", held, marshalMethod, encoderVar)
+		w.checked("%s.%s(%s)", held, marshalMethod, w.names.encoder)
 		return
 	}
 
 	one := loopVar("held", depth)
 	w.line("{")
 	w.line("%s := %s", one, held)
-	w.checked("%s.%s(%s)", one, marshalMethod, encoderVar)
+	w.checked("%s.%s(%s)", one, marshalMethod, w.names.encoder)
 	w.line("}")
 }
 
@@ -656,7 +648,7 @@ func (w *writer) text(held string, of *form, depth int) {
 	w.line("if err != nil {")
 	w.line("return err")
 	w.line("}")
-	w.checked("%s.WriteToken(jsontext.String(string(%s)))", encoderVar, text)
+	w.checked("%s.WriteToken(jsontext.String(string(%s)))", w.names.encoder, text)
 	w.line("}")
 }
 
@@ -685,14 +677,14 @@ func (w *writer) token(held, constructor, as string, of *form) {
 		}
 	}
 
-	w.checked("%s.WriteToken(jsontext.%s(%s))", encoderVar, constructor, value)
+	w.checked("%s.WriteToken(jsontext.%s(%s))", w.names.encoder, constructor, value)
 }
 
 // writePointer writes null for a nil pointer and the value it points at for
 // anything else.
 func (w *writer) writePointer(held string, of *form, depth int) {
 	w.line("if %s == nil {", held)
-	w.checked("%s.WriteToken(jsontext.Null)", encoderVar)
+	w.checked("%s.WriteToken(jsontext.Null)", w.names.encoder)
 	w.line("} else {")
 	w.writeValue("(*"+held+")", of.elem, depth+1)
 	w.line("}")
@@ -702,11 +694,11 @@ func (w *writer) writePointer(held string, of *form, depth int) {
 func (w *writer) writeArray(held string, of *form, depth int) {
 	one := loopVar("one", depth)
 
-	w.checked("%s.WriteToken(jsontext.BeginArray)", encoderVar)
+	w.checked("%s.WriteToken(jsontext.BeginArray)", w.names.encoder)
 	w.line("for _, %s := range %s {", one, held)
 	w.writeValue(one, of.elem, depth+1)
 	w.line("}")
-	w.checked("%s.WriteToken(jsontext.EndArray)", encoderVar)
+	w.checked("%s.WriteToken(jsontext.EndArray)", w.names.encoder)
 }
 
 // writeMap writes a map as a JSON object, its members in the order its keys
@@ -720,12 +712,12 @@ func (w *writer) writeArray(held string, of *form, depth int) {
 func (w *writer) writeMap(held string, of *form, depth int) {
 	key := loopVar("key", depth)
 
-	w.checked("%s.WriteToken(jsontext.BeginObject)", encoderVar)
+	w.checked("%s.WriteToken(jsontext.BeginObject)", w.names.encoder)
 	w.line("for _, %s := range slices.Sorted(maps.Keys(%s)) {", key, held)
 	w.writeValue(key, of.key, depth+1)
 	w.writeValue(held+"["+key+"]", of.elem, depth+1)
 	w.line("}")
-	w.checked("%s.WriteToken(jsontext.EndObject)", encoderVar)
+	w.checked("%s.WriteToken(jsontext.EndObject)", w.names.encoder)
 }
 
 // loopVar names a variable a nested composite binds, so that the inner one does

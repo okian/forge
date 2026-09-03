@@ -12,8 +12,6 @@ import (
 // The names the generated builder binds, written once so that the type, the
 // setters and Build agree on them.
 const (
-	builderVar = "b"
-	valueVar   = "v"
 	heldField  = "held"
 	givenField = "given"
 	failedVar  = "failed"
@@ -144,14 +142,14 @@ func (w *writer) setter(held *plan, one settable) {
 	w.wrapped(one.name + " sets the " + one.name + " of the " + held.spelled.Text + " being built.")
 
 	w.line("func (%s *%s) %s(%s %s) *%s {",
-		builderVar, held.declared, one.name, valueVar, one.spelled.Text, held.declared)
-	w.line("%s.%s.%s = %s", builderVar, heldField, one.name, valueVar)
+		held.receiver, held.declared, one.name, held.value, one.spelled.Text, held.declared)
+	w.line("%s.%s.%s = %s", held.receiver, heldField, one.name, held.value)
 
 	if one.demanded {
-		w.line("%s.%s[%s] = true", builderVar, givenField, strconv.Itoa(one.index))
+		w.line("%s.%s[%s] = true", held.receiver, givenField, strconv.Itoa(one.index))
 	}
 
-	w.line("return %s", builderVar)
+	w.line("return %s", held.receiver)
 	w.line("}")
 	w.blank()
 }
@@ -168,7 +166,7 @@ func (w *writer) build(held *plan) {
 			"tomorrow.")
 
 		w.line("func (%s *%s) %s() (%s, error) { return %s.%s, nil }",
-			builderVar, held.declared, method, held.spelled.Text, builderVar, heldField)
+			held.receiver, held.declared, method, held.spelled.Text, held.receiver, heldField)
 		w.blank()
 		return
 	}
@@ -185,12 +183,12 @@ func (w *writer) build(held *plan) {
 		"reaches.")
 
 	w.line("func (%s *%s) %s() (%s, error) {",
-		builderVar, held.declared, method, held.spelled.Text)
+		held.receiver, held.declared, method, held.spelled.Text)
 	w.line("var %s %s", failedVar, failures.Errors)
 	w.blank()
 
 	for _, one := range held.required() {
-		w.line("if !%s.%s[%d] {", builderVar, givenField, one.index)
+		w.line("if !%s.%s[%d] {", held.receiver, givenField, one.index)
 		w.line("%s = append(%s, "+failures.Failure+"{Path: %s, Rule: %s, Want: %s})",
 			failedVar, failedVar, quoted(one.name), quoted(rule), quoted(want))
 		w.line("}")
@@ -201,7 +199,7 @@ func (w *writer) build(held *plan) {
 	w.line("var zero %s", held.spelled.Text)
 	w.line("return zero, %s", failedVar)
 	w.line("}")
-	w.line("return %s.%s, nil", builderVar, heldField)
+	w.line("return %s.%s, nil", held.receiver, heldField)
 	w.line("}")
 	w.blank()
 }

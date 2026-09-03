@@ -1,9 +1,6 @@
 package csv
 
 import (
-	"strings"
-	"unicode"
-
 	"github.com/okian/forge/plugin"
 )
 
@@ -149,22 +146,10 @@ func taken(bound []plugin.Import, of table) []string {
 	// and it is one line.
 	held = append(held, of.encode, of.decode)
 
-	held = append(held, identifiers(of.elem)...)
+	held = append(held, plugin.Mentioned(of.elem)...)
 	for _, one := range of.columns {
-		held = append(held, identifiers(one.typ)...)
+		held = append(held, plugin.Mentioned(one.typ)...)
 	}
 
 	return held
-}
-
-// identifiers returns the words in a type's spelling that could be a name.
-//
-// A spelling is not parsed, only split: what is wanted is every identifier it
-// mentions, and a package qualifier, a type argument and the type itself all
-// read the same way once the punctuation is gone. Over-reserving is free here
-// and under-reserving is a file that does not compile.
-func identifiers(spelling string) []string {
-	return strings.FieldsFunc(spelling, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
-	})
 }

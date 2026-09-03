@@ -33,10 +33,16 @@ type writer struct {
 	// through pointers — a pointer is zero when it is nil, which is asked
 	// without looking inside — so it has nothing to reach itself through.
 	asking map[*form]bool
+
+	// names are the identifiers the bodies bind, allocated out of the way of
+	// the types they spell. See [locals].
+	names locals
 }
 
 // newWriter returns a writer ready to assemble one codec.
-func newWriter() *writer { return &writer{asking: make(map[*form]bool)} }
+func newWriter(names locals) *writer {
+	return &writer{asking: make(map[*form]bool), names: names}
+}
 
 // line writes one line of the body. Indentation is left to gofmt, which the
 // emitter runs over everything anyway, so that the assembly here reads as the

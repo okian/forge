@@ -42,7 +42,7 @@ var surface = []string{
 	"TypeRef", "RefOf", "TypeString", "TypeIdentity",
 	"Import", "Spelling", "Spell",
 	"Camel", "Lower", "Upper", "Join", "Export", "Words", "Around",
-	"Block", "Locals", "Exported",
+	"Block", "Locals", "Mentioned", "Exported",
 	"Receiver", "TypeParam", "Question", "Agent",
 	"Plural", "Singular", "IsPlural",
 	"Through", "Unattachable", "Uncopyable", "Unnameable",

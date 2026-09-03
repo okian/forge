@@ -71,12 +71,8 @@ var templateImports = map[string]string{
 	"slices": "slices",
 }
 
-// receiverName is what every generated method calls the collection, and
-// elementName what a built closure calls one element of it.
-const (
-	receiverName = "c"
-	elementName  = "v"
-)
+// The names a method calls the collection and one of its elements are asked
+// for rather than written down here. See [plan.receiver] and [naming].
 
 // Layer generates a query surface from the subject's fields.
 type Layer struct{}
@@ -216,6 +212,11 @@ func (Layer) apply(ctx *plugin.Context, surface plan) (templates.Result, plugin.
 			Container: container,
 			Declared:  ctx.Declared(),
 			Prefix:    plugin.Camel(ctx.Declared()),
+			// The same name the built half uses, and for the same reason: a
+			// helper's body spells the subject wherever the template wrote its
+			// type parameter, so a subject called c inside a method whose
+			// receiver is c does not compile.
+			Receiver: surface.receiver,
 		},
 		ctx.Model.Pos)
 }

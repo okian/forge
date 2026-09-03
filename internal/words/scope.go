@@ -3,6 +3,8 @@ package words
 import (
 	"slices"
 	"strconv"
+	"strings"
+	"unicode"
 )
 
 // Scope is every name one generated package has taken.
@@ -253,6 +255,27 @@ func (b *Block) Nested(depth int, parts ...string) string {
 		return name
 	}
 	return b.Declare(name)
+}
+
+// Mentioned returns the identifiers a type's spelling names, which is what a
+// block is seeded with so that a local cannot shadow one of them.
+//
+// The names a layer cannot know in advance are the ones the subject brings. A
+// subject from another package arrives qualified, and the qualifier is an
+// import a caller can be seeded from; one declared in the package being
+// generated into arrives bare, so its name appears nowhere but the spelling.
+// A body that binds `record` and has to spell `var v record` compiles into
+// nothing, in a file the author cannot edit.
+//
+// Split rather than parsed, because every part of a spelling reads the same way
+// once the punctuation is gone: Box[map[string][]*other.Kind] mentions Box,
+// map, string, other and Kind, and reserving the ones that are not types costs
+// a local a number it would not otherwise have taken. Under-reserving costs a
+// file that does not build, so the trade only runs one way.
+func Mentioned(spelling string) []string {
+	return strings.FieldsFunc(spelling, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	})
 }
 
 // Shadows reports whether a name is one the block already binds or the file

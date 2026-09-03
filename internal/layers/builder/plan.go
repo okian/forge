@@ -113,6 +113,17 @@ type plan struct {
 	// the size of the builder's record of what it was given.
 	demanded int
 
+	// receiver is what the builder calls itself in its own methods, and value
+	// what a setter calls the field it was given.
+	//
+	// Allocated rather than spelled, because a receiver is in scope over a body
+	// that also names the subject. A subject called b gave every setter
+	// `func (b *bBuilder) … *bBuilder`, which is a file this layer wrote and
+	// the compiler refused. The subject's own name is the one a layer cannot
+	// know in advance, so these are the names that move.
+	receiver string
+	value    string
+
 	diags plugin.Diagnostics
 }
 
@@ -141,7 +152,37 @@ func planned(held *plugin.Struct, into string, bound []plugin.Import) *plan {
 			WithHint("%s", emptyHint))
 	}
 
+	// Last, because the fields are half of what the setters spell and the
+	// spellings are what these have to stay clear of.
+	out.receiver, out.value = receiving(out)
+
 	return out
+}
+
+// receiving returns what the builder calls itself and what a setter calls the
+// value it was given, out of the way of every name their bodies also spell.
+//
+// Seeded with what the file will bind and with the spellings themselves. The
+// packages cover a subject or a field type declared somewhere else; one
+// declared in the package being generated into imports nothing, so its name
+// reaches this only through the spelling.
+func receiving(of *plan) (string, string) {
+	taken := make([]string, 0, len(of.bound)+len(of.fields)+4)
+	for _, one := range of.bound {
+		taken = append(taken, one.Name)
+	}
+
+	taken = append(taken, plugin.Mentioned(of.spelled.Text)...)
+	taken = append(taken, plugin.Mentioned(of.declared)...)
+	taken = append(taken, plugin.Mentioned(of.made)...)
+
+	for _, one := range of.fields {
+		taken = append(taken, plugin.Mentioned(one.spelled.Text)...)
+	}
+
+	block := plugin.Locals(taken...)
+
+	return block.Declare("b"), block.Declare("v")
 }
 
 // consider decides what one field of the subject means to the builder.

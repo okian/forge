@@ -40,6 +40,18 @@ type plan struct {
 	// beneath is what the layers under this one put on the declared type, which
 	// is what a name this layer generates must not already be.
 	beneath plugin.Shape
+
+	// receiver is what every generated method calls the collection, and element
+	// what a built closure calls one of its elements.
+	//
+	// Allocated rather than spelled, because a receiver is in scope over a body
+	// that also names the subject. A subject called c gave every method
+	// `func (c Rows)` and then a body spelling `Seq[c]`, which is a file this
+	// layer wrote and the compiler refused — and the author cannot edit it. The
+	// subject's own name is the one a layer cannot know in advance, so it is
+	// this name that moves.
+	receiver string
+	element  string
 }
 
 // column is one field a generated method is built from: its name on the
@@ -86,7 +98,40 @@ func planned(ctx *plugin.Context, below plugin.Shape) (plan, plugin.Diagnostics)
 	out.sorts, bound = columns(ctx, subject, spelled, bound, sorting, &diags)
 	out.indexes, _ = columns(ctx, subject, spelled, bound, indexing, &diags)
 
+	// Last, because the columns are half of what the bodies spell and the
+	// spellings are what these have to stay clear of.
+	out.receiver, out.element = naming(out, bound)
+
 	return out, diags
+}
+
+// naming returns what the generated methods call the collection and one of its
+// elements, out of the way of every name their bodies also spell.
+//
+// Seeded with what the file binds and with the spellings themselves. The
+// packages cover a subject declared somewhere else; a subject declared in the
+// package being generated into imports nothing, so its name reaches this only
+// through the spelling. Type arguments come with it, since a view over
+// Box[record] names record as surely as one over record does.
+func naming(of plan, bound []plugin.Import) (string, string) {
+	taken := make([]string, 0, len(bound)+len(of.projections)+8)
+	for _, one := range bound {
+		taken = append(taken, one.Name)
+	}
+
+	taken = append(taken, plugin.Mentioned(of.subject.Text)...)
+	taken = append(taken, plugin.Mentioned(of.declared)...)
+	taken = append(taken, plugin.Mentioned(of.view)...)
+
+	for _, columns := range [][]column{of.projections, of.sorts, of.indexes} {
+		for _, one := range columns {
+			taken = append(taken, plugin.Mentioned(one.typ.Text)...)
+		}
+	}
+
+	block := plugin.Locals(taken...)
+
+	return block.Declare("c"), block.Declare("v")
 }
 
 // projections is one column per exported field, named as the plural of the
@@ -390,7 +435,7 @@ func (p plan) build() ([]ast.Decl, error) {
 			doc: fmt.Sprintf(
 				"Seq returns a lazy view over the elements. Its combinators are the shared %s[%s] view's.",
 				seq.Name, p.subject.Text),
-			receiver: receiverName, on: p.declared,
+			receiver: p.receiver, on: p.declared,
 			name: "Seq", result: ast.NewIdent(p.view),
 			helper: walking,
 		}, seq.Name, subject),
@@ -415,10 +460,10 @@ func (p plan) build() ([]ast.Decl, error) {
 
 			out = append(out, method(built{
 				doc:      kind.doc(one),
-				receiver: receiverName, on: p.declared,
+				receiver: p.receiver, on: p.declared,
 				name: one.method, result: kind.result(key, subject),
 				helper:  kind.helper,
-				element: elementName, subject: subject, field: one.field, key: key,
+				element: p.element, subject: subject, field: one.field, key: key,
 			}))
 		}
 	}

@@ -35,9 +35,9 @@ func (p plan) encodingSnapshot(w *strings.Builder) {
 	w.WriteString("// It costs one copy of the elements per document. A caller who owns their\n")
 	w.WriteString("// writer and would rather not pay it can ask for the lock to be held\n")
 	w.WriteString("// instead.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + marshalMethod +
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") " + marshalMethod +
 		"(enc *jsontext.Encoder) error {\n")
-	w.WriteString("\theld := " + receiverName + "." + snapshot + "()\n\n")
+	w.WriteString("\theld := " + p.receiver + "." + snapshot + "()\n\n")
 	w.WriteString("\tif err := enc.WriteToken(jsontext.BeginArray); err != nil {\n")
 	w.WriteString("\t\treturn err\n")
 	w.WriteString("\t}\n")
@@ -60,14 +60,14 @@ func (p plan) encodingLocked(w *strings.Builder) {
 	w.WriteString("// right answer only when the encoder's writer is one the caller controls:\n")
 	w.WriteString("// nothing is copied, and every writer of this container waits for however\n")
 	w.WriteString("// long the encoder takes to finish. A writer that blocks blocks them all.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + marshalMethod +
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") " + marshalMethod +
 		"(enc *jsontext.Encoder) error {\n")
-	w.WriteString("\t" + receiverName + "." + lockField + ".RLock()\n")
-	w.WriteString("\tdefer " + receiverName + "." + lockField + ".RUnlock()\n\n")
+	w.WriteString("\t" + p.receiver + "." + lockField + ".RLock()\n")
+	w.WriteString("\tdefer " + p.receiver + "." + lockField + ".RUnlock()\n\n")
 	w.WriteString("\tif err := enc.WriteToken(jsontext.BeginArray); err != nil {\n")
 	w.WriteString("\t\treturn err\n")
 	w.WriteString("\t}\n")
-	w.WriteString("\tfor v := range " + receiverName + "." + heldField + "." + walkMethod + "() {\n")
+	w.WriteString("\tfor v := range " + p.receiver + "." + heldField + "." + walkMethod + "() {\n")
 	w.WriteString("\t\tif err := v." + marshalMethod + "(enc); err != nil {\n")
 	w.WriteString("\t\t\treturn err\n")
 	w.WriteString("\t\t}\n")

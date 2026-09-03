@@ -52,9 +52,6 @@ const (
 	countResult   = "int"
 )
 
-// receiverVar is what a container's methods call the container.
-const receiverVar = "c"
-
 // stack is the codec for the declared type, described in the terms the two
 // halves are written in.
 //
@@ -97,6 +94,11 @@ type stack struct {
 	// bounded container asked to say so rather than to drop its oldest element
 	// does.
 	refuses bool
+
+	// names are the identifiers the bodies bind. Held here because the calls
+	// above are written with two of them already in place, so the writer has to
+	// be given the same set rather than allocating its own. See [locals].
+	names locals
 
 	// bounded records that the container reports how much it can hold, and so
 	// can be asked whether it can hold anything at all.
@@ -147,16 +149,21 @@ func (s stack) counting() string { return plugin.Around(false, "", s.declared, "
 // for — a lock hands out no sequence, so nothing may be written that walks one
 // — and the decorator owns whatever replaces it.
 func streaming(ctx *plugin.Context, of *form) (stack, error) {
-	out := stack{declared: ctx.Declared(), elem: of.spelled.Text, imports: of.spelled.Imports}
+	out := stack{
+		declared: ctx.Declared(),
+		elem:     of.spelled.Text,
+		imports:  of.spelled.Imports,
+		names:    naming(ctx.Declared(), of.spelled.Text),
+	}
 
 	switch of.how {
 	case writtenStruct:
-		out.encodes = encoderFor(of.typ) + "(" + encoderVar + ", %s)"
-		out.decodes = decoderFor(of.typ) + "(" + decoderVar + ", &%s)"
+		out.encodes = encoderFor(of.typ) + "(" + out.names.encoder + ", %s)"
+		out.decodes = decoderFor(of.typ) + "(" + out.names.decoder + ", &%s)"
 
 	case writtenDelegate:
-		out.encodes = "%s." + marshalMethod + "(" + encoderVar + ")"
-		out.decodes = "%s." + unmarshalMethod + "(" + decoderVar + ")"
+		out.encodes = "%s." + marshalMethod + "(" + out.names.encoder + ")"
+		out.decodes = "%s." + unmarshalMethod + "(" + out.names.decoder + ")"
 
 	default:
 		// The subject is a struct — the layer refuses a stack that is not
@@ -279,12 +286,12 @@ func (w *writer) containerMarshal(held stack) {
 	w.line("// document is assembled anywhere else first, so what it costs to write a")
 	w.line("// container is what it costs to write its elements and nothing besides.")
 	w.line("func (%s %s) %s(%s *jsontext.Encoder) error {",
-		receiverVar, held.receiver(), marshalMethod, encoderVar)
-	w.checked("%s.WriteToken(jsontext.BeginArray)", encoderVar)
-	w.line("for %s := range %s.%s() {", valueVar, receiverVar, walkMethod)
-	w.checked(held.encodes, valueVar)
+		w.names.receiver, held.receiver(), marshalMethod, w.names.encoder)
+	w.checked("%s.WriteToken(jsontext.BeginArray)", w.names.encoder)
+	w.line("for %s := range %s.%s() {", w.names.value, w.names.receiver, walkMethod)
+	w.checked(held.encodes, w.names.value)
 	w.line("}")
-	w.line("return %s.WriteToken(jsontext.EndArray)", encoderVar)
+	w.line("return %s.WriteToken(jsontext.EndArray)", w.names.encoder)
 	w.line("}")
 	w.blank()
 }
@@ -328,10 +335,10 @@ func (w *writer) containerWriteTo(held stack) {
 	w.line("// any size costs the encoder's own buffer and no more. The document ends with")
 	w.line("// a newline, which is what an encoder leaves between the values of a stream.")
 	w.line("func (%s %s) %s(w io.Writer) (int64, error) {",
-		receiverVar, held.receiver(), writeToMethod)
+		w.names.receiver, held.receiver(), writeToMethod)
 	w.line("counted := %s{to: w}", held.counting())
-	w.line("%s := jsontext.NewEncoder(&counted)", encoderVar)
-	w.line("if err := %s.%s(%s); err != nil {", receiverVar, marshalMethod, encoderVar)
+	w.line("%s := jsontext.NewEncoder(&counted)", w.names.encoder)
+	w.line("if err := %s.%s(%s); err != nil {", w.names.receiver, marshalMethod, w.names.encoder)
 	w.line("return counted.n, err")
 	w.line("}")
 	w.line("return counted.n, nil")
@@ -354,34 +361,34 @@ func (w *writer) containerUnmarshal(held stack) {
 	w.line("// document is never held in memory beside the container being filled from")
 	w.line("// it.")
 	w.line("func (%s *%s) %s(%s *jsontext.Decoder) error {",
-		receiverVar, held.declared, unmarshalMethod, decoderVar)
+		w.names.receiver, held.declared, unmarshalMethod, w.names.decoder)
 
 	w.containerRoom(held)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if %s.PeekKind() == 'n' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
-	w.line("%s.%s()", receiverVar, resetMethod)
+	w.line("%s.%s()", w.names.receiver, resetMethod)
 	w.line("return nil")
 	w.line("}")
 
 	// Checked rather than assumed, exactly as an object's reader checks for a
 	// brace: reading elements out of something that is not an array would fill
 	// the container from whatever the tokens happened to be.
-	w.line("if kind := %s.PeekKind(); kind != '[' {", decoderVar)
+	w.line("if kind := %s.PeekKind(); kind != '[' {", w.names.decoder)
 	w.line("// A decoder that failed reports no kind at all, and reading is what")
 	w.line("// says why; a document of the wrong shape reads fine and is wrong.")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("return fmt.Errorf(%s, kind)",
 		strconv.Quote("cannot read "+held.declared+" from a JSON %s"))
 	w.line("}")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
-	w.line("%s.%s()", receiverVar, resetMethod)
+	w.line("%s.%s()", w.names.receiver, resetMethod)
 	w.blank()
 
 	w.containerElements(held)
@@ -404,7 +411,7 @@ func (w *writer) containerRoom(held stack) {
 		return
 	}
 
-	w.line("if %s.%s() == 0 {", receiverVar, capMethod)
+	w.line("if %s.%s() == 0 {", w.names.receiver, capMethod)
 	w.line("return errors.New(%s)", strconv.Quote(held.declared+
 		" holds nothing until it is constructed, so nothing can be read into it"))
 	w.line("}")
@@ -419,14 +426,14 @@ func (w *writer) containerRoom(held stack) {
 // make.
 func (w *writer) containerElements(held stack) {
 	w.line("var failed error")
-	w.line("%s%s.%s(func(yield func(%s) bool) {", held.binding(), receiverVar, appendMethod, held.elem)
-	w.line("for %s.PeekKind() != ']' {", decoderVar)
-	w.line("var %s %s", valueVar, held.elem)
-	w.line("if err := "+held.decodes+"; err != nil {", valueVar)
+	w.line("%s%s.%s(func(yield func(%s) bool) {", held.binding(), w.names.receiver, appendMethod, held.elem)
+	w.line("for %s.PeekKind() != ']' {", w.names.decoder)
+	w.line("var %s %s", w.names.value, held.elem)
+	w.line("if err := "+held.decodes+"; err != nil {", w.names.value)
 	w.line("failed = err")
 	w.line("return")
 	w.line("}")
-	w.line("if !yield(%s) {", valueVar)
+	w.line("if !yield(%s) {", w.names.value)
 	w.line("return")
 	w.line("}")
 	w.line("}")
@@ -454,11 +461,11 @@ func (w *writer) containerEnd(held stack) {
 	// anywhere else: the tokens left behind would be read as though they came
 	// after the array. A decoder that failed reports no kind at all, and the
 	// read below is what says why.
-	w.line("if kind := %s.PeekKind(); kind != ']' && kind != 0 {", decoderVar)
+	w.line("if kind := %s.PeekKind(); kind != ']' && kind != 0 {", w.names.decoder)
 	w.line("return errors.New(%s)",
 		strconv.Quote(held.declared+" stopped taking elements before the JSON array ended"))
 	w.line("}")
-	w.line("_, err := %s.ReadToken()", decoderVar)
+	w.line("_, err := %s.ReadToken()", w.names.decoder)
 	w.line("return err")
 }
 
@@ -473,12 +480,12 @@ func (w *writer) containerReadFrom(held stack) {
 	w.line("// reader holding one document, and a stream of them is read through a decoder")
 	w.line("// that outlives each. A reader holding nothing reports io.EOF.")
 	w.line("func (%s *%s) %s(r io.Reader) (int64, error) {",
-		receiverVar, held.declared, readFromMethod)
-	w.line("%s := jsontext.NewDecoder(r)", decoderVar)
-	w.line("if err := %s.%s(%s); err != nil {", receiverVar, unmarshalMethod, decoderVar)
-	w.line("return %s.InputOffset(), err", decoderVar)
+		w.names.receiver, held.declared, readFromMethod)
+	w.line("%s := jsontext.NewDecoder(r)", w.names.decoder)
+	w.line("if err := %s.%s(%s); err != nil {", w.names.receiver, unmarshalMethod, w.names.decoder)
+	w.line("return %s.InputOffset(), err", w.names.decoder)
 	w.line("}")
-	w.line("return %s.InputOffset(), nil", decoderVar)
+	w.line("return %s.InputOffset(), nil", w.names.decoder)
 	w.line("}")
 	w.blank()
 }

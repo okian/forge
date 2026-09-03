@@ -230,6 +230,12 @@ func (Layer) apply(ctx *plugin.Context, subject plugin.Spelling) (templates.Resu
 			Declared:  declared,
 			Names:     map[string]string{constructorInTemplate: constructorFor(declared)},
 			Prefix:    plugin.Camel(declared),
+			// A walk hands its elements over from inside a closure, and the
+			// closure's signature spells the subject. So the receiver is in
+			// scope over a body naming the subject's type, and a subject whose
+			// own name is the receiver's does not compile. The subject's name is
+			// the one nobody here chooses, so this is the one that moves.
+			Receiver: receiving(ctx.Bound(), subject.Text, declared),
 		},
 		ctx.Model.Pos)
 }
@@ -351,4 +357,25 @@ func declares(decl ast.Decl, name string) bool {
 // writes.
 func constructorFor(declared string) string {
 	return plugin.Around(plugin.Exported(declared), constructorInTemplate, declared)
+}
+
+// receiving returns what the template's methods call their receiver, out of the
+// way of every name their bodies also spell.
+//
+// Seeded with what the file binds and with the spellings themselves. The
+// packages cover a subject declared somewhere else; one declared in the package
+// being generated into imports nothing, so its name reaches this only through
+// the spelling. Type arguments come with it, since a walk over Box[s]
+// names s as surely as one over s does.
+func receiving(bound []plugin.Import, spellings ...string) string {
+	taken := make([]string, 0, len(bound)+len(spellings)*2)
+	for _, one := range bound {
+		taken = append(taken, one.Name)
+	}
+
+	for _, one := range spellings {
+		taken = append(taken, plugin.Mentioned(one)...)
+	}
+
+	return plugin.Locals(taken...).Declare("s")
 }

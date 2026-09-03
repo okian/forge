@@ -56,7 +56,7 @@ func sortable(p plan) []ast.Decl {
 	}
 
 	by := p.sorts[0]
-	held := receiverName
+	held := p.receiver
 
 	// Built rather than parsed, like everything else this layer emits. A parsed
 	// declaration carries positions from a file set nobody keeps, and a comment

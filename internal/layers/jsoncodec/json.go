@@ -215,7 +215,7 @@ func declaring(unit plugin.Unit, over stack) (plugin.Unit, error) {
 		return unit, nil
 	}
 
-	w := newWriter()
+	w := newWriter(over.names)
 	w.container(over)
 
 	decls, comments, fset, err := parsed(w.String(), over.declared)
@@ -288,7 +288,7 @@ func contribution(spelled string) string { return markerName + ": " + spelled }
 
 // codecFor builds the declarations for one type's codec.
 func codecFor(of *form) (plugin.Unit, error) {
-	w := newWriter()
+	w := newWriter(naming(spelled(of)...))
 	w.encoder(of)
 	w.decoder(of)
 

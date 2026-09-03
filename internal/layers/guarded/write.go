@@ -15,9 +15,6 @@ const (
 	// lockField is the lock, and heldField what it guards.
 	lockField = "mu"
 	heldField = "held"
-
-	// receiverName is what the guarded type calls itself in its own methods.
-	receiverName = "g"
 )
 
 // Generate returns the declarations this layer contributes.
@@ -59,6 +56,7 @@ func (l Layer) Generate(ctx *plugin.Context, below plugin.Shape) (plugin.Unit, e
 		encodes:  encodes(below),
 		holds:    holds(ctx),
 	}
+	held.receiver = receiving(held, ctx.Bound())
 
 	if err := offered(held); err != nil {
 		return plugin.Unit{}, err
@@ -123,6 +121,35 @@ type plan struct {
 	locker  bool
 	locked  bool
 	encodes bool
+
+	// receiver is what the guarded type calls itself in its own methods.
+	//
+	// Allocated rather than spelled, because the receiver is in scope over a
+	// body that also names the type it holds. A subject called g gave every
+	// method `func (g *Held)` and then a snapshot returning `[]g`, which is a
+	// file this layer wrote and the compiler refused. The subject's own name is
+	// the one a layer cannot know in advance, so this is the name that moves.
+	receiver string
+}
+
+// receiving returns what the guarded type calls itself, out of the way of every
+// name its own methods spell.
+//
+// Seeded with what the file binds and with the spellings themselves. The
+// packages cover an element declared somewhere else; one declared in the
+// package being generated into imports nothing, so its name reaches this only
+// through the spelling.
+func receiving(of plan, bound []plugin.Import) string {
+	taken := make([]string, 0, len(bound)+8)
+	for _, one := range bound {
+		taken = append(taken, one.Name)
+	}
+
+	for _, spelled := range []string{of.declared, of.inner, of.view, of.elem} {
+		taken = append(taken, plugin.Mentioned(spelled)...)
+	}
+
+	return plugin.Locals(taken...).Declare("g")
 }
 
 // offered checks that the stack beneath declares the methods this layer is
@@ -318,11 +345,11 @@ func (p plan) scopes(w *strings.Builder) {
 	w.WriteString("// with nothing held. The lock is not reentrant, so a call back into this\n")
 	w.WriteString("// value from inside f deadlocks — which the view cannot be used to write,\n")
 	w.WriteString("// and the value f closed over still can.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + writeScope +
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") " + writeScope +
 		"(f func(v " + p.view + ")) {\n")
-	w.WriteString("\t" + receiverName + "." + lockField + ".Lock()\n")
-	w.WriteString("\tdefer " + receiverName + "." + lockField + ".Unlock()\n\n")
-	w.WriteString("\tf(" + p.view + "{" + heldField + ": &" + receiverName + "." + heldField + "})\n")
+	w.WriteString("\t" + p.receiver + "." + lockField + ".Lock()\n")
+	w.WriteString("\tdefer " + p.receiver + "." + lockField + ".Unlock()\n\n")
+	w.WriteString("\tf(" + p.view + "{" + heldField + ": &" + p.receiver + "." + heldField + "})\n")
 	w.WriteString("}\n\n")
 
 	w.WriteString("// " + readScope + " runs f with the read lock held.\n")
@@ -343,11 +370,11 @@ func (p plan) scopes(w *strings.Builder) {
 	w.WriteString("// contention and pass every test that runs without it. " + writeScope + " from inside f\n")
 	w.WriteString("// deadlocks outright, since it waits for the read lock f is holding.\n")
 	w.WriteString("// Read what you need through the view.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + readScope +
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") " + readScope +
 		"(f func(v " + p.view + ")) {\n")
-	w.WriteString("\t" + receiverName + "." + lockField + ".RLock()\n")
-	w.WriteString("\tdefer " + receiverName + "." + lockField + ".RUnlock()\n\n")
-	w.WriteString("\tf(" + p.view + "{" + heldField + ": &" + receiverName + "." + heldField + "})\n")
+	w.WriteString("\t" + p.receiver + "." + lockField + ".RLock()\n")
+	w.WriteString("\tdefer " + p.receiver + "." + lockField + ".RUnlock()\n\n")
+	w.WriteString("\tf(" + p.view + "{" + heldField + ": &" + p.receiver + "." + heldField + "})\n")
 	w.WriteString("}\n\n")
 }
 
@@ -375,16 +402,16 @@ func (p plan) copying(w *strings.Builder) {
 		w.WriteString("// sequence of unknown length has to do, and is not what this is.\n")
 	}
 
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + snapshot + "() []" + p.elem + " {\n")
-	w.WriteString("\t" + receiverName + "." + lockField + ".RLock()\n")
-	w.WriteString("\tdefer " + receiverName + "." + lockField + ".RUnlock()\n\n")
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") " + snapshot + "() []" + p.elem + " {\n")
+	w.WriteString("\t" + p.receiver + "." + lockField + ".RLock()\n")
+	w.WriteString("\tdefer " + p.receiver + "." + lockField + ".RUnlock()\n\n")
 
 	if p.sized {
 		w.WriteString("\treturn slices.AppendSeq(\n")
-		w.WriteString("\t\tmake([]" + p.elem + ", 0, " + receiverName + "." + heldField + "." + length + "()),\n")
-		w.WriteString("\t\t" + receiverName + "." + heldField + "." + walkMethod + "())\n")
+		w.WriteString("\t\tmake([]" + p.elem + ", 0, " + p.receiver + "." + heldField + "." + length + "()),\n")
+		w.WriteString("\t\t" + p.receiver + "." + heldField + "." + walkMethod + "())\n")
 	} else {
-		w.WriteString("\treturn slices.Collect(" + receiverName + "." + heldField + "." + walkMethod + "())\n")
+		w.WriteString("\treturn slices.Collect(" + p.receiver + "." + heldField + "." + walkMethod + "())\n")
 	}
 
 	w.WriteString("}\n\n")
@@ -400,10 +427,10 @@ func (p plan) counting(w *strings.Builder) {
 	w.WriteString("//\n")
 	w.WriteString("// It is a fact about the past by the time it is read, like every count of\n")
 	w.WriteString("// something another goroutine may be changing.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") " + length + "() int {\n")
-	w.WriteString("\t" + receiverName + "." + lockField + ".RLock()\n")
-	w.WriteString("\tdefer " + receiverName + "." + lockField + ".RUnlock()\n\n")
-	w.WriteString("\treturn " + receiverName + "." + heldField + "." + length + "()\n")
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") " + length + "() int {\n")
+	w.WriteString("\t" + p.receiver + "." + lockField + ".RLock()\n")
+	w.WriteString("\tdefer " + p.receiver + "." + lockField + ".RUnlock()\n\n")
+	w.WriteString("\treturn " + p.receiver + "." + heldField + "." + length + "()\n")
 	w.WriteString("}\n\n")
 }
 
@@ -422,11 +449,11 @@ func (p plan) exposing(w *strings.Builder) {
 	w.WriteString("// deadlocks. What these are for is handing this value to something that\n")
 	w.WriteString("// asks for a sync.Locker and does not otherwise touch it — a sync.Cond is\n")
 	w.WriteString("// the case worth having them for — and not for reaching the data.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") Lock() { " +
-		receiverName + "." + lockField + ".Lock() }\n\n")
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") Lock() { " +
+		p.receiver + "." + lockField + ".Lock() }\n\n")
 	w.WriteString("// Unlock releases the write lock.\n")
-	w.WriteString("func (" + receiverName + " *" + p.declared + ") Unlock() { " +
-		receiverName + "." + lockField + ".Unlock() }\n\n")
+	w.WriteString("func (" + p.receiver + " *" + p.declared + ") Unlock() { " +
+		p.receiver + "." + lockField + ".Unlock() }\n\n")
 }
 
 // assembled reads the written declarations back.

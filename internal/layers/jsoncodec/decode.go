@@ -20,8 +20,8 @@ func (w *writer) decoder(of *form) {
 		w.line("// The value's own method holds the body; this is what generated code")
 		w.line("// calls, so that a caller names one function whether or not the type")
 		w.line("// is one a method could be declared on.")
-		w.line("func %s(%s *jsontext.Decoder, %s *%s) error {", name, decoderVar, valueVar, spelled)
-		w.line("return %s.%s(%s)", valueVar, unmarshalMethod, decoderVar)
+		w.line("func %s(%s *jsontext.Decoder, %s *%s) error {", name, w.names.decoder, w.names.value, spelled)
+		w.line("return %s.%s(%s)", w.names.value, unmarshalMethod, w.names.decoder)
 		w.line("}")
 		w.blank()
 
@@ -29,14 +29,14 @@ func (w *writer) decoder(of *form) {
 		w.line("//")
 		w.line("// A member the object holds and the type does not is skipped, which is")
 		w.line("// what keeps a reader working against a writer that has since added one.")
-		w.line("func (%s *%s) %s(%s *jsontext.Decoder) error {", valueVar, spelled, unmarshalMethod, decoderVar)
+		w.line("func (%s *%s) %s(%s *jsontext.Decoder) error {", w.names.value, spelled, unmarshalMethod, w.names.decoder)
 		w.readBody(of)
 		w.line("}")
 		w.blank()
 		return
 	}
 
-	w.line("func %s(%s *jsontext.Decoder, %s *%s) error {", name, decoderVar, valueVar, spelled)
+	w.line("func %s(%s *jsontext.Decoder, %s *%s) error {", name, w.names.decoder, w.names.value, spelled)
 	w.readBody(of)
 	w.line("}")
 	w.blank()
@@ -45,7 +45,7 @@ func (w *writer) decoder(of *form) {
 // readBody writes what one decoder does.
 func (w *writer) readBody(of *form) {
 	if of.how != writtenStruct {
-		w.readValue("(*"+valueVar+")", of, 0)
+		w.readValue("(*"+w.names.value+")", of, 0)
 		w.line("return nil")
 		return
 	}
@@ -55,12 +55,12 @@ func (w *writer) readBody(of *form) {
 	// than keeping what it held. It matters because a target is often read into
 	// twice: a decoder that left the old value in place would answer a null
 	// with whatever the previous document happened to say.
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if %s.PeekKind() == 'n' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("var zero %s", of.spelled.Text)
-	w.line("*%s = zero", valueVar)
+	w.line("*%s = zero", w.names.value)
 	w.line("return nil")
 	w.line("}")
 
@@ -73,17 +73,17 @@ func (w *writer) readBody(of *form) {
 	// reported as an object of no kind, which says nothing about where it
 	// stopped. Reading is what has the answer, and the read is only reached
 	// when there is no object to read.
-	w.line("if kind := %s.PeekKind(); kind != '{' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if kind := %s.PeekKind(); kind != '{' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("return fmt.Errorf(%s, kind)", strconv.Quote("cannot read "+of.spelled.Text+" from a JSON %s"))
 	w.line("}")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
-	w.line("for %s.PeekKind() != '}' {", decoderVar)
-	w.line("name, err := %s.ReadToken()", decoderVar)
+	w.line("for %s.PeekKind() != '}' {", w.names.decoder)
+	w.line("name, err := %s.ReadToken()", w.names.decoder)
 	w.line("if err != nil {")
 	w.line("return err")
 	w.line("}")
@@ -94,12 +94,12 @@ func (w *writer) readBody(of *form) {
 	}
 
 	w.line("default:")
-	w.line("if err := %s.SkipValue(); err != nil {", decoderVar)
+	w.line("if err := %s.SkipValue(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("}")
 	w.line("}")
-	w.line("_, err := %s.ReadToken()", decoderVar)
+	w.line("_, err := %s.ReadToken()", w.names.decoder)
 	w.line("return err")
 }
 
@@ -111,12 +111,12 @@ func (w *writer) readMember(one member) {
 	// struct that is not there is what asks for it to be there, and the
 	// allocation is per guard so that a member two pointers deep works.
 	for _, held := range one.guards {
-		w.line("if %s.%s == nil {", valueVar, held.path)
-		w.line("%s.%s = new(%s)", valueVar, held.path, held.elem)
+		w.line("if %s.%s == nil {", w.names.value, held.path)
+		w.line("%s.%s = new(%s)", w.names.value, held.path, held.elem)
 		w.line("}")
 	}
 
-	w.readValue(valueVar+"."+one.path, &one.of, 0)
+	w.readValue(w.names.value+"."+one.path, &one.of, 0)
 }
 
 // readValue writes the statements that read one value into a target.
@@ -129,16 +129,16 @@ func (w *writer) readValue(held string, of *form, depth int) {
 		w.readScalar(held, of, accessorFor(of), kindsFor(of), of.how != writtenBool && of.how != writtenString)
 
 	case writtenBytes, writtenFallback:
-		w.checked("json.UnmarshalDecode(%s, &%s)", decoderVar, held)
+		w.checked("json.UnmarshalDecode(%s, &%s)", w.names.decoder, held)
 
 	case writtenDelegate:
-		w.checked("%s.%s(%s)", held, unmarshalMethod, decoderVar)
+		w.checked("%s.%s(%s)", held, unmarshalMethod, w.names.decoder)
 
 	case writtenText:
 		w.readText(held, of)
 
 	case writtenStruct:
-		w.checked("%s(%s, &%s)", decoderFor(of.typ), decoderVar, held)
+		w.checked("%s(%s, &%s)", decoderFor(of.typ), w.names.decoder, held)
 
 	case writtenPointer:
 		w.readPointer(held, of, depth)
@@ -172,7 +172,7 @@ func (w *writer) readValue(held string, of *form, depth int) {
 // declared on the pointer, has something to take the address of.
 func (w *writer) readText(held string, of *form) {
 	w.line("{")
-	w.line("raw, err := %s.ReadToken()", decoderVar)
+	w.line("raw, err := %s.ReadToken()", w.names.decoder)
 	w.line("if err != nil {")
 	w.line("return err")
 	w.line("}")
@@ -258,7 +258,7 @@ func kindsFor(of *form) string {
 // decoder that reads the value and assigns it to itself.
 func (w *writer) readScalar(held string, of *form, accessor, kinds string, fallible bool) {
 	w.line("{")
-	w.line("raw, err := %s.ReadToken()", decoderVar)
+	w.line("raw, err := %s.ReadToken()", w.names.decoder)
 	w.line("if err != nil {")
 	w.line("return err")
 	w.line("}")
@@ -331,8 +331,8 @@ func (w *writer) narrowed(of *form) {
 func (w *writer) readPointer(held string, of *form, depth int) {
 	one := loopVar("held", depth)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if %s.PeekKind() == 'n' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("%s = nil", held)
@@ -359,15 +359,15 @@ func (w *writer) readSlice(held string, of *form, depth int) {
 	out := loopVar("out", depth)
 	one := loopVar("one", depth)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if %s.PeekKind() == 'n' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("%s = nil", held)
 	w.line("} else {")
 	w.openArray()
 	w.line("%s := %s[:0]", out, held)
-	w.line("for %s.PeekKind() != ']' {", decoderVar)
+	w.line("for %s.PeekKind() != ']' {", w.names.decoder)
 	w.line("var %s %s", one, of.elem.spelled.Text)
 	w.readValue(one, of.elem, depth+1)
 	w.line("%s = append(%s, %s)", out, out, one)
@@ -395,8 +395,8 @@ func (w *writer) readArray(held string, of *form, depth int) {
 	one := loopVar("one", depth)
 	spelled := of.spelled.Text
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if %s.PeekKind() == 'n' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("var zero %s", spelled)
@@ -405,7 +405,7 @@ func (w *writer) readArray(held string, of *form, depth int) {
 
 	w.openArray()
 	w.line("%s := 0", index)
-	w.line("for %s.PeekKind() != ']' {", decoderVar)
+	w.line("for %s.PeekKind() != ']' {", w.names.decoder)
 	w.line("if %s >= len(%s) {", index, held)
 	w.line("return fmt.Errorf(%s)", strconv.Quote("too many array elements for "+spelled))
 	w.line("}")
@@ -427,17 +427,17 @@ func (w *writer) readMap(held string, of *form, depth int) {
 	key := loopVar("key", depth)
 	value := loopVar("value", depth)
 
-	w.line("if %s.PeekKind() == 'n' {", decoderVar)
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if %s.PeekKind() == 'n' {", w.names.decoder)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("%s = nil", held)
 	w.line("} else {")
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 	w.line("%s := make(%s)", built, of.spelled.Text)
-	w.line("for %s.PeekKind() != '}' {", decoderVar)
+	w.line("for %s.PeekKind() != '}' {", w.names.decoder)
 	w.line("var %s %s", key, of.key.spelled.Text)
 	w.readValue(key, of.key, depth+1)
 	w.line("var %s %s", value, of.elem.spelled.Text)
@@ -452,13 +452,13 @@ func (w *writer) readMap(held string, of *form, depth int) {
 // openArray reads the token that opens a JSON array, and closeToken the one
 // that closes whatever was opened.
 func (w *writer) openArray() {
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 }
 
 func (w *writer) closeToken() {
-	w.line("if _, err := %s.ReadToken(); err != nil {", decoderVar)
+	w.line("if _, err := %s.ReadToken(); err != nil {", w.names.decoder)
 	w.line("return err")
 	w.line("}")
 }

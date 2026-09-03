@@ -270,6 +270,22 @@ type Block = words.Block
 // two, so that held2 says what it is.
 func Locals(taken ...string) *Block { return words.Locals(taken...) }
 
+// Mentioned returns the identifiers a type's spelling names, which is what
+// [Locals] wants seeding with so that nothing it hands out shadows one of them.
+//
+// The names a layer cannot know in advance are the ones the subject brings with
+// it. A subject from another package arrives qualified and its qualifier is an
+// import; one declared in the package being generated into arrives bare, so its
+// name appears nowhere but the spelling. A body that binds record and then has
+// to write `var v record` is a file the layer generated without complaint and
+// the compiler refused, which the author cannot edit.
+//
+// Every part of a spelling is taken, type arguments included: Box[record] needs
+// record reserved as much as a bare record does. Reserving a word that is not a
+// type costs a local a number and nothing else, where missing one costs a file
+// that does not build.
+func Mentioned(spelling string) []string { return words.Mentioned(spelling) }
+
 // Camel writes a Go name with its first word lowered, which is what a member of
 // a wire format or a closed set is usually called.
 //

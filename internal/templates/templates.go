@@ -66,6 +66,21 @@ type Rewrite struct {
 	// the name it was supposed to lose.
 	Names map[string]string
 
+	// Receiver is what the template's methods call their receiver, where the
+	// caller has a reason to move it.
+	//
+	// A receiver's scope is the method body, and a specialised body spells the
+	// subject wherever the template wrote its type parameter. So a subject
+	// whose own name is the receiver's turns `make(map[K]T)` into
+	// `make(map[K]c)` inside a method whose receiver is `c` — output the
+	// rewriter produced without complaint and the compiler refused, in a file
+	// the author cannot edit. The subject's name is the one nobody here
+	// chooses, so this is the name that moves.
+	//
+	// Empty leaves the template's own spelling alone, which is right wherever
+	// no body spells the subject.
+	Receiver string
+
 	// Prefix is prepended to every other name the template declares at package
 	// level.
 	//
