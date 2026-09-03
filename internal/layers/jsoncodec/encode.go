@@ -1,159 +1,245 @@
 package jsoncodec
 
 import (
+	"encoding/json/jsontext"
 	"go/types"
 	"strconv"
 	"strings"
 )
 
-// encoder writes the function that puts one type on the wire.
+// encoder writes the functions that put one type on the wire.
 //
-// Every type gets a function, including the ones that also get a method. The
-// method is what makes the type satisfy the standard library's interface, and
-// the function is what everything generated calls — so a subject that moves
-// into a package where no method can be declared changes which of the two holds
-// the body, and changes nothing that calls it.
+// Every type gets an appending function, including the ones that also get
+// methods. The methods are what make the type satisfy the standard library's
+// interface, and the function is what everything generated calls — so a
+// subject that moves into a package where no method can be declared changes
+// which of the two holds the body, and changes nothing that calls it.
 func (w *writer) encoder(of *form) {
 	name := encoderFor(of.typ)
 	spelled := of.spelled.Text
+	dst, v := w.n("dst"), w.n("v")
 
-	w.line("// %s writes a %s as JSON.", name, spelled)
+	w.line("// %s appends a %s as JSON.", name, spelled)
 	if of.attach {
 		w.line("//")
 		w.line("// The value's own method holds the body; this is what generated code")
 		w.line("// calls, so that a caller names one function whether or not the type")
 		w.line("// is one a method could be declared on.")
-		w.line("func %s(%s *jsontext.Encoder, %s %s) error {", name, w.names.encoder, w.names.value, spelled)
-		w.line("return %s.%s(%s)", w.names.value, marshalMethod, w.names.encoder)
+		w.line("func %s(%s []byte, %s %s) ([]byte, error) {", name, dst, v, spelled)
+		w.line("return %s.%s(%s)", v, appendJSONMethod, dst)
 		w.line("}")
 		w.blank()
 
-		w.line("// %s writes the %s as a JSON object.", marshalMethod, spelled)
+		w.line("// %s appends the %s to %s as a JSON object, and returns the", appendJSONMethod, spelled, dst)
+		w.line("// extended buffer.")
 		w.line("//")
 		w.line("// Members are written in the order the fields are declared, an embedded")
-		w.line("// struct's where the embedded field is. A field that takes a name from a")
-		w.line("// shallower one keeps its own place rather than the excluded one's.")
-		w.line("func (%s %s) %s(%s *jsontext.Encoder) error {", w.names.value, spelled, marshalMethod, w.names.encoder)
-		w.body(of)
+		w.line("// struct's where the embedded field is. Nothing is allocated beyond the")
+		w.line("// growth of %s, which is what makes this the implementation the other", dst)
+		w.line("// entry points reach.")
+		w.line("func (%s %s) %s(%s []byte) ([]byte, error) {", v, spelled, appendJSONMethod, dst)
+		w.appendBody(of)
 		w.line("}")
 		w.blank()
+
+		w.marshaller(spelled)
 		return
 	}
 
-	w.line("func %s(%s *jsontext.Encoder, %s %s) error {", name, w.names.encoder, w.names.value, spelled)
-	w.body(of)
+	w.line("func %s(%s []byte, %s %s) ([]byte, error) {", name, dst, v, spelled)
+	w.appendBody(of)
 	w.line("}")
 	w.blank()
 }
 
-// body writes what one encoder does, which depends only on the form.
-func (w *writer) body(of *form) {
-	switch of.how {
-	case writtenStruct:
-		w.line("if err := %s.WriteToken(jsontext.BeginObject); err != nil {", w.names.encoder)
-		w.line("return err")
-		w.line("}")
-		for _, one := range of.members {
-			w.writeMember(one)
-		}
-		w.line("return %s.WriteToken(jsontext.EndObject)", w.names.encoder)
+// marshaller writes the entry point the standard library dispatches to.
+func (w *writer) marshaller(spelled string) {
+	v := w.n("v")
 
+	w.line("// %s writes the %s as a compact JSON document.", marshalMethod, spelled)
+	w.line("//")
+	w.line("// The document is assembled in a borrowed buffer and copied out, so the")
+	w.line("// cost over [%s.%s] is one exactly-sized allocation — the", spelled, appendJSONMethod)
+	w.line("// slice being returned. It is also what makes the standard library")
+	w.line("// dispatch to this codec wherever a %s appears.", spelled)
+	w.line("func (%s %s) %s() ([]byte, error) {", v, spelled, marshalMethod)
+	w.line("%s := jsonTakeScratch()", w.n("scratch"))
+	w.line("%s, %s := %s.%s((*%s)[:0])", w.n("held"), w.n("err"), v, appendJSONMethod, w.n("scratch"))
+	w.line("return jsonFinish(%s, %s, %s)", w.n("scratch"), w.n("held"), w.n("err"))
+	w.line("}")
+	w.blank()
+}
+
+// appendBody writes what one appender does: the object, member by member.
+//
+// The opening brace is the interesting byte. Where the first member is always
+// written it is fused into that member's name, and every later member leads
+// with a comma; where the first member may be left out, every member leads
+// with a comma and the first one written has its comma overwritten with the
+// brace at the end — which is what lets a member's presence be decided without
+// any member knowing whether another came before it.
+func (w *writer) appendBody(of *form) {
+	dst := w.n("dst")
+
+	plans := make([]when, len(of.members))
+	needErr := false
+	for i, one := range of.members {
+		plans[i] = w.omitted(one, w.n("v")+"."+one.path)
+		held := one.of
+		if fallible(&held, make(map[*form]bool)) {
+			needErr = true
+		}
+	}
+
+	if needErr {
+		w.line("var %s error", w.n("err"))
+	}
+
+	fused := w.fusedOpen(of, plans)
+	if !fused {
+		w.line("%s := len(%s)", w.n("open"), dst)
+	}
+
+	opened := false
+	for i, one := range of.members {
+		if plans[i].can && plans[i].never {
+			continue
+		}
+		lead := ","
+		if fused && !opened {
+			lead = "{"
+		}
+		w.writeMember(one, plans[i], lead)
+		opened = true
+	}
+
+	switch {
+	case !opened:
+		w.line("return append(%s, '{', '}'), nil", dst)
+	case fused:
+		w.line("return append(%s, '}'), nil", dst)
 	default:
-		w.writeValue(w.names.value, of, 0)
-		w.line("return nil")
+		w.line("if len(%s) == %s {", dst, w.n("open"))
+		w.line("return append(%s, '{', '}'), nil", dst)
+		w.line("}")
+		w.line("%s[%s] = '{'", dst, w.n("open"))
+		w.line("return append(%s, '}'), nil", dst)
 	}
 }
 
-// writeMember writes one member of an object: its name, then its value, under
-// whatever conditions leave it out.
-func (w *writer) writeMember(one member) {
+// fusedOpen reports whether the opening brace can be baked into the first
+// member's name, which it can exactly when that member is always written.
+func (w *writer) fusedOpen(of *form, plans []when) bool {
+	for i, one := range of.members {
+		if plans[i].can && plans[i].never {
+			continue
+		}
+		return len(one.guards) == 0 && plans[i].can && plans[i].cond == "" && !plans[i].retract
+	}
+	return false
+}
+
+// writeMember writes one member of an object: its name fused with the byte
+// before it, then its value, under whatever conditions leave it out.
+func (w *writer) writeMember(one member, held when, lead string) {
+	dst, v := w.n("dst"), w.n("v")
 	closing := 0
 
 	// An embedded pointer contributes nothing when it is nil, which is the rule
 	// for a promoted member rather than a choice. The guards nest, because an
 	// inner one cannot be read before the outer one is known to be there.
-	for _, held := range one.guards {
-		w.line("if %s.%s != nil {", w.names.value, held.path)
+	for _, guard := range one.guards {
+		w.line("if %s.%s != nil {", v, guard.path)
 		closing++
 	}
 
-	held := w.omitted(one, w.names.value+"."+one.path)
-	switch {
-	case !held.can && one.omitEmpty:
-		// Empty is a question about what was written, and this is a member
-		// whose writing is somebody else's — so it is written first and asked
-		// about afterwards, which is how the standard library answers it too.
-		w.buffered(one)
-		for range closing {
-			w.line("}")
-		}
-		return
-
-	case !held.can:
+	if !held.can {
 		w.refused = append(w.refused, one)
-
-	case held.never:
-		// Nothing to write, and no branch to write it in.
-		for range closing {
-			w.line("}")
-		}
-		return
-
-	case held.cond != "":
+	}
+	if held.cond != "" {
 		w.line("if %s {", held.cond)
 		closing++
 	}
 
-	w.line("if err := %s; err != nil {", w.member(one.name))
-	w.line("return err")
-	w.line("}")
-	w.writeValue(w.names.value+"."+one.path, &one.of, 0)
+	prefix := lead + quotedName(one.name) + ":"
+	if held.retract {
+		mark := w.at("kept", w.marks)
+		w.marks++
+		w.line("%s := len(%s)", mark, dst)
+		w.line("%s = append(%s, %s...)", dst, dst, goString(prefix))
+		w.appendValue(v+"."+one.path, &one.of, 0)
+		w.line("if jsonWroteEmpty(%s, %s+%d) {", dst, mark, len(prefix))
+		w.line("%s = %s[:%s]", dst, dst, mark)
+		w.line("}")
+	} else {
+		w.line("%s = append(%s, %s...)", dst, dst, goString(prefix))
+		w.appendValue(v+"."+one.path, &one.of, 0)
+	}
 
 	for range closing {
 		w.line("}")
 	}
 }
 
-// buffered writes a member by encoding it first and leaving it out if what came
-// back was empty.
+// quotedName is a member's name as the document carries it, escaped once here
+// rather than on every call.
 //
-// The last resort for omitempty, and the only correct one where what a member
-// writes is decided elsewhere: by a codec its author wrote, or by the reflective
-// encoder. Neither can be asked in advance what it will produce, and the
-// standard library does not ask — it writes, looks, and retracts. This does the
-// same, at the cost of one buffer for that member.
-//
-// Written through an encoder carrying the options of the one it will go into,
-// rather than through a bare Marshal. Options are what a caller uses to say how
-// their JSON should look — sort a map's keys, register a marshaler for a type,
-// stringify numbers — and a member encoded without them is a hole in every one
-// of those: a caller asking for deterministic output would get it everywhere
-// except here, which is worse than not offering it, because the exception is
-// invisible.
-//
-// The trailing newline goes because an encoder writes one after a top-level
-// value and a member is not one.
-//
-// The four empty values are JSON's, not Go's, and the comparison is exact
-// because what it compares against is what the standard library produced: a
-// compact encoding with no room for a space between the braces.
-func (w *writer) buffered(one member) {
-	w.line("{")
-	w.line("var into bytes.Buffer")
-	w.line("if err := json.MarshalEncode(jsontext.NewEncoder(&into, %s.Options()), %s.%s); err != nil {",
-		w.names.encoder, w.names.value, one.path)
-	w.line("return err")
-	w.line("}")
-	w.line("buffered := bytes.TrimRight(into.Bytes(), \"\\n\")")
+// The canonical form is the standard library's, so a name that needs an escape
+// is baked already escaped: there is no caller whose options could ask for a
+// different escaping.
+func quotedName(name string) string {
+	quoted, err := jsontext.AppendQuote(nil, name)
+	if err != nil {
+		// A name the standard library cannot quote — invalid UTF-8 in a struct
+		// tag. Go's own quoting keeps the output compiling, and the agreement
+		// tests are what would surface the divergence, on source no gofmt run
+		// would have let through.
+		return strconv.Quote(name)
+	}
+	return string(quoted)
+}
 
-	w.line("switch string(buffered) {")
-	w.line(`case "null", "\"\"", "[]", "{}":`)
-	w.line("// Empty, so the member is not written at all.")
-	w.line("default:")
-	w.checked("%s", w.member(one.name))
-	w.checked("%s.WriteValue(buffered)", w.names.encoder)
-	w.line("}")
-	w.line("}")
+// goString writes a string as a Go literal a person can read: backquoted where
+// the content allows it, escaped where it does not.
+func goString(s string) string {
+	if strconv.CanBackquote(s) {
+		return "`" + s + "`"
+	}
+	return strconv.Quote(s)
+}
+
+// fallible reports whether the statements appending a value of this form bind
+// the enclosing function's error, which is what decides whether that error is
+// declared at all.
+//
+// The question is about the emission rather than about the value: a nested
+// struct is written by a call that answers with an error whatever the struct
+// holds, and a delegate reached through the standard library fails through a
+// local of its own. Everything a composite holds is asked through its element,
+// with a set of what is already being asked so a type that reaches itself
+// terminates.
+func fallible(of *form, asking map[*form]bool) bool {
+	if of == nil || asking[of] {
+		return false
+	}
+	asking[of] = true
+	defer delete(asking, of)
+
+	switch of.how {
+	case writtenString, writtenFloat, writtenText, writtenStruct, writtenMap:
+		return true
+
+	case writtenDelegate:
+		return of.writes == appendJSONMethod
+
+	case writtenPointer, writtenSlice, writtenArray:
+		return fallible(of.elem, asking)
+
+	case writtenBool, writtenInt, writtenUint, writtenBytes, writtenFallback, writtenInvalid:
+		return false
+	}
+
+	return false
 }
 
 // omitted returns the condition under which a member is written at all, or the
@@ -165,15 +251,76 @@ func (w *writer) buffered(one member) {
 // an empty string, array or object. A number that is zero is omitted by the
 // first and written by the second, which is the distinction and the reason
 // neither can stand in for the other.
+//
+// omitempty can always be answered, because the append form makes the
+// standard library's own method nearly free: where no condition can be written
+// in advance, the member is written and taken back off the end if what was
+// written was empty. omitzero has no such recourse — zero is a question about
+// the Go value, and a value whose parts cannot be compared has no answer —
+// so it alone can make a member unwritable.
 func (w *writer) omitted(one member, held string) when {
 	switch {
+	case one.omitZero && one.omitEmpty:
+		// Not alternatives, and the standard library does not read them as
+		// such: omitzero is asked before the value is written and omitempty
+		// after, so a member carrying both is left out when either says to
+		// leave it out. They agree about a nil slice and disagree about an
+		// allocated empty one, and answering with the first of the two writes
+		// "s":[] where the standard library writes no member at all.
+		cond, can := w.nonZero(held, &one.of)
+		zero := when{cond: cond, can: can}
+		empty := w.nonEmpty(held, &one.of)
+		if !empty.can {
+			if !zero.can {
+				return when{}
+			}
+			return when{cond: zero.cond, retract: true, can: true}
+		}
+		return survives(zero, empty)
+
 	case one.omitZero:
 		cond, can := w.nonZero(held, &one.of)
 		return when{cond: cond, can: can}
+
 	case one.omitEmpty:
-		return w.nonEmpty(held, &one.of)
+		empty := w.nonEmpty(held, &one.of)
+		if !empty.can {
+			// Empty is a question about what was written, and this is a member
+			// whose writing is somebody else's — so it is written first and
+			// asked about afterwards, which is how the standard library
+			// answers it too.
+			return when{retract: true, can: true}
+		}
+		return empty
+
 	default:
 		return always
+	}
+}
+
+// survives returns the condition that a member passes both tests, which is
+// what a member carrying both options has to do to be written at all.
+//
+// A test that says never wins outright, because a member left out under one
+// option is left out.
+func survives(zero, empty when) when {
+	switch {
+	case !zero.can || !empty.can:
+		return when{}
+	case zero.never || empty.never:
+		return when{never: true, can: true}
+	case zero.cond == "":
+		return empty
+	case empty.cond == "":
+		return zero
+	case zero.cond == empty.cond:
+		// A string is zero exactly when it is empty, and so are several other
+		// shapes. Writing the same test twice is not wrong, but go vet refuses
+		// a redundant and, and a reader would ask what the difference was
+		// meant to be.
+		return zero
+	default:
+		return when{cond: "(" + zero.cond + ") && (" + empty.cond + ")", can: true}
 	}
 }
 
@@ -389,6 +536,12 @@ type when struct {
 	// is what it means.
 	never bool
 
+	// retract records that whether the member stays cannot be known until it
+	// is written: it is appended, looked at, and taken back off the end if
+	// what was written was one of JSON's empties. What omitempty means for a
+	// member whose bytes somebody else decides.
+	retract bool
+
 	// can records that a condition could be written at all. What cannot is a
 	// type that brought its own codec and cannot be compared, whose parts are
 	// neither reachable from here nor this layer's to reason about.
@@ -462,9 +615,8 @@ func (w *writer) nonEmpty(held string, of *form) when {
 		// Empty is a question about what was written, and what these write is
 		// decided elsewhere — by a codec somebody else wrote, by the reflective
 		// encoder, or by a text codec whose output nothing here has seen. The
-		// standard library can ask because it looks at the bytes afterwards;
-		// this cannot, and answering "never empty" would write a member the
-		// author asked to leave out.
+		// caller answers by writing the member and looking, which the retract
+		// path is for.
 		return when{}
 	}
 
@@ -503,7 +655,9 @@ func (w *writer) someWritten(held string, of *form) when {
 
 		held := w.omitted(one, held+"."+one.path)
 		switch {
-		case !held.can:
+		case !held.can || held.retract:
+			// A member whose presence is decided by looking at what it wrote
+			// is one whose presence cannot be written as a condition here.
 			return when{}
 		case held.never:
 			continue
@@ -520,78 +674,103 @@ func (w *writer) someWritten(held string, of *form) when {
 	return when{cond: strings.Join(parts, " || "), can: true}
 }
 
-// writeValue writes the statements that put one value on the wire.
+// appendValue writes the statements that put one value on the wire, appended
+// to dst.
 //
 // depth distinguishes the variables a nested composite binds, so that a slice
 // of slices does not shadow its own loop variable.
-func (w *writer) writeValue(held string, of *form, depth int) {
-	if w.writeScalar(held, of) {
+func (w *writer) appendValue(held string, of *form, depth int) {
+	if w.appendScalar(held, of, depth) {
 		return
 	}
 
+	dst, err := w.n("dst"), w.n("err")
+
 	switch of.how {
-	case writtenBytes, writtenFallback:
-		// Both go through the reflective encoder, for different reasons that
-		// produce the same line. A byte slice is a base64 string rather than an
-		// array, which the token layer does not build; a fallback field is one
-		// nothing here can see through.
-		w.checked("json.MarshalEncode(%s, %s)", w.names.encoder, held)
+	case writtenFallback:
+		w.appendSpliced(held, depth)
 
 	case writtenDelegate:
-		w.delegate(held, of, depth)
+		w.appendDelegate(held, of, depth)
 
 	case writtenText:
-		w.text(held, of, depth)
+		w.appendText(held, of, depth)
 
 	case writtenStruct:
-		w.checked("%s(%s, %s)", encoderFor(of.typ), w.names.encoder, held)
+		w.line("if %s, %s = %s(%s, %s); %s != nil {", dst, err, encoderFor(of.typ), dst, held, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
 
 	case writtenPointer:
-		w.writePointer(held, of, depth)
+		w.line("if %s == nil {", held)
+		w.line(`%s = append(%s, "null"...)`, dst, dst)
+		w.line("} else {")
+		w.appendValue("(*"+held+")", of.elem, depth+1)
+		w.line("}")
 
 	case writtenSlice, writtenArray:
-		w.writeArray(held, of, depth)
+		w.appendArray(held, of, depth)
 
 	case writtenMap:
-		w.writeMap(held, of, depth)
+		w.appendMap(held, of, depth)
 
-	case writtenBool, writtenString, writtenInt, writtenUint, writtenFloat, writtenInvalid:
-		// Nothing here for either. The scalars were answered above, and are
-		// named so that a form added to the plan and forgotten here is a
+	case writtenBool, writtenString, writtenInt, writtenUint, writtenFloat, writtenBytes, writtenInvalid:
+		// Nothing here for any of them. The scalars were answered above, and
+		// are named so that a form added to the plan and forgotten here is a
 		// compiler's complaint rather than a value nothing writes; a refused
 		// form has its refusal recorded already, and the run stops before any
 		// of this is emitted.
 	}
 }
 
-// writeScalar writes the forms that are one jsontext token, and reports whether
-// it wrote one.
-//
-// Split from the rest because they are the forms with nothing to decide: each
-// is a constructor and a conversion, and holding them beside the composites
-// made one function whose length said more about how many token kinds JSON has
-// than about anything a reader needs to follow.
-func (w *writer) writeScalar(held string, of *form) bool {
+// appendScalar writes the forms that are one append, and reports whether it
+// wrote one.
+func (w *writer) appendScalar(held string, of *form, depth int) bool {
+	dst, err := w.n("dst"), w.n("err")
+
 	switch of.how {
 	case writtenBool:
-		w.token(held, "Bool", "bool", of)
-	case writtenString:
-		w.token(held, "String", "string", of)
+		w.line("%s = strconv.AppendBool(%s, bool(%s))", dst, dst, held)
+
 	case writtenInt:
-		w.token(held, "Int", "int64", of)
+		w.line("%s = strconv.AppendInt(%s, int64(%s), 10)", dst, dst, held)
+
 	case writtenUint:
-		w.token(held, "Uint", "uint64", of)
+		w.line("%s = strconv.AppendUint(%s, uint64(%s), 10)", dst, dst, held)
 
 	case writtenFloat:
 		// A float32 has a shortest form of its own, and it is not the shortest
 		// form of the float64 it widens to: 1.1 as a float32 widens to
 		// 1.100000023841858, which is the number but not what anybody else
-		// writes for it. jsontext has a constructor per width for exactly this.
+		// writes for it. The width is passed so the helper chooses against the
+		// right one.
+		bits := 64
 		if basic, ok := of.typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
-			w.token(held, "Float32", "float32", of)
+			bits = 32
+		}
+		w.line("if %s, %s = jsonAppendFinite(%s, float64(%s), %d); %s != nil {", dst, err, dst, held, bits, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+
+	case writtenString:
+		w.line("if %s, %s = jsonAppendString(%s, string(%s)); %s != nil {", dst, err, dst, held, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+
+	case writtenBytes:
+		// A byte slice is base64 in a string rather than an array, which is the
+		// standard library's rule rather than a choice available here. An array
+		// of bytes is the same string, sliced through a local because what is
+		// held may not be addressable.
+		if _, fixed := of.typ.Underlying().(*types.Array); fixed {
+			one := w.at("held", depth)
+			w.line("{")
+			w.line("%s := %s", one, held)
+			w.line("%s = jsonAppendBytes(%s, %s[:])", dst, dst, one)
+			w.line("}")
 			return true
 		}
-		w.token(held, "Float", "float64", of)
+		w.line("%s = jsonAppendBytes(%s, %s)", dst, dst, held)
 
 	default:
 		return false
@@ -600,28 +779,70 @@ func (w *writer) writeScalar(held string, of *form) bool {
 	return true
 }
 
-// delegate calls the codec a type declares for itself.
+// appendSpliced writes a value through the standard library and splices the
+// document it returns.
 //
-// Through a local where the method is declared on the pointer, because Go will
-// not call one on something it cannot take the address of. A field of the
-// receiver is addressable and would not need this; a map's element is not, and
-// a map's element is one of the things this is handed — so the local is what
-// makes the one case work without the caller having to know which case it is.
-// It is also what a person writing this by hand would do.
-func (w *writer) delegate(held string, of *form, depth int) {
-	if valueMethod(of.typ, marshalMethod) {
-		w.checked("%s.%s(%s)", held, marshalMethod, w.names.encoder)
-		return
-	}
+// The boundary for a field nothing here can see through, and for a type whose
+// codec speaks an interface this output cannot carry an encoder for. What
+// comes back is valid compact JSON by the library's own contract, so it is
+// appended whole.
+//
+// Deterministically, because everything this codec writes is: a map the
+// library reaches through this boundary would otherwise come out in an order
+// that differs between two runs over one value, in a document whose every
+// other member is reproducible.
+func (w *writer) appendSpliced(held string, depth int) {
+	dst := w.n("dst")
+	spliced := w.at("spliced", depth)
+	failed := w.at("failed", depth)
 
-	one := loopVar("held", depth)
 	w.line("{")
-	w.line("%s := %s", one, held)
-	w.checked("%s.%s(%s)", one, marshalMethod, w.names.encoder)
+	w.line("%s, %s := json.Marshal(%s, json.Deterministic(true))", spliced, failed, held)
+	w.line("if %s != nil {", failed)
+	w.line("return %s, %s", dst, failed)
+	w.line("}")
+	w.line("%s = append(%s, %s...)", dst, dst, spliced)
 	w.line("}")
 }
 
-// text writes a value as the JSON string its own text codec produces.
+// appendDelegate calls the codec a type declares for itself.
+//
+// A type whose codec appends is called straight, because appending is what
+// this caller is doing anyway. Any other shape of codec is reached through the
+// standard library, which knows how to call each generation of the contract
+// and validates what the method answers — this codec's own output must stay
+// valid whatever somebody's method returns.
+func (w *writer) appendDelegate(held string, of *form, depth int) {
+	if of.writes != appendJSONMethod {
+		w.appendSpliced(held, depth)
+		return
+	}
+
+	dst, err := w.n("dst"), w.n("err")
+
+	// Through a local where the method is declared on the pointer, because Go
+	// will not call one on something it cannot take the address of. A field of
+	// the receiver is addressable and would not need this; a map's element is
+	// not, and a map's element is one of the things this is handed — so the
+	// local is what makes the one case work without the caller having to know
+	// which case it is.
+	if valueMethod(of.typ, appendJSONMethod) {
+		w.line("if %s, %s = %s.%s(%s); %s != nil {", dst, err, held, appendJSONMethod, dst, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+		return
+	}
+
+	one := w.at("held", depth)
+	w.line("{")
+	w.line("%s := %s", one, held)
+	w.line("if %s, %s = %s.%s(%s); %s != nil {", dst, err, one, appendJSONMethod, dst, err)
+	w.line("return %s, %s", dst, err)
+	w.line("}")
+	w.line("}")
+}
+
+// appendText writes a value as the JSON string its own text codec produces.
 //
 // What the standard library does with such a type, and for the same reason: the
 // text form is what its author said the value means, and the form underneath is
@@ -630,25 +851,29 @@ func (w *writer) delegate(held string, of *form, depth int) {
 // nothing to a reader and moves the day somebody inserts a member above it —
 // and it is the codec's refusal of an undeclared value that comes with it.
 //
-// Always through a local, where [writer.delegate] asks first whether it needs
-// one. Asking means reading the package for the method's receiver, and the
-// method may be one this run has not written yet: on a clean checkout there is
-// no receiver to read and on the next run there is, so the answer would differ
+// Always through a local, where a delegate asks first whether it needs one.
+// Asking means reading the package for the method's receiver, and the method
+// may be one this run has not written yet: on a clean checkout there is no
+// receiver to read and on the next run there is, so the answer would differ
 // between two runs of one unchanged declaration and the file would rewrite
 // itself on alternate builds. A local is right for either receiver — a method
 // on the pointer needs something addressable and a method on the value will
 // take one — so the question is not worth the way it has to be asked.
-func (w *writer) text(held string, of *form, depth int) {
-	one := loopVar("held", depth)
-	text := loopVar("text", depth)
+func (w *writer) appendText(held string, of *form, depth int) {
+	dst, err := w.n("dst"), w.n("err")
+	one := w.at("held", depth)
+	text := w.at("text", depth)
+	failed := w.at("failed", depth)
 
 	w.line("{")
 	w.line("%s := %s", one, held)
-	w.line("%s, err := %s.%s(%s)", text, one, of.text, appended(of.text))
-	w.line("if err != nil {")
-	w.line("return err")
+	w.line("%s, %s := %s.%s(%s)", text, failed, one, of.text, appended(of.text))
+	w.line("if %s != nil {", failed)
+	w.line("return %s, %s", dst, failed)
 	w.line("}")
-	w.checked("%s.WriteToken(jsontext.String(string(%s)))", w.names.encoder, text)
+	w.line("if %s, %s = jsonAppendString(%s, string(%s)); %s != nil {", dst, err, dst, text, err)
+	w.line("return %s, %s", dst, err)
+	w.line("}")
 	w.line("}")
 }
 
@@ -661,63 +886,68 @@ func appended(method string) string {
 	return ""
 }
 
-// token writes a scalar as one jsontext token, converted to the type the token
-// constructor takes.
+// appendArray writes a slice or an array as a JSON array.
 //
-// The conversion is written even where it is a no-op, because a named type over
-// a string is not a string as far as a function signature is concerned, and
-// leaving it out would produce output that compiles for some subjects and not
-// for others.
-func (w *writer) token(held, constructor, as string, of *form) {
-	value := as + "(" + held + ")"
-	if of.how == writtenBool {
-		value = held
-		if of.spelled.Text != "bool" {
-			value = "bool(" + held + ")"
-		}
-	}
+// Every element leads with a comma and the first one's comma is overwritten
+// with the bracket at the end, which is the same bargain the object writer
+// makes: no element needs to know whether it is first.
+func (w *writer) appendArray(held string, of *form, depth int) {
+	dst := w.n("dst")
+	mark := w.at("mark", depth)
+	one := w.at("one", depth)
 
-	w.checked("%s.WriteToken(jsontext.%s(%s))", w.names.encoder, constructor, value)
-}
-
-// writePointer writes null for a nil pointer and the value it points at for
-// anything else.
-func (w *writer) writePointer(held string, of *form, depth int) {
-	w.line("if %s == nil {", held)
-	w.checked("%s.WriteToken(jsontext.Null)", w.names.encoder)
-	w.line("} else {")
-	w.writeValue("(*"+held+")", of.elem, depth+1)
-	w.line("}")
-}
-
-// writeArray writes a slice or an array as a JSON array.
-func (w *writer) writeArray(held string, of *form, depth int) {
-	one := loopVar("one", depth)
-
-	w.checked("%s.WriteToken(jsontext.BeginArray)", w.names.encoder)
+	w.line("{")
+	w.line("%s := len(%s)", mark, dst)
 	w.line("for _, %s := range %s {", one, held)
-	w.writeValue(one, of.elem, depth+1)
+	w.line("%s = append(%s, ',')", dst, dst)
+	w.appendValue(one, of.elem, depth+1)
 	w.line("}")
-	w.checked("%s.WriteToken(jsontext.EndArray)", w.names.encoder)
+	w.line("if len(%s) == %s {", dst, mark)
+	w.line("%s = append(%s, '[', ']')", dst, dst)
+	w.line("} else {")
+	w.line("%s[%s] = '['", dst, mark)
+	w.line("%s = append(%s, ']')", dst, dst)
+	w.line("}")
+	w.line("}")
 }
 
-// writeMap writes a map as a JSON object, its members in the order its keys
+// appendMap writes a map as a JSON object, its members in the order its keys
 // sort.
 //
-// Sorted rather than in range order, which is where this codec differs from what
-// the standard library does by default — it sorts only when asked, through its
-// Deterministic option. Generated output is committed and reviewed, and a member
-// order that changed between runs would produce a diff nobody could account for;
-// a caller who needs the other behaviour has the reflective encoder.
-func (w *writer) writeMap(held string, of *form, depth int) {
-	key := loopVar("key", depth)
+// Sorted rather than in range order, which is where this codec differs from
+// what the standard library does by default — it sorts only when asked,
+// through its Deterministic option. Generated output is committed and
+// reviewed, and a member order that changed between runs would produce a diff
+// nobody could account for; sorted is also the one order that can be tested.
+//
+// The keys are gathered into a borrowed slice, which is the entire allocation
+// profile of writing a map. A failure inside the loop returns without handing
+// the slice back, which costs the pool one slice and nothing else.
+func (w *writer) appendMap(held string, of *form, depth int) {
+	dst, err := w.n("dst"), w.n("err")
+	keys := w.at("keys", depth)
+	key := w.at("key", depth)
+	mark := w.at("mark", depth)
 
-	w.checked("%s.WriteToken(jsontext.BeginObject)", w.names.encoder)
-	w.line("for _, %s := range slices.Sorted(maps.Keys(%s)) {", key, held)
-	w.writeValue(key, of.key, depth+1)
-	w.writeValue(held+"["+key+"]", of.elem, depth+1)
+	w.line("{")
+	w.line("%s := jsonSortedKeys(%s)", keys, held)
+	w.line("%s := len(%s)", mark, dst)
+	w.line("for _, %s := range *%s {", key, keys)
+	w.line("%s = append(%s, ',')", dst, dst)
+	w.line("if %s, %s = jsonAppendString(%s, %s); %s != nil {", dst, err, dst, key, err)
+	w.line("return %s, %s", dst, err)
 	w.line("}")
-	w.checked("%s.WriteToken(jsontext.EndObject)", w.names.encoder)
+	w.line("%s = append(%s, ':')", dst, dst)
+	w.appendValue(held+"["+of.key.spelled.Text+"("+key+")]", of.elem, depth+1)
+	w.line("}")
+	w.line("jsonDropKeys(%s)", keys)
+	w.line("if len(%s) == %s {", dst, mark)
+	w.line("%s = append(%s, '{', '}')", dst, dst)
+	w.line("} else {")
+	w.line("%s[%s] = '{'", dst, mark)
+	w.line("%s = append(%s, '}')", dst, dst)
+	w.line("}")
+	w.line("}")
 }
 
 // loopVar names a variable a nested composite binds, so that the inner one does

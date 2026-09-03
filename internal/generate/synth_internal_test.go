@@ -330,7 +330,7 @@ func TestTwoPackagesOfOneName(t *testing.T) {
 // add up would send them to read the methods.
 func TestASkipForAClaimTheFileCouldNotWrite(t *testing.T) {
 	written := discover.Directive{
-		Layer: "skip", Args: "json.MarshalerTo", Text: "//forge:skip json.MarshalerTo",
+		Layer: "skip", Args: "json.Marshaler", Text: "//forge:skip json.Marshaler",
 		ArgsOffset: len("//forge:skip "),
 		Pos:        token.Position{Filename: "model.go", Line: 4, Column: 1},
 	}
@@ -338,7 +338,7 @@ func TestASkipForAClaimTheFileCouldNotWrite(t *testing.T) {
 	of := judgement{declared: "Persons", skipped: []discover.Directive{written}}
 
 	diags := &diag.Set{}
-	unclaimed(claimable{unnameable: []string{"json.MarshalerTo"}}, of, diags)
+	unclaimed(claimable{unnameable: []string{"json.Marshaler"}}, of, diags)
 
 	if diags.Empty() {
 		t.Fatal("a skip for a claim the file could not write was passed over")

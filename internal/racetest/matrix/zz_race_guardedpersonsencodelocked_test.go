@@ -6,8 +6,6 @@
 package matrix
 
 import (
-	"bytes"
-	"encoding/json/jsontext"
 	"runtime"
 	"slices"
 	"sync"
@@ -27,7 +25,7 @@ import (
 // the detector makes, so the counters below are what tell a container that
 // is correctly locked from one that does nothing.
 //
-// The routes taken every round are Len, Snapshot read element by element, a walk inside RDo and MarshalJSONTo,
+// The routes taken every round are Len, Snapshot read element by element, a walk inside RDo and MarshalJSON,
 // because each holds the value for a different length of time and a
 // concurrent layer that is right about one of them is not thereby right
 // about the rest. A method answering with nothing is not among them: what
@@ -113,8 +111,7 @@ func TestGuardedPersonsEncodeLockedUnderConcurrentUse(t *testing.T) {
 					}
 				})
 
-				var out bytes.Buffer
-				if err := held.MarshalJSONTo(jsontext.NewEncoder(&out)); err != nil {
+				if _, err := held.MarshalJSON(); err != nil {
 					t.Errorf("writing the container: %v", err)
 					return
 				}

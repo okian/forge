@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"bytes"
 	"go/ast"
 	"go/token"
 	"slices"
@@ -198,4 +199,25 @@ func reaching(sections []emit.Section, imports []emit.Import) []emit.Import {
 	}
 
 	return emit.Reaching(decls, imports)
+}
+
+// spaced opens a blank line between top-level declarations the collapsed
+// bodies left adjacent.
+//
+// A stub's body is printed at its opening brace, closing brace included, so
+// two declarations that were pages apart in the real file come out touching —
+// which compiles, and reads like a wall. The printer decides spacing from
+// positions this file has deliberately folded, so the space is put back where
+// it can be decided reliably: in the rendered text, where a brace or a group's
+// closing parenthesis in the first column only ever ends a top-level
+// declaration.
+func spaced(src []byte) []byte {
+	for _, edge := range []string{"}", ")"} {
+		for _, opens := range []string{"func ", "type ", "var ", "const ", "//"} {
+			src = bytes.ReplaceAll(src,
+				[]byte("\n"+edge+"\n"+opens),
+				[]byte("\n"+edge+"\n\n"+opens))
+		}
+	}
+	return src
 }

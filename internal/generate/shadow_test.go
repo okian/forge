@@ -63,7 +63,16 @@ var theBound = []bound{
 		args:  "sort=Name index=ID",
 		names: []string{"c", "v"},
 	},
-	{layer: "json", stack: []string{"Collection", "Json"}, names: []string{"c", "enc", "dec", "v"}},
+	{layer: "json", stack: []string{"Collection", "Json"}, names: []string{
+		// The append codec's signatures and the entry points' locals.
+		"c", "v", "dst", "b", "i", "depth", "borrow", "data", "w", "r",
+		// The scanning bodies' locals, every one in scope where a member's
+		// type is spelled.
+		"err", "err2", "err3", "held", "next", "ok", "names", "scratch",
+		"first", "done", "lo", "hi", "at", "esc", "open",
+		// The container's streaming halves.
+		"n", "counted", "failed", "ended", "kind", "feed", "yield",
+	}},
 	{layer: "guarded", stack: []string{"Guarded", "Slice"}, names: []string{"g"}},
 	{layer: "builder", stack: []string{"Builder"}, names: []string{"b"}},
 	{layer: "ring", stack: []string{"Ring"}, args: "cap=8", names: []string{"r"}},

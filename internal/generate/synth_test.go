@@ -27,10 +27,10 @@ func TestWhatADeclarationClaims(t *testing.T) {
 	// while one naming the pointer for the others would understate what the
 	// type does.
 	for _, want := range []string{
-		"_ io.WriterTo          = *new(Persons)",
-		"_ io.ReaderFrom        = (*Persons)(nil)",
-		"_ json.MarshalerTo     = *new(Persons)",
-		"_ json.UnmarshalerFrom = (*Persons)(nil)",
+		"_ io.WriterTo      = *new(Persons)",
+		"_ io.ReaderFrom    = (*Persons)(nil)",
+		"_ json.Marshaler   = *new(Persons)",
+		"_ json.Unmarshaler = (*Persons)(nil)",
 	} {
 		if !strings.Contains(held, want) {
 			t.Errorf("the output does not claim %q:\n%s", want, held)
@@ -67,7 +67,7 @@ func TestNothingIsClaimedThatWasNotWritten(t *testing.T) {
 	// the interfaces a codec earns — while still claiming the walk.
 	held := claimingStack(t, "Persons", collectionOnly())
 
-	for _, want := range []string{"io.WriterTo", "json.MarshalerTo"} {
+	for _, want := range []string{"io.WriterTo", "json.Marshaler"} {
 		if strings.Contains(held, want) {
 			t.Errorf("a declaration with no codec claims %s:\n%s", want, held)
 		}
@@ -107,7 +107,7 @@ func TestASkipTurnsOffOneClaim(t *testing.T) {
 	if strings.Contains(held, "io.WriterTo") {
 		t.Errorf("a skipped interface is claimed anyway:\n%s", held)
 	}
-	for _, want := range []string{"io.ReaderFrom", "json.MarshalerTo", "json.UnmarshalerFrom"} {
+	for _, want := range []string{"io.ReaderFrom", "json.Marshaler", "json.Unmarshaler"} {
 		if !strings.Contains(held, want) {
 			t.Errorf("skipping one claim dropped %s:\n%s", want, held)
 		}
@@ -130,8 +130,8 @@ func TestWhatIsLeftAfterASkipCompiles(t *testing.T) {
 		// in the file asking for that package is the pair of claims — and a
 		// file that imports it once they are gone does not build.
 		"everything one package gave": {
-			"//forge:skip json.MarshalerTo",
-			"//forge:skip json.UnmarshalerFrom",
+			"//forge:skip json.Marshaler",
+			"//forge:skip json.Unmarshaler",
 		},
 	}
 

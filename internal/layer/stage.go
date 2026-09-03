@@ -77,28 +77,6 @@ type Transparent interface {
 	Transparent() bool
 }
 
-// StageOf returns how far along a layer says it is, and [StageReady] for one
-// that says nothing.
-//
-// Silence means ready, which is the answer a layer written outside forge is
-// entitled to. How far along a layer is is a question about forge's own
-// roadmap, and a plugin has no way to answer it — so a layer that implements
-// [Described] and one that does not are both read as finished, and only forge's
-// own markers report the two stages that mean otherwise.
-//
-// Here rather than at each call site because more than one stage acts on the
-// answer: the registry decides whether a marker may be taken over, the option
-// checker decides whether an unknown option is worth complaining about, and the
-// test matrices decide what to combine. Four copies of one type assertion is
-// four places for silence to stop meaning ready.
-func StageOf(l Layer) Stage {
-	described, says := l.(Described)
-	if !says {
-		return StageReady
-	}
-	return described.Stage()
-}
-
 // TransparentLayer reports whether a layer upholds its invariants over the raw
 // underlying type, which is what decides whether a stack containing it may be
 // written outside a spec file.

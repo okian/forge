@@ -14,6 +14,7 @@ import (
 	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/layers/jsoncodec"
 	"github.com/okian/forge/internal/load"
+	"github.com/okian/forge/internal/shared/jsonwire"
 	"github.com/okian/forge/internal/subject"
 	"github.com/okian/forge/plugin"
 )
@@ -88,6 +89,18 @@ func generated(t *testing.T) []byte {
 			file.Imports = append(file.Imports, held.Imports...)
 		}
 	}
+
+	// Everything above calls into the shared wire runtime, which the emitter
+	// provides once per package for however many subjects required it. This is
+	// that provision, rehearsed.
+	shared, err := jsonwire.Unit(token.Position{})
+	if err != nil {
+		t.Fatalf("providing the wire runtime: %v", err)
+	}
+	file.Sections = append(file.Sections, emit.Section{
+		Decls: shared.Decls, Comments: shared.Comments, Fset: shared.Fset,
+	})
+	file.Imports = append(file.Imports, shared.Imports...)
 
 	out, err := file.Render()
 	if err != nil {

@@ -13,27 +13,9 @@
 #              the same source on the same toolchain allocates the same number
 #              of times — so a budget can be a number and a regression is never
 #              noise.
-#   B/op       gated with a small headroom, and a byte or two of slack at the
-#              bottom. The accounting jitters by a few tens of bytes where a
-#              map grows, which is far below any real regression.
-#
-#              The slack is what makes the gate usable at a budget of zero,
-#              which has no proportional headroom to absorb anything. B/op is
-#              a total divided by the iteration count, so a cost paid once
-#              over a run of two thousand comes back as one byte per
-#              operation — an honest figure that would fail a budget it does
-#              not exceed.
-#
-#              A byte or two, and not any figure that reports no allocations.
-#              allocs/op truncates too, so nought there means "fewer times
-#              than there were iterations" rather than "not at all": a
-#              kilobyte on every hundredth call reports ten bytes per
-#              operation and no allocations. The two are told apart by
-#              magnitude, because only one of them is a divisor. A fixed cost
-#              divided by a longer run gets smaller — 1 B/op at two thousand
-#              iterations, nought at twenty thousand — while a rare-path
-#              allocation stays where it is. So the slack is the size of the
-#              rounding and no larger.
+#   B/op       gated with a small headroom. The accounting jitters by a few
+#              tens of bytes where a map grows, which is far below any real
+#              regression and far above zero.
 #   ns/op      printed, never gated. A shared runner's timings vary by more
 #              than most regressions do, and a gate that cries wolf is a gate
 #              somebody switches off.
@@ -75,11 +57,6 @@ filter="${BENCH_FILTER:-.}"
 # thousand, to absorb the accounting jitter described above.
 headroom=10
 
-# And with at least this many bytes of room, which is what a budget of zero
-# gets: enough for a fixed cost divided by the run length and no more. See the
-# note on B/op above for why this is two and not ten.
-slack=2
-
 if [ ! -f "${budget}" ]; then
 	echo "bench: no budget file at ${budget}" >&2
 	exit 1
@@ -95,7 +72,7 @@ go test "${pkgs}" -run '^$' -bench="${filter}" -benchmem -benchtime="${benchtime
 
 echo
 
-awk -v budgetfile="${budget}" -v headroom="${headroom}" -v slack="${slack}" '
+awk -v budgetfile="${budget}" -v headroom="${headroom}" '
 	# The budget file: one benchmark per line, as
 	#
 	#   <package> <benchmark> <allocs/op> <B/op>
@@ -157,23 +134,10 @@ awk -v budgetfile="${budget}" -v headroom="${headroom}" -v slack="${slack}" '
 			bad = 1
 		}
 
-		# The proportional room, plus the rounding slack at the bottom. See the
-		# note on B/op above for why the slack is a couple of bytes rather than
-		# any figure reporting no allocations.
-		proportional = bytes[key] + (bytes[key] * headroom / 1000)
-		ceiling = proportional
-		if (ceiling < slack) ceiling = slack
-
+		ceiling = bytes[key] + (bytes[key] * headroom / 1000)
 		if (gotbytes + 0 > ceiling) {
 			printf "bench: %s %s allocated %s bytes, budget %s\n", pkg, name, gotbytes, bytes[key]
 			bad = 1
-		} else if (gotbytes + 0 > proportional) {
-			# Passing on the slack rather than on the jitter headroom, which is
-			# worth saying out loud: this is the one case the gate is not
-			# holding the figure to anything, and a number nobody sees is how a
-			# gate stops being read.
-			printf "bench: %s %s reports %s bytes over %s, which is the run length rather than the code\n",
-				pkg, name, gotbytes, bytes[key]
 		}
 
 		# The other side of the band. Only where there is room to fall by half:

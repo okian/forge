@@ -2,8 +2,6 @@ package jsoncodec
 
 import (
 	"fmt"
-	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -36,15 +34,13 @@ type writer struct {
 	// without looking inside — so it has nothing to reach itself through.
 	asking map[*form]bool
 
-	// names are the identifiers the bodies bind, allocated out of the way of
-	// the types they spell. See [locals].
-	names locals
+	// marks counts the members written and retracted so far, so that two of
+	// them in one function do not bind one variable.
+	marks int
 
-	// prefix is what the prepared name variables are declared under, and
-	// prepared lists the ones this codec asked for, in the order it asked. See
-	// [plain].
-	prefix   string
-	prepared []string
+	// names are the identifiers the bodies bind, each allocated out of the way
+	// of the types the codec spells. See [locals].
+	names locals
 }
 
 // newWriter returns a writer ready to assemble one codec.
@@ -52,59 +48,15 @@ func newWriter(names locals) *writer {
 	return &writer{asking: make(map[*form]bool), names: names}
 }
 
-// member writes the call that puts one member's name on the wire.
-//
-// A name the encoder cannot change is written as bytes prepared once at the top
-// of the file; anything else is quoted on the spot, which is what the encoder
-// would have done anyway. See [plain] for why the line is drawn there.
-func (w *writer) member(name string) string {
-	if w.prefix == "" || !plain(name) {
-		return fmt.Sprintf("%s.WriteToken(jsontext.String(%s))", w.names.encoder, strconv.Quote(name))
-	}
+// n returns what one of the codec's identifiers is called. The short name is
+// earned by how often it is asked: nearly every emitted line binds or reads
+// one.
+func (w *writer) n(base string) string { return w.names.name(base) }
 
-	held := nameVar(w.prefix, name)
-	if !slices.Contains(w.prepared, name) {
-		w.prepared = append(w.prepared, name)
-	}
-
-	return fmt.Sprintf("%s.WriteValue(%s)", w.names.encoder, held)
-}
-
-// prefacing returns the prepared-name declarations as source, for putting
-// above the bodies that use them.
-//
-// A writer of its own, because the bodies are what decide which names there
-// are: they have to be written before this can be, and printed after it.
-func (w *writer) prefacing() string {
-	if len(w.prepared) == 0 {
-		return ""
-	}
-
-	held := &writer{prefix: w.prefix, prepared: w.prepared}
-	held.preparing()
-
-	return held.String()
-}
-
-// preparing writes the declarations the prepared names live in.
-//
-// One block at the top of what this codec contributes, in the order the members
-// were written, so a reader sees them in the order the document holds them.
-func (w *writer) preparing() {
-	if len(w.prepared) == 0 {
-		return
-	}
-
-	w.line("// The member names this codec writes, quoted once here rather than on")
-	w.line("// every call. A name is the same bytes every time, and quoting it is a")
-	w.line("// scan the generator has already done.")
-	w.line("var (")
-	for _, one := range w.prepared {
-		w.line("%s = jsontext.Value(%s)", nameVar(w.prefix, one), strconv.Quote(quoted(one)))
-	}
-	w.line(")")
-	w.blank()
-}
+// at returns the loop-depth variant of an identifier, allocated the same way:
+// the inner binding of a nested composite must dodge the subject's names as
+// surely as the outer one.
+func (w *writer) at(base string, depth int) string { return w.names.name(loopVar(base, depth)) }
 
 // line writes one line of the body. Indentation is left to gofmt, which the
 // emitter runs over everything anyway, so that the assembly here reads as the
@@ -120,18 +72,6 @@ func (w *writer) line(format string, args ...any) {
 
 // blank separates two declarations.
 func (w *writer) blank() { w.out.WriteByte('\n') }
-
-// checked writes a call whose error stops the function.
-//
-// Every write and every read is one of these, which is what makes the generated
-// code's error handling uniform: the first failure is returned and nothing after
-// it is attempted, because a JSON stream that has gone wrong cannot be written
-// further into.
-func (w *writer) checked(format string, args ...any) {
-	w.line("if err := "+format+"; err != nil {", args...)
-	w.line("return err")
-	w.line("}")
-}
 
 // String returns the assembled source.
 func (w *writer) String() string { return w.out.String() }

@@ -33,11 +33,12 @@ import (
 // layer runs on another's behalf. A third party writes their own, which is what
 // having none of forge's own means.
 var against = map[string]string{
-	"clone":     "",
-	"embedded":  "",
-	"enum":      "",
-	"jsoncodec": "",
-	"patch":     "",
+	"clone":    "",
+	"embedded": "",
+	"enum":     "",
+	"patch":    "",
+
+	"jsoncodec": "the shared JSON wire runtime the generated codecs call into",
 
 	"builder":     "the failure type and the check layer it runs",
 	"collection":  "the template rewriter and the shared sequence view",

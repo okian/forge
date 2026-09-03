@@ -287,18 +287,17 @@ var synthesised = []synthetic{
 		}},
 	},
 	{
-		from: stdJSON, name: "MarshalerTo",
+		from: stdJSON, name: "Marshaler",
 		needs: []wants{{
-			name:    "MarshalJSONTo",
-			params:  []spelled{{from: stdJSONText, name: "Encoder", ptr: true}},
-			results: []spelled{{name: "error"}},
+			name:    "MarshalJSON",
+			results: []spelled{{name: "[]byte"}, {name: "error"}},
 		}},
 	},
 	{
-		from: stdJSON, name: "UnmarshalerFrom",
+		from: stdJSON, name: "Unmarshaler",
 		needs: []wants{{
-			name:    "UnmarshalJSONFrom",
-			params:  []spelled{{from: stdJSONText, name: "Decoder", ptr: true}},
+			name:    "UnmarshalJSON",
+			params:  []spelled{{name: "[]byte"}},
 			results: []spelled{{name: "error"}},
 		}},
 	},
@@ -873,11 +872,18 @@ func asserted(of synthesis, claims []claim, walked string) (emit.Section, error)
 		w.WriteString("// first tries, so a stack that stops satisfying one of these fails here\n")
 		w.WriteString("// rather than at somebody's call site. And a reader who is not going to read\n")
 		w.WriteString("// forty methods can see what they add up to.\n")
-		w.WriteString("var (\n")
-		for _, one := range claims {
-			w.WriteString("\t" + one.written(of.declared) + "\n")
+
+		// A group of one is written bare, because the parentheses say "these
+		// belong together" and one thing has nothing to belong with.
+		if len(claims) == 1 {
+			w.WriteString("var " + claims[0].written(of.declared) + "\n\n")
+		} else {
+			w.WriteString("var (\n")
+			for _, one := range claims {
+				w.WriteString("\t" + one.written(of.declared) + "\n")
+			}
+			w.WriteString(")\n\n")
 		}
-		w.WriteString(")\n\n")
 	}
 
 	if walked != "" {

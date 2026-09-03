@@ -18,16 +18,11 @@ import (
 // it. The other direction would leave the author's own code naming something
 // forge had renamed underneath it.
 type locals struct {
-	// receiver is what the container's own methods call it, and value what a
-	// codec calls the value it is reading into or writing out of.
-	receiver string
-	value    string
-
-	// encoder and decoder are the streams a codec is handed. Parameters, which
-	// shadow as readily as a variable does: a parameter's scope is the function
-	// body, and the body is where the members are spelled.
-	encoder string
-	decoder string
+	// block holds every name the codec's bodies may not take, and given what
+	// each base name became — asked once and answered the same way after, so
+	// that the line binding a name and every line reading it agree.
+	block *plugin.Block
+	given map[string]string
 }
 
 // naming allocates the identifiers a codec binds, out of the way of every name
@@ -44,14 +39,19 @@ func naming(spellings ...string) locals {
 		taken = append(taken, plugin.Mentioned(one)...)
 	}
 
-	block := plugin.Locals(taken...)
+	return locals{block: plugin.Locals(taken...), given: make(map[string]string)}
+}
 
-	return locals{
-		receiver: block.Declare("c"),
-		value:    block.Declare("v"),
-		encoder:  block.Declare("enc"),
-		decoder:  block.Declare("dec"),
+// name returns what one of the codec's identifiers is called, moving it where a
+// type the bodies spell already holds the name.
+func (l locals) name(base string) string {
+	if held, ok := l.given[base]; ok {
+		return held
 	}
+
+	out := l.block.Declare(base)
+	l.given[base] = out
+	return out
 }
 
 // spelled returns every type spelling a form's codec writes down, which is what

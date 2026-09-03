@@ -2,22 +2,12 @@
 /forge
 /bin/
 
-# Coverage and profiling artefacts. Anchored to a module root so that test
-# fixtures keep their extensions — which is why the nested module needs its own
-# line rather than being covered by the one above.
+# Coverage and profiling artefacts. Anchored to the module root so that test
+# fixtures keep their extensions.
 /cover.out
 /coverage.out
-/x/csv/cover.out
 /*.prof
 *.test
-
-# A workspace applies to everybody who clones, which would put every build on
-# this tree rather than on what the nested modules' go.mod files actually
-# require — so a requirement nobody outside can resolve would keep working here
-# and fail for them. It is the local tool that replaces those replace
-# directives once there is a version to require; see docs/releasing.md.
-/go.work
-/go.work.sum
 
 # Editor and OS noise.
 .DS_Store

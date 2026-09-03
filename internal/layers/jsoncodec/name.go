@@ -159,25 +159,31 @@ func arguments(named *types.Named) string {
 // forwards to it; where it cannot the function is the whole codec. Callers name
 // one thing either way, which is what keeps a subject moved into another
 // package from changing anything that reads it.
-func encoderFor(t types.Type) string { return "encode" + identifier(t) + "JSONTo" }
+func encoderFor(t types.Type) string { return "append" + identifier(t) + "JSON" }
 
-func decoderFor(t types.Type) string { return "decode" + identifier(t) + "JSONFrom" }
+func decoderFor(t types.Type) string { return "decode" + identifier(t) + "JSON" }
 
-// Methods the codec declares, which are the interfaces encoding/json/v2
-// dispatches to and the names an author's own codec would already have taken.
+// Methods the codec declares. AppendJSON is the implementation and the two
+// beside it are what the standard library dispatches to, in either of its
+// generations; the borrowing reader is the sharp variant a caller asks for by
+// name.
 const (
-	marshalMethod   = "MarshalJSONTo"
-	unmarshalMethod = "UnmarshalJSONFrom"
+	appendJSONMethod = "AppendJSON"
+	marshalMethod    = "MarshalJSON"
+	unmarshalMethod  = "UnmarshalJSON"
+	borrowedMethod   = "UnmarshalJSONBorrowed"
 
 	// And the text codec's, which this layer never writes and does call.
 	textMarshalMethod   = "MarshalText"
 	textAppendMethod    = "AppendText"
 	textUnmarshalMethod = "UnmarshalText"
 
-	// And the codec that came before this one, which this layer neither writes
-	// nor calls, and which the standard library asks for first.
-	olderMarshalMethod   = "MarshalJSON"
-	olderUnmarshalMethod = "UnmarshalJSON"
+	// And the streaming codec of encoding/json/v2, which this layer neither
+	// writes nor calls: calling it needs a jsontext encoder, and generated
+	// output carries none. A type declaring that pair is written through the
+	// reflective boundary, where the standard library dispatches to it.
+	streamMarshalMethod   = "MarshalJSONTo"
+	streamUnmarshalMethod = "UnmarshalJSONFrom"
 )
 
 // declaresCodec reports whether a type has a codec of its own.
@@ -189,14 +195,44 @@ const (
 // deciding anything. Go lets a method declared on the type shadow one it
 // embeds, so writing a codec for the second is legal, and is what the author of
 // the enclosing struct almost certainly meant.
+func (p *planner) declaresCodec(t types.Type) bool {
+	writes, reads := p.codecHalves(t)
+	return writes != "" && reads != ""
+}
+
+// codecHalves returns the methods a type writes and reads JSON through, or
+// empty strings where it declares none.
+//
+// Either generation of the contract counts, because either is a type whose
+// author said what its wire form is. What differs is only how it is called:
+// AppendJSON is called straight, since appending is what generated code does
+// anyway; MarshalJSON and the streaming pair are reached through the standard
+// library, which knows how to call each and validates what comes back.
 //
 // Asked of the type where the model never built one: a field may be a named
 // integer in another module, and what matters is only whether the method is
 // there. A type that declares one half and not the other is not treated as
-// having a codec — half a codec is a mistake worth a compile error in the
-// output rather than a silent decision here.
-func (p *planner) declaresCodec(t types.Type) bool {
-	return p.declares(t, marshalMethod) && p.declares(t, unmarshalMethod)
+// having a codec — that is reported where it is found, because generating the
+// missing half would redeclare the one that is there under a reader that never
+// consults it.
+func (p *planner) codecHalves(t types.Type) (writes, reads string) {
+	switch {
+	case p.declares(t, appendJSONMethod):
+		writes = appendJSONMethod
+	case p.declares(t, marshalMethod):
+		writes = marshalMethod
+	case p.declares(t, streamMarshalMethod):
+		writes = streamMarshalMethod
+	}
+
+	switch {
+	case p.declares(t, unmarshalMethod):
+		reads = unmarshalMethod
+	case p.declares(t, streamUnmarshalMethod):
+		reads = streamUnmarshalMethod
+	}
+
+	return writes, reads
 }
 
 // declaresText reports whether a type carries a text codec, so that its value
@@ -219,29 +255,9 @@ func (p *planner) declaresCodec(t types.Type) bool {
 // the answer for that reason, and what the run will write is asked of the
 // layers instead.
 func (p *planner) declaresText(t types.Type) bool {
-	// A type carrying either half of the codec that came before this one is
-	// left alone entirely. encoding/json asks for that half before it asks for
-	// a text codec, and it asks per direction: a type with MarshalJSON and a
-	// text codec is written by the first and read by the second. This layer
-	// reads neither half and writes neither, and it has one answer per type
-	// rather than one per direction — so it cannot follow that split, and the
-	// type is written as the form underneath it instead. Which is what happened
-	// before this question was asked at all, and is at least the same in both
-	// directions: a document this writes is one it reads.
-	//
-	// Left alone is not the same as agreed with. A struct this cannot write
-	// member by member is refused, and the way out a refusal names hands that
-	// one value to the reflective encoder — which reaches the older codec and
-	// writes what everything else writes. A named scalar is not refused, since
-	// it has a form of its own to be written as, so forge writes the number
-	// where the standard library writes whatever the older codec says. Two
-	// readers of one type disagreeing is the cost of not reading a codec this
-	// layer was not written to read, and it is the same cost that was there
-	// before a text codec was asked about at all.
-	if p.has(t, olderMarshalMethod) || p.has(t, olderUnmarshalMethod) {
-		return false
-	}
-
+	// A JSON codec is not asked about here, because it was asked about first:
+	// [planner.owned] resolves a type carrying any half of one before a text
+	// codec is considered, which is the standard library's own precedence.
 	return p.textWriter(t) != "" && p.has(t, textUnmarshalMethod)
 }
 
@@ -330,13 +346,13 @@ func shaped(sig *types.Signature, method string) bool {
 	}
 
 	switch method {
-	case textMarshalMethod, olderMarshalMethod:
+	case textMarshalMethod, marshalMethod:
 		return sig.Params().Len() == 0 && bytesThenError(sig.Results())
 
-	case textAppendMethod:
+	case textAppendMethod, appendJSONMethod:
 		return isBytes(only(sig.Params())) && bytesThenError(sig.Results())
 
-	case textUnmarshalMethod, olderUnmarshalMethod:
+	case textUnmarshalMethod, unmarshalMethod, borrowedMethod:
 		return isBytes(only(sig.Params())) &&
 			sig.Results().Len() == 1 && isError(sig.Results().At(0).Type())
 
@@ -420,13 +436,13 @@ func valueMethod(t types.Type, name string) bool {
 // neither, and it is worth naming: whichever half is there is the one a
 // generated pair would redeclare.
 func (p *planner) halfCodec(t types.Type) string {
-	writes, reads := p.declares(t, marshalMethod), p.declares(t, unmarshalMethod)
+	writes, reads := p.codecHalves(t)
 
 	switch {
-	case writes && !reads:
-		return marshalMethod
-	case reads && !writes:
-		return unmarshalMethod
+	case writes != "" && reads == "":
+		return writes
+	case reads != "" && writes == "":
+		return reads
 	default:
 		return ""
 	}

@@ -2,7 +2,6 @@ package people_test
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"slices"
 	"sync"
@@ -103,8 +102,8 @@ func TestTheDocumentAGuardedRingWrites(t *testing.T) {
 
 	held.Do(func(v people.RosterView) { v.AppendSeq(slices.Values(written)) })
 
-	var out bytes.Buffer
-	if err := held.MarshalJSONTo(jsontext.NewEncoder(&out)); err != nil {
+	got, err := held.MarshalJSON()
+	if err != nil {
 		t.Fatalf("writing the roster: %v", err)
 	}
 
@@ -113,14 +112,14 @@ func TestTheDocumentAGuardedRingWrites(t *testing.T) {
 		t.Fatalf("writing the same elements as a slice: %v", err)
 	}
 
-	if got := bytes.TrimSpace(out.Bytes()); !bytes.Equal(got, bytes.TrimSpace(want)) {
+	if !bytes.Equal(got, want) {
 		t.Errorf("the roster wrote %s, and the same elements as a slice are %s", got, want)
 	}
 
 	// And it reads back, through the ordinary decoder into an ordinary slice,
 	// which is the whole of what "it is a JSON array" means.
 	var read []people.Person
-	if err := json.Unmarshal(out.Bytes(), &read); err != nil {
+	if err := json.Unmarshal(got, &read); err != nil {
 		t.Fatalf("reading the document back: %v", err)
 	}
 	// Through the comparison the codec tests use for a round trip: a nil slice
@@ -133,12 +132,12 @@ func TestTheDocumentAGuardedRingWrites(t *testing.T) {
 
 // An empty roster writes an empty array rather than null.
 func TestTheDocumentAnEmptyRosterWrites(t *testing.T) {
-	var out bytes.Buffer
-	if err := people.NewRoster().MarshalJSONTo(jsontext.NewEncoder(&out)); err != nil {
+	got, err := people.NewRoster().MarshalJSON()
+	if err != nil {
 		t.Fatalf("writing an empty roster: %v", err)
 	}
 
-	if got := string(bytes.TrimSpace(out.Bytes())); got != "[]" {
+	if string(got) != "[]" {
 		t.Errorf("an empty roster wrote %s, want []", got)
 	}
 }
@@ -178,8 +177,7 @@ func TestManyGoroutinesAgainstOneRoster(t *testing.T) {
 					}
 				})
 
-				var out bytes.Buffer
-				if err := held.MarshalJSONTo(jsontext.NewEncoder(&out)); err != nil {
+				if _, err := held.MarshalJSON(); err != nil {
 					t.Errorf("writing the roster: %v", err)
 					return
 				}

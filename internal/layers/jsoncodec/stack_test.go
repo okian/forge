@@ -49,7 +49,7 @@ func exposing(methods ...plugin.Method) plugin.Shape {
 // contract on the declared type, not only the pair the standard library
 // dispatches to.
 //
-// All four are checked because they are one API: a caller who can marshal a
+// All six are checked because they are one API: a caller who can marshal a
 // container and cannot write one to a file has the half that needs a buffer
 // nobody asked them to allocate.
 func TestAStackThatCanBeWalkedGetsACodecOfItsOwn(t *testing.T) {
@@ -57,9 +57,11 @@ func TestAStackThatCanBeWalkedGetsACodecOfItsOwn(t *testing.T) {
 		exposing(walks(false), appends(false), resets())))
 
 	for _, want := range []string{
-		"func (c Persons) MarshalJSONTo(enc *jsontext.Encoder) error {",
+		"func (c Persons) AppendJSON(dst []byte) ([]byte, error) {",
+		"func (c Persons) MarshalJSON() ([]byte, error) {",
 		"func (c Persons) WriteTo(w io.Writer) (int64, error) {",
-		"func (c *Persons) UnmarshalJSONFrom(dec *jsontext.Decoder) error {",
+		"func (c *Persons) UnmarshalJSON(data []byte) error {",
+		"func (c *Persons) UnmarshalJSONBorrowed(data []byte) error {",
 		"func (c *Persons) ReadFrom(r io.Reader) (int64, error) {",
 	} {
 		if !strings.Contains(written, want) {
@@ -69,28 +71,30 @@ func TestAStackThatCanBeWalkedGetsACodecOfItsOwn(t *testing.T) {
 }
 
 // The elements are walked and written one at a time, rather than collected into
-// something the encoder is then handed.
+// something the writer is then handed.
 //
-// It is the whole point of the layer composing with a container: a stack of a
-// million elements costs the encoder's buffer, and a stack that materialised
-// first would cost the elements twice.
+// It is the whole point of the layer composing with a container: writing a
+// stack of a million elements to a file costs one flush window, and a stack
+// that materialised first would cost the elements twice. The window and its
+// threshold are the property the old prohibition on gathering protected, and
+// they are what is asserted now that appending is how the document is built.
 func TestTheWholeStackIsWrittenInOnePass(t *testing.T) {
 	written := source(t, declaring(t, modelPkg, "Scalars",
 		exposing(walks(false), appends(false), resets())))
 
 	for _, want := range []string{
-		"enc.WriteToken(jsontext.BeginArray)",
 		"for v := range c.All() {",
-		"encodeModelScalarsJSONTo(enc, v)",
-		"enc.WriteToken(jsontext.EndArray)",
+		"appendModelScalarsJSON(dst, v)",
+		"if len(dst) < jsonFlushWindow {",
+		"dst = dst[:0]",
 	} {
 		if !strings.Contains(written, want) {
-			t.Errorf("the encoder does not %q:\n%s", want, written)
+			t.Errorf("the writer does not %q:\n%s", want, written)
 		}
 	}
 
-	if strings.Contains(written, "slices.Collect") || strings.Contains(written, "append(") {
-		t.Errorf("the encoder gathers the elements before writing them:\n%s", written)
+	if strings.Contains(written, "slices.Collect") {
+		t.Errorf("the writer gathers the elements before writing them:\n%s", written)
 	}
 }
 
@@ -130,12 +134,12 @@ func TestAContainerThatRefusesElementsIsHeard(t *testing.T) {
 // did — which for a container carrying a lock is not a style question.
 func TestTheWritingHalfFollowsTheWalk(t *testing.T) {
 	byValue := source(t, declaring(t, modelPkg, "Scalars", exposing(walks(false))))
-	if !strings.Contains(byValue, "func (c Persons) MarshalJSONTo") {
+	if !strings.Contains(byValue, "func (c Persons) AppendJSON") {
 		t.Errorf("a walk on the value produced a codec on the pointer:\n%s", byValue)
 	}
 
 	byPointer := source(t, declaring(t, modelPkg, "Scalars", exposing(walks(true))))
-	if !strings.Contains(byPointer, "func (c *Persons) MarshalJSONTo") {
+	if !strings.Contains(byPointer, "func (c *Persons) AppendJSON") {
 		t.Errorf("a walk on the pointer produced a codec on the value:\n%s", byPointer)
 	}
 }
@@ -148,10 +152,10 @@ func TestTheWritingHalfFollowsTheWalk(t *testing.T) {
 func TestAStackThatCannotBeFilledIsOnlyWritten(t *testing.T) {
 	written := source(t, declaring(t, modelPkg, "Scalars", exposing(walks(false))))
 
-	if !strings.Contains(written, "func (c Persons) MarshalJSONTo") {
+	if !strings.Contains(written, "func (c Persons) AppendJSON") {
 		t.Errorf("a stack that can be walked was not given a writer:\n%s", written)
 	}
-	if strings.Contains(written, "UnmarshalJSONFrom(dec *jsontext.Decoder)") {
+	if strings.Contains(written, "UnmarshalJSON(data []byte)") {
 		t.Errorf("a stack with no sink was given a reader:\n%s", written)
 	}
 }
@@ -162,7 +166,7 @@ func TestAStackThatCannotBeEmptiedIsNotReadInto(t *testing.T) {
 	written := source(t, declaring(t, modelPkg, "Scalars",
 		exposing(walks(false), appends(false))))
 
-	if strings.Contains(written, "UnmarshalJSONFrom(dec *jsontext.Decoder)") {
+	if strings.Contains(written, "UnmarshalJSON(data []byte)") {
 		t.Errorf("a container that cannot be emptied was read into:\n%s", written)
 	}
 }
@@ -194,12 +198,19 @@ func TestASubjectWithItsOwnCodecIsCalledThroughIt(t *testing.T) {
 	written := source(t, declaring(t, modelPkg, "Stamp",
 		exposing(walks(false), appends(false), resets())))
 
-	for _, want := range []string{"v.MarshalJSONTo(enc)", "v.UnmarshalJSONFrom(dec)"} {
+	for _, want := range []string{
+		"v.AppendJSON(dst)",
+		// The subject declares the borrowing reader as well, so the reading
+		// half is chosen by the flag and both of its halves are the subject's.
+		"read := v.UnmarshalJSON",
+		"read = v.UnmarshalJSONBorrowed",
+		"read(data[start:n])",
+	} {
 		if !strings.Contains(written, want) {
 			t.Errorf("the container does not call the subject's own codec (%q):\n%s", want, written)
 		}
 	}
-	if strings.Contains(written, "encodeModelStampJSONTo") {
+	if strings.Contains(written, "appendModelStampJSON") {
 		t.Errorf("the container calls a function nothing declares:\n%s", written)
 	}
 }
@@ -223,7 +234,7 @@ func TestACodecAPreviousRunWroteIsWrittenAgain(t *testing.T) {
 		t.Fatal("the subject was left without a codec, because it already had the one this wrote")
 	}
 
-	if written := source(t, unit); !strings.Contains(written, "encodeModelScalarsJSONTo(enc, v)") {
+	if written := source(t, unit); !strings.Contains(written, "appendModelScalarsJSON(dst, v)") {
 		t.Errorf("the container delegates to a codec this run is not writing:\n%s", written)
 	}
 }
@@ -234,7 +245,7 @@ func TestACodecDeclaredOnThePointerIsStillCalled(t *testing.T) {
 	written := source(t, declaring(t, modelPkg, "Weight",
 		exposing(walks(false), appends(false), resets())))
 
-	if !strings.Contains(written, "v.MarshalJSONTo(enc)") {
+	if !strings.Contains(written, ".AppendJSON(dst)") {
 		t.Errorf("the container does not call the subject's own codec:\n%s", written)
 	}
 }
@@ -391,4 +402,22 @@ func source(t *testing.T, unit plugin.Unit) string {
 		t.Fatalf("rendering the container's codec: %v", err)
 	}
 	return string(out)
+}
+
+// A subject whose codec speaks the streaming interface is reached through the
+// standard library, which is the one caller that knows how to drive it — and
+// deterministically, because everything this codec writes is.
+func TestASubjectReachedThroughTheStandardLibrary(t *testing.T) {
+	written := source(t, declaring(t, modelPkg, "Epoch",
+		exposing(walks(false), appends(false), resets())))
+
+	for _, want := range []string{
+		"json.Marshal(v, json.Deterministic(true))",
+		"json.Unmarshal(data[start:n], &v)",
+		"json.Unmarshal(held, &v)",
+	} {
+		if !strings.Contains(written, want) {
+			t.Errorf("the container does not reach the codec through the library (%q):\n%s", want, written)
+		}
+	}
 }

@@ -593,51 +593,6 @@ func report(env *environment, found []finding) {
 // patience is how long git gets to answer before this gives up on it.
 const patience = 5 * time.Second
 
-// elsewhere returns the environment without the variables that would point git
-// at a repository other than the one holding the directory being asked about.
-//
-// git reads a repository out of the environment before it looks at -C, so a
-// GIT_DIR in scope answers for that repository whatever directory was named.
-// Ordinarily nothing sets one — but git itself sets them for every hook it
-// runs, and so do `git rebase --exec` and a number of CI wrappers. A doctor run
-// from any of those would otherwise report on the ambient repository while
-// naming the author's package, which is a wrong answer that reads like a right
-// one: it would say a generated file is untracked when the file it looked for
-// is not the one it was asked about.
-//
-// The question this function makes possible is "what does the repository
-// containing this directory track", which is the only question doctor has. So
-// the discovery variables go and -C decides, and everything else — proxies,
-// credentials, the terminal — is left alone.
-func elsewhere(env []string) []string {
-	// Every variable git resolves a repository from. GIT_CONFIG_* are left:
-	// they change what is configured rather than which repository is found.
-	discovery := []string{
-		"GIT_DIR=",
-		"GIT_WORK_TREE=",
-		"GIT_COMMON_DIR=",
-		"GIT_INDEX_FILE=",
-		"GIT_OBJECT_DIRECTORY=",
-		"GIT_ALTERNATE_OBJECT_DIRECTORIES=",
-		"GIT_NAMESPACE=",
-		"GIT_CEILING_DIRECTORIES=",
-		"GIT_DISCOVERY_ACROSS_FILESYSTEM=",
-		"GIT_PREFIX=",
-	}
-
-	held := make([]string, 0, len(env))
-
-	for _, one := range env {
-		if !slices.ContainsFunc(discovery, func(prefix string) bool {
-			return strings.HasPrefix(one, prefix)
-		}) {
-			held = append(held, one)
-		}
-	}
-
-	return held
-}
-
 // known returns the files git tracks in a directory, and whether there was
 // anybody to ask.
 //
@@ -664,10 +619,8 @@ func known(dir string) (map[string]bool, bool) {
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "--literal-pathspecs", "ls-files", "-z", "--", ".") //nolint:gosec // a directory the load reported.
 
 	// Without taking the repository's lock, since this only ever reads and a
-	// doctor that blocked somebody's own commit would be a poor diagnosis. And
-	// without the variables that would answer for a different repository than
-	// the one asked about: see [elsewhere].
-	cmd.Env = append(elsewhere(os.Environ()), "GIT_OPTIONAL_LOCKS=0")
+	// doctor that blocked somebody's own commit would be a poor diagnosis.
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 
 	out, err := cmd.Output()
 	if err != nil {

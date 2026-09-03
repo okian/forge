@@ -22,6 +22,7 @@ import (
 	"github.com/okian/forge/internal/options"
 	"github.com/okian/forge/internal/scalars"
 	"github.com/okian/forge/internal/shape"
+	"github.com/okian/forge/internal/shared/jsonwire"
 	"github.com/okian/forge/internal/shared/seq"
 )
 
@@ -426,7 +427,11 @@ func sharing(path string, required []model.TypeRef, about map[string]layer.Unit,
 
 	made := make(map[string]claimable)
 
-	held := merge.Units(append(contributed(about), asUnit(built))...)
+	// Joined rather than flattened into one unit, because the helpers were
+	// parsed under file sets of their own: a comment is found by its position,
+	// and a position read against somebody else's file set lands a sentence in
+	// the middle of a stranger's function.
+	held := merge.Join(merge.Units(contributed(about)...), built)
 	if held.Empty() {
 		return merge.Unit{}, made, false
 	}
@@ -593,33 +598,6 @@ func contributed(about map[string]layer.Unit) []layer.Unit {
 	for _, what := range slices.Sorted(maps.Keys(about)) {
 		out = append(out, about[what])
 	}
-	return out
-}
-
-// asUnit puts a merged unit back into the shape a merge takes, so that what was
-// gathered from the layers and what this build wrote can be merged together.
-func asUnit(held merge.Unit) layer.Unit {
-	var out layer.Unit
-	for _, section := range held.Sections {
-		out.Decls = append(out.Decls, section.Decls...)
-		out.Comments = append(out.Comments, section.Comments...)
-
-		// One file set between them. Every section here came from one merge,
-		// and a unit carries a single set — so sections built from different
-		// ones cannot be flattened, which is what the check below refuses to do
-		// silently.
-		if out.Fset != nil && section.Fset != nil && out.Fset != section.Fset {
-			continue
-		}
-		if section.Fset != nil {
-			out.Fset = section.Fset
-		}
-	}
-
-	out.Imports = held.Imports
-	out.Assertions = held.Assertions
-	out.Requires = held.Requires
-
 	return out
 }
 
@@ -1182,12 +1160,17 @@ func helpers(pkg string, required []model.TypeRef, requests []Request) (merge.Un
 
 // provided returns the declarations of a helper a layer required.
 //
-// One helper, because there is one: the shared view every query surface hands
-// its results to. A second would want a registry, and a registry with one entry
-// is a lookup written twice.
+// Two helpers, and a switch rather than a registry: the shared view every
+// query surface hands its results to, and the JSON wire runtime every
+// generated codec writes bytes through. A registry would be worth having at
+// the point where a helper arrives from outside this repository, and until
+// then it is a lookup written twice.
 func provided(ref model.TypeRef, pkg string) (layer.Unit, error) {
-	if ref == seq.Ref(pkg) {
+	switch ref {
+	case seq.Ref(pkg):
 		return seq.Unit(token.Position{})
+	case jsonwire.Ref(pkg):
+		return jsonwire.Unit(token.Position{})
 	}
 	return layer.Unit{}, errNoProvider
 }
@@ -1254,7 +1237,11 @@ func renderStubs(pkg string, at token.Position, sections []emit.Section, imports
 		},
 	}
 
-	return file.Render()
+	out, err := file.Render()
+	if err != nil {
+		return nil, err
+	}
+	return spaced(out), nil
 }
 
 // tagged returns the build constraint a package's generated file carries.

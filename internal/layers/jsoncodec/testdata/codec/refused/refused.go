@@ -8,6 +8,7 @@ package refused
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"strings"
 	"time"
 )
 
@@ -26,9 +27,10 @@ type Interfaced struct {
 
 // Foreign holds a struct from another module, whose unexported fields generated
 // code cannot read — so a codec written member by member would write an empty
-// object rather than a timestamp.
+// object rather than the text it holds. A foreign type carrying its own codec,
+// like time.Time, is called through it instead and is not this refusal.
 type Foreign struct {
-	When time.Time
+	Text strings.Builder
 }
 
 // Channelled holds something JSON has no form for at all.
@@ -188,4 +190,70 @@ type Labels []Labels
 // refusal is about the type rather than about an option on the field.
 type Labelled struct {
 	All Labels
+}
+
+// MisspelledOption writes omitempty in a spelling the standard library
+// refuses. Ignoring it would write a member the author asked to leave out,
+// which is the one kind of wrong a round trip through this same codec cannot
+// see: both halves would agree the member belongs there.
+type MisspelledOption struct {
+	Tags []string `json:"tags,omitEmpty"`
+}
+
+// RepeatedOption writes one option twice. The standard library refuses it, and
+// a tag that says a thing twice may mean either of two things, so a codec that
+// took the first would be choosing on the author's behalf.
+type RepeatedOption struct {
+	Tags []string `json:"tags,omitempty,omitempty"`
+}
+
+// ContradictoryCase asks for a name to be matched both loosely and exactly.
+// That is the repeat that reads as a contradiction rather than as a
+// duplication, and it is the one the standard library names separately.
+type ContradictoryCase struct {
+	Name string `json:"name,case:ignore,case:strict"`
+}
+
+// Inner is a struct with members to promote, so that what is wrong with the
+// two fixtures below is the tag rather than the type.
+type Inner struct {
+	A int `json:"a"`
+}
+
+// NamedEmbed gives a name to a field whose members are promoted, which is a
+// name nothing will ever be written under: promotion is what embed means and a
+// promoted member carries its own name.
+type NamedEmbed struct {
+	Inner `json:"wrapper,embed"`
+}
+
+// DecoratedEmbed asks for a promoted field to be omitted when it is zero.
+// There is no member to omit — the members are the enclosing struct's — so the
+// option describes something that cannot happen.
+type DecoratedEmbed struct {
+	Inner `json:",embed,omitzero"`
+}
+
+// TaggedUnexported tags a field generated code cannot read. The tag asks for a
+// member the codec will never write, and an author who wrote it is describing
+// a wire format they will not get.
+type TaggedUnexported struct {
+	Exported   int `json:"exported"`
+	unexported int `json:"unexported"`
+}
+
+// Timed holds a duration with no format asked for. The standard library
+// refuses to choose between a count of nanoseconds and a string like "1h30m",
+// and a codec that chose quietly would put one of them on a wire the other end
+// reads the other way.
+type Timed struct {
+	For time.Duration `json:"for"`
+}
+
+// NoMembers has fields, and none of them can be written. A codec for it would
+// be a function that writes {} — which round-trips through itself and so is
+// invisible to any test that only reads back what it wrote.
+type NoMembers struct {
+	hidden  int
+	private string
 }

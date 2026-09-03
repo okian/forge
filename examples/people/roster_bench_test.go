@@ -1,8 +1,6 @@
 package people_test
 
 import (
-	"bytes"
-	"encoding/json/jsontext"
 	"sync"
 	"testing"
 
@@ -116,28 +114,24 @@ func BenchmarkGuardedSnapshot(b *testing.B) {
 // against every writer for as long as the caller's writer takes, which for a
 // socket that has stopped reading is as long as it takes to time out.
 //
-// So the figure to read here is one allocation more than the unguarded encode
-// beside it, and what that allocation buys is that a slow reader cannot stop
-// the writers.
+// So the figure to read here is one allocation — the snapshot — over the
+// unguarded encode beside it, and what that allocation buys is that a slow
+// reader cannot stop the writers.
 func BenchmarkGuardedEncode(b *testing.B) {
 	held := stocked()
 
-	var out bytes.Buffer
-	enc := jsontext.NewEncoder(&out)
-
 	// Warmed, so that growing the buffer to fit the document is not divided by
 	// however many iterations the run happens to do.
-	if err := held.MarshalJSONTo(enc); err != nil {
+	var buf []byte
+	var err error
+	if buf, err = held.AppendJSON(buf[:0]); err != nil {
 		b.Fatalf("writing the roster: %v", err)
 	}
 
 	b.ReportAllocs()
 
 	for b.Loop() {
-		out.Reset()
-		enc.Reset(&out)
-
-		if err := held.MarshalJSONTo(enc); err != nil {
+		if buf, err = held.AppendJSON(buf[:0]); err != nil {
 			b.Fatalf("writing the roster: %v", err)
 		}
 	}

@@ -97,8 +97,8 @@ func TestTheWorkedExampleStreamsThroughEveryLayer(t *testing.T) {
 		// And the codec for the whole stack, written over the walk the ring
 		// exposes and calling the codec written for the subject. The receiver
 		// is a pointer because the ring's walk takes one.
-		"func (c *Persons) MarshalJSONTo(enc *jsontext.Encoder) error {",
-		"func (c *Persons) UnmarshalJSONFrom(dec *jsontext.Decoder) error {",
+		"func (c *Persons) AppendJSON(dst []byte) ([]byte, error) {",
+		"func (c *Persons) UnmarshalJSON(data []byte) error {",
 		"func (c *Persons) WriteTo(w io.Writer) (int64, error) {",
 		"func (c *Persons) ReadFrom(r io.Reader) (int64, error) {",
 		"for v := range c.All() {",
@@ -113,9 +113,9 @@ func TestTheWorkedExampleStreamsThroughEveryLayer(t *testing.T) {
 	// declarations over one subject want one copy of it.
 	shared := written(t, files, generate.Name())
 	for _, want := range []string{
-		"func (v Person) MarshalJSONTo(enc *jsontext.Encoder) error {",
-		"func (v *Person) UnmarshalJSONFrom(dec *jsontext.Decoder) error {",
-		"func encodeModelPersonJSONTo(enc *jsontext.Encoder, v Person) error {",
+		"func (v Person) AppendJSON(dst []byte) ([]byte, error) {",
+		"func (v *Person) UnmarshalJSON(data []byte) error {",
+		"func appendModelPersonJSON(dst []byte, v Person) ([]byte, error) {",
 	} {
 		if !bytes.Contains(shared, []byte(want)) {
 			t.Errorf("the shared file does not hold %q:\n%s", want, shared)

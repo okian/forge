@@ -51,12 +51,15 @@ type personsHeldSeq struct {
 func (c personsHeld) Seq() personsHeldSeq {
 	panic("forge stub")
 }
+
 func (c personsHeld) IDs() []int {
 	panic("forge stub")
 }
+
 func (c personsHeld) Names() []string {
 	panic("forge stub")
 }
+
 func (c personsHeld) Joineds() []time.Time {
 	panic("forge stub")
 }

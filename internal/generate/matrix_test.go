@@ -70,7 +70,8 @@ func ready(t *testing.T, registry *layer.Registry) []model.TypeRef {
 
 	var out []model.TypeRef
 	for _, one := range registry.All() {
-		if layer.StageOf(one) != layer.StageReady {
+		described, ok := one.(layer.Described)
+		if ok && described.Stage() != layer.StageReady {
 			continue
 		}
 		out = append(out, one.Origin())

@@ -50,15 +50,15 @@ func TestWhatIsSharedIsWrittenOnce(t *testing.T) {
 	// One of each, for the type two subjects reach and for the type two
 	// declarations share.
 	once := map[string]string{
-		"the codec for the shared struct":   "func (v Address) MarshalJSONTo(",
-		"the reader for the shared struct":  "func (v *Address) UnmarshalJSONFrom(",
+		"the codec for the shared struct":   "func (v Address) AppendJSON(",
+		"the reader for the shared struct":  "func (v *Address) UnmarshalJSON(",
 		"the check for the shared struct":   "func (v Address) Validate() error {",
 		"the copy for the shared struct":    "func (v Address) Clone() Address {",
-		"the codec for the shared subject":  "func (v Person) MarshalJSONTo(",
+		"the codec for the shared subject":  "func (v Person) AppendJSON(",
 		"the copy for the shared subject":   "func (v Person) Clone() Person {",
-		"the codec for the other subject":   "func (v Employer) MarshalJSONTo(",
-		"the call-through for the subject":  "func encodeModelPersonJSONTo(",
-		"the call-through for the reached":  "func encodeModelAddressJSONTo(",
+		"the codec for the other subject":   "func (v Employer) AppendJSON(",
+		"the call-through for the subject":  "func appendModelPersonJSON(",
+		"the call-through for the reached":  "func appendModelAddressJSON(",
 		"the copy through for the subject":  "func clonePerson(v Person) Person {",
 		"the check through for the subject": "func validatePerson(v Person) error {",
 	}

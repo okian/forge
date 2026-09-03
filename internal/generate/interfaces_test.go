@@ -37,8 +37,8 @@ var expected = []string{
 	"fmt.Stringer",
 	"io.ReaderFrom",
 	"io.WriterTo",
-	"json.MarshalerTo",
-	"json.UnmarshalerFrom",
+	"json.Marshaler",
+	"json.Unmarshaler",
 	"slog.LogValuer",
 	"sort.Interface",
 	"sync.Locker",
@@ -59,8 +59,8 @@ var turnedFrom = map[string][]string{
 	"fmt.Stringer":             {"People", "Codes"},
 	"io.ReaderFrom":            {"People"},
 	"io.WriterTo":              {"People"},
-	"json.MarshalerTo":         {"People"},
-	"json.UnmarshalerFrom":     {"People"},
+	"json.Marshaler":           {"People"},
+	"json.Unmarshaler":         {"People"},
 	"slog.LogValuer":           {"People"},
 	"sort.Interface":           {"People"},
 	"sync.Locker":              {"Locked"},
@@ -186,6 +186,12 @@ func claims(held string) []string {
 
 	for _, line := range strings.Split(held, "\n") {
 		fields := strings.Fields(line)
+
+		// A claim alone stands outside a group — var _ X = … — and one with
+		// company stands inside one, as _ X = …; both are claims.
+		if len(fields) >= 2 && fields[0] == "var" && fields[1] == "_" {
+			fields = fields[1:]
+		}
 		if len(fields) < 3 || fields[0] != "_" || fields[2] != "=" {
 			continue
 		}
@@ -256,8 +262,8 @@ func TestSkippingEverythingOnePackageGave(t *testing.T) {
 			"//forge:skip io.ReaderFrom",
 		}},
 		"encoding/json/v2": {"People": {
-			"//forge:skip json.MarshalerTo",
-			"//forge:skip json.UnmarshalerFrom",
+			"//forge:skip json.Marshaler",
+			"//forge:skip json.Unmarshaler",
 		}},
 	}
 
@@ -286,7 +292,7 @@ func TestASkipForAClaimAnotherDeclarationEarned(t *testing.T) {
 	files, diags := interfacing(t, map[string][]string{
 		// Crowd is the second declaration over Person and has no codec of its
 		// own, so the claim being turned off is one People's layers earned.
-		"Crowd": {"//forge:skip json.MarshalerTo"},
+		"Crowd": {"//forge:skip json.Marshaler"},
 	})
 
 	if !diags.Empty() {
@@ -294,7 +300,7 @@ func TestASkipForAClaimAnotherDeclarationEarned(t *testing.T) {
 	}
 
 	held := joined(files)
-	if strings.Contains(held, "json.MarshalerTo     = *new(Person)") {
+	if strings.Contains(held, "json.Marshaler   = *new(Person)") {
 		t.Errorf("the claim was not turned off:\n%s", held)
 	}
 

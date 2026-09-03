@@ -2,7 +2,6 @@ package people_test
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -173,9 +172,10 @@ func TestAContainerThatWasNeverConstructedRefusesEveryDocument(t *testing.T) {
 // A document that stops in the middle is reported as the truncation it is,
 // rather than as a value of no kind.
 //
-// Peeking answers "what is next" and "the decoder failed" with the same value,
-// so a reader that only peeked would report every truncated document as a JSON
-// value of no kind at all — true, useless, and identical for a missing comma, a
+// The reader names the kind of value it refuses from the value's first byte,
+// and a truncated document has no byte to name a kind from — so a reader that
+// reached for the name anyway would report every truncated document as a JSON
+// value of no kind at all: true, useless, and identical for a missing comma, a
 // half-written object and an empty file.
 func TestATruncatedDocumentSaysWhereItStopped(t *testing.T) {
 	cases := map[string]string{
@@ -234,7 +234,7 @@ func TestWhatWritingAndReadingReport(t *testing.T) {
 		t.Fatalf("reading: %v", err)
 	}
 
-	// One less than what was written: an encoder ends a document with a newline
+	// One less than what was written: WriteTo ends a document with a newline
 	// so that a stream of them can be read, and the newline is not part of the
 	// array.
 	if want := n - 1; back != want {
@@ -249,8 +249,8 @@ func TestWhatWritingAndReadingReport(t *testing.T) {
 //
 // io.WriterTo is a contract about the writer, and io.Copy hands the number
 // straight back to a caller who may be counting or resuming from it. The
-// encoder buffers, so the two numbers differ exactly on the path where the
-// difference is read.
+// document is composed in a window before it is flushed, so the two numbers
+// differ exactly on the path where the difference is read.
 func TestWritingReportsWhatTheWriterTook(t *testing.T) {
 	held := filled(t)
 
@@ -320,24 +320,34 @@ func TestTheStandardLibraryFindsTheGeneratedCodec(t *testing.T) {
 	}
 }
 
-// The elements go into the encoder one at a time, so the encoder a caller
-// passes is the one they are written through.
+// The elements go into the buffer the caller passes, so the buffer they hand
+// over is the one extended.
 //
-// It is what "streaming" means here and it is not visible from the bytes: a
-// codec that collected the elements and encoded the slice would produce the
-// same document. What says otherwise is that the caller's own encoder receives
-// them, with whatever options and whatever destination it was built with.
-func TestTheCallersEncoderIsTheOneWrittenThrough(t *testing.T) {
+// It is what "append" means here and it is not visible from the bytes: a codec
+// that composed the document somewhere of its own and copied it in would
+// produce the same array. What says otherwise is that whatever the buffer
+// already held is still in front of the document, and that handing the buffer
+// back reset to its start — the way a caller reusing one does — yields the
+// same document again.
+func TestTheCallersBufferIsTheOneAppendedInto(t *testing.T) {
 	held := filled(t)
 
-	var out bytes.Buffer
-	enc := jsontext.NewEncoder(&out, jsontext.WithIndent("  "))
-
-	if err := held.MarshalJSONTo(enc); err != nil {
-		t.Fatalf("writing through a caller's encoder: %v", err)
+	dst := []byte("prefix: ")
+	out, err := held.AppendJSON(dst)
+	if err != nil {
+		t.Fatalf("appending to a caller's buffer: %v", err)
 	}
-	if !strings.Contains(out.String(), "\n  {") {
-		t.Errorf("the caller's indentation did not reach the elements:\n%s", out.String())
+	if !bytes.HasPrefix(out, []byte("prefix: [")) {
+		t.Errorf("the buffer's own bytes did not survive the append:\n%s", out)
+	}
+
+	document := append([]byte(nil), out[len("prefix: "):]...)
+	again, err := held.AppendJSON(out[:0])
+	if err != nil {
+		t.Fatalf("appending into the reused buffer: %v", err)
+	}
+	if !bytes.Equal(again, document) {
+		t.Errorf("the reused buffer wrote\n\t%s\nand the first append wrote\n\t%s", again, document)
 	}
 }
 
