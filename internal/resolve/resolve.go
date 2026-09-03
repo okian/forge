@@ -13,7 +13,8 @@ import (
 var codeLayerArity = diag.Register(1007, "layer takes more than one type argument")
 
 // arityHint says what to write instead of a second type argument.
-const arityHint = "every layer takes exactly one type argument, the layer below it; capacities, keys and sort fields are written as //forge: options"
+const arityHint = "every layer takes exactly one type argument, the layer below it — except Map, " +
+	"which takes its source and its target; capacities, keys and sort fields are written as //forge: options"
 
 // Declaration is one candidate followed to its end.
 //
@@ -45,6 +46,12 @@ type Declaration struct {
 	// resolve to exactly themselves, so that the stage which rejects them can
 	// say what it rejected rather than reporting that resolution failed.
 	Subject types.Type
+
+	// Source is the type a bridge reads, carried beside the stack because a
+	// source is not a layer: Map[User, Person] pushes Map and descends into
+	// Person, and User rides here. Nil for every declaration that is not a
+	// bridge.
+	Source types.Type
 }
 
 // String returns the declaration as the stack reads, with markers spelled
@@ -120,7 +127,10 @@ func resolve(candidate discover.Candidate, claims Claims, diags *diag.Set) (Decl
 	}
 	current = types.Unalias(current)
 
-	var stack []model.LayerRef
+	var (
+		stack  []model.LayerRef
+		source types.Type
+	)
 	for {
 		named, ok := current.(*types.Named)
 		if !ok || !marker(named, claims) {
@@ -133,6 +143,17 @@ func resolve(candidate discover.Candidate, claims Claims, diags *diag.Set) (Decl
 			// any other. Nothing was applied to anything, so this is where the
 			// stack ends rather than a layer written wrong.
 			break
+		}
+
+		// A bridge takes two: the source it reads, and the target it descends
+		// into. Every other marker takes exactly one — the layer below it —
+		// and a bridge under a bridge would be a second source with nowhere to
+		// ride, so it is refused as the arity mistake it is.
+		if bridge(named) && args.Len() == 2 && source == nil {
+			source = types.Unalias(args.At(0))
+			stack = append(stack, model.LayerRef{Origin: origin(named)})
+			current = types.Unalias(args.At(1))
+			continue
 		}
 		if args.Len() > 1 {
 			diags.Add(arity(candidate, stack, named))
@@ -147,7 +168,17 @@ func resolve(candidate discover.Candidate, claims Claims, diags *diag.Set) (Decl
 		return Declaration{}, false
 	}
 
-	return Declaration{Candidate: candidate, Stack: stack, Subject: current}, true
+	return Declaration{Candidate: candidate, Stack: stack, Subject: current, Source: source}, true
+}
+
+// bridge reports whether a marker is the one that takes two type arguments.
+//
+// By name against the marker package, because resolution happens before the
+// registry assigns kinds: what is known here is where a type comes from and
+// what it is called, and Map is the one name with a second argument.
+func bridge(named *types.Named) bool {
+	held := origin(named)
+	return held.Pkg == model.MarkerPkg && held.Name == "Map"
 }
 
 // marker reports whether a named type is one a layer of this run claims.

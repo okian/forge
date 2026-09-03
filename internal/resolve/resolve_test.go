@@ -182,7 +182,9 @@ func TestDeclarationsNamingNoMarkerAreDroppedInSilence(t *testing.T) {
 func TestOrderFollowsTheCandidates(t *testing.T) {
 	got := names(resolved(t))
 	want := []string{
-		// Package model, file by file: dot.go, then person.go, then spec.go.
+		// Package bridge first, then package model file by file: dot.go, then
+		// person.go, then spec.go.
+		"UserPerson",
 		"Guests",
 		"People", "Recent", "Sessions", "Pairs", "Pointers", "Degrees", "Wrapper", "Buffered", "Aliased",
 		"Streams", "Persons", "Encoded",
@@ -326,3 +328,38 @@ func forges(ref model.TypeRef) bool { return ref.Pkg == model.MarkerPkg }
 // no forge marker can break is reached: every one of them takes a single type
 // argument, so a marker that takes two has to come from somewhere else.
 func fixture(ref model.TypeRef) bool { return ref.Pkg == fixtureMarkers }
+
+// A bridge names two types: the source it reads and the target it writes. The
+// first is carried beside the stack rather than pushed onto it, because a
+// source is not a layer.
+func TestABridgeCarriesItsSource(t *testing.T) {
+	decl := find(t, resolved(t), "UserPerson")
+
+	want := []model.LayerRef{{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Map"}}}
+	if !slices.Equal(decl.Stack, want) {
+		t.Fatalf("UserPerson's stack is %v, want the bridge alone", decl.Stack)
+	}
+
+	if decl.Source == nil {
+		t.Fatal("the source was not carried")
+	}
+	if got := model.TypeString(decl.Source); got != "User" {
+		t.Errorf("the source is %s, want User", got)
+	}
+	if got := model.TypeString(decl.Subject); got != "Person" {
+		t.Errorf("the subject is %s, want Person", got)
+	}
+}
+
+// Every declaration that is not a bridge carries no source, so the stages that
+// read one can key off its presence.
+func TestOnlyABridgeCarriesASource(t *testing.T) {
+	for _, decl := range resolved(t) {
+		if decl.Candidate.Name == "UserPerson" {
+			continue
+		}
+		if decl.Source != nil {
+			t.Errorf("%s carries source %s; only a bridge reads one", decl.Candidate.Name, model.TypeString(decl.Source))
+		}
+	}
+}
