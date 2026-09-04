@@ -32,8 +32,9 @@ func (Layer) Binds() []plugin.Import { return nil }
 // and the target need not even be local.
 func (Layer) Writes() []string { return nil }
 
-// Kind says where in a stack the layer may appear: nowhere but alone. A
-// bridge reads one type and writes about another, and composes with nothing.
+// Kind says where in a stack the layer may appear: alone, or over the JSON
+// codec it feeds. A bridge reads one type and writes about another, and no
+// other layer has anything to make of that.
 func (Layer) Kind() plugin.Kind { return plugin.KindBridge }
 
 // Stage says how far along the layer is.

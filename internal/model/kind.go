@@ -50,9 +50,9 @@ const (
 	KindTransport
 
 	// KindBridge spans two types rather than sitting over one: it reads a
-	// source and writes about a target, and composes with nothing else. It
-	// neither holds elements nor refines a stream, so no storage is defaulted
-	// beneath it.
+	// source and writes about a target, and composes with the JSON codec
+	// beneath it or with nothing. It neither holds elements nor refines a
+	// stream, so no storage is defaulted beneath it.
 	KindBridge
 )
 

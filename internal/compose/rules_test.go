@@ -482,3 +482,41 @@ func TestABridgeAloneGetsNoStorage(t *testing.T) {
 		t.Errorf("composed stack = %v, want the bridge alone", got)
 	}
 }
+
+// The one company a bridge admits: the JSON codec directly beneath it, which
+// is the fusion the bridge exists to feed. Anything else is still refused.
+func TestABridgeAdmitsTheCodecAlone(t *testing.T) {
+	decl := written(model.FormSpec, "Map", "Json")
+
+	held, diags := compose.Compose(decl, catalog())
+	if !diags.Empty() {
+		t.Fatalf("the fused stack was refused:\n%s", diags.Render())
+	}
+	if got := named(held); len(got) != 2 || got[0] != "Map" || got[1] != "Json" {
+		t.Errorf("composed stack = %v, want [Map Json]", got)
+	}
+}
+
+// The admission is exact: another element under Map, the codec over a bridge,
+// a storage beneath, the codec under a bridge that is not Map, and anything
+// three deep are all still a bridge with company.
+func TestWhatABridgeStillRefuses(t *testing.T) {
+	registry := layers.Builtins()
+	registry.MustRegister(spanning{})
+
+	for name, stack := range map[string][]string{
+		"another element beneath":          {"Map", "Validate"},
+		"the codec over a bridge":          {"Json", "Map"},
+		"a storage beneath":                {"Map", "Ring"},
+		"the codec under a foreign bridge": {"Spans", "Json"},
+		"three deep":                       {"Map", "Json", "Ring"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, diags := compose.Compose(written(model.FormSpec, stack...),
+				compose.Catalog{Registry: registry, DefaultStorage: layers.DefaultStorage()})
+			if !strings.Contains(diags.Render(), "FRG1009") {
+				t.Errorf("%v was not refused:\n%s", stack, diags.Render())
+			}
+		})
+	}
+}

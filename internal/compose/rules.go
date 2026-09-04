@@ -256,25 +256,33 @@ func transports(stack []model.LayerRef, _ []layer.Layer, decl Declaration, layou
 	}
 }
 
-// bridges holds a bridge to being the only layer of its stack.
+// bridges holds a bridge to the one company it admits: the JSON codec
+// directly beneath it, which is the fusion the bridge exists to feed.
 //
 // A bridge reads one type and writes about another; there is no stream for a
-// storage to hold or a refiner to query, so a stack around one describes
-// machinery with nothing to attach to. Reported at the bridge, because the
-// bridge is the entry whose meaning forbids the company.
+// storage to hold or a refiner to query, so any other company describes
+// machinery with nothing to attach to. The admission is by origin rather than
+// by kind, because the fusion is written for the codec: another element layer
+// beneath a bridge would compose into nothing the bridge knows how to feed.
+// Reported at the bridge, because the bridge is the entry whose meaning
+// forbids the company.
 func bridges(stack []model.LayerRef, _ []layer.Layer, decl Declaration, layout model.Layout, diags *diag.Set) {
 	if len(stack) < 2 {
 		return
 	}
 
+	fused := len(stack) == 2 &&
+		stack[0].Origin.Origin() == model.TypeRef{Pkg: model.MarkerPkg, Name: "Map"} &&
+		stack[1].Origin.Origin() == model.TypeRef{Pkg: model.MarkerPkg, Name: "Json"}
+
 	for i, ref := range stack {
-		if ref.Kind != model.KindBridge {
+		if ref.Kind != model.KindBridge || fused {
 			continue
 		}
 
 		at(diags, codeBridgeAlone, decl, layout, i,
-			"declare the bridge on its own: type X Map[Source, Target]",
-			"%s is a bridge and composes with nothing else in a stack", ref.Origin.Name)
+			"declare the bridge on its own or over the codec: type X Map[Source, Target] or Map[Source, Json[Target]]",
+			"%s is a bridge and composes with Json beneath it or nothing", ref.Origin.Name)
 	}
 }
 
