@@ -131,6 +131,11 @@ What was written on a `//forge:` directive or in a struct tag, judged against wh
 | `FRG3034` | a from tag is not shaped like one |
 | `FRG3035` | a from tag names a member the source does not offer |
 | `FRG3036` | a from tag and a hint both settle one member |
+| `FRG3037` | field cannot be a lookup key |
+| `FRG3038` | field cannot be read from the generated package |
+| `FRG3039` | a secondary lookup repeats the key |
+| `FRG3040` | a conflict policy needs a unique key |
+| `FRG3041` | secondary lookups need a unique key |
 
 ## Emission — `FRG4xxx`
 
@@ -159,6 +164,7 @@ Found while deciding what to write. These are about the output rather than about
 | `FRG4021` | two layers disagree about the name an import binds |
 | `FRG4101` | two generated names are one |
 | `FRG4102` | two fields project to one name |
+| `FRG4103` | two lookup names are one |
 | `FRG4900` | layer generates nothing yet |
 | `FRG4910` | template does not parse |
 | `FRG4911` | template is not shaped like a template |
