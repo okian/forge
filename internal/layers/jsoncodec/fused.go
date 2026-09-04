@@ -3,6 +3,8 @@ package jsoncodec
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
 	"go/types"
 	"strings"
 
@@ -62,7 +64,7 @@ func Fused(ctx *plugin.Context, reads func(src string) map[string]string) (plugi
 	}
 	w.reads = func(path string) string {
 		top, rest, cut := strings.Cut(path, ".")
-		expr := "(" + table[top] + ")"
+		expr := grouped(table[top])
 		if !cut {
 			return expr
 		}
@@ -100,6 +102,33 @@ func fusedUnit(w *writer, about string, srcSpelled plugin.Spelling) (plugin.Unit
 	}, nil
 }
 
+// grouped parenthesizes an expression that selecting or converting through
+// would otherwise rebind: a hint's arithmetic, or a zero literal, which Go
+// forbids bare at the head of an if. An expression rooted in an identifier
+// binds tighter than anything done to it and is left as written, because a
+// wrap it does not need is one gofumpt strips back out of the file.
+func grouped(expr string) string {
+	held, err := parser.ParseExpr(expr)
+	if err != nil {
+		return "(" + expr + ")"
+	}
+
+	for {
+		switch one := held.(type) {
+		case *ast.Ident:
+			return expr
+		case *ast.SelectorExpr:
+			held = one.X
+		case *ast.CallExpr:
+			held = one.Fun
+		case *ast.IndexExpr:
+			held = one.X
+		default:
+			return "(" + expr + ")"
+		}
+	}
+}
+
 // covered refuses a reads table that misses a member, by name: emitting the
 // body anyway would put a file on disk that does not compile, blamed on
 // nobody.
@@ -118,7 +147,7 @@ func covered(root *form, table map[string]string) error {
 func (w *writer) fusedAppend(name string, root *form, src, param, from string) {
 	dst := w.n("dst")
 
-	w.line("// %s appends %s's JSON document read straight from a %s,", name, root.spelled.Text, from)
+	w.line("// %s appends %s's JSON document read straight from one %s,", name, root.spelled.Text, from)
 	w.line("// with no %s built.", root.spelled.Text)
 	w.line("//")
 	w.line("// Byte-identical to building the value and appending it: members, order,")

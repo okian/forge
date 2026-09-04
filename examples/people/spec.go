@@ -146,3 +146,15 @@ type Statuses forge.Enum[Status]
 //
 //forge:collection sort=Owner index=Owner
 type Credentials forge.Collection[forge.Json[forge.Redact[Credential]]]
+
+// ApplicantWire is the bridge and the fusion in one declaration: a
+// constructor that builds a [Person] from an [Applicant], and — because the
+// codec sits beneath the bridge — writers that put Person's document on the
+// wire straight from the Applicant, with no Person built.
+//
+// Most members match by name; Email is pinned to Contact by the from tag on
+// [Person.Email]. The generated doc comment carries the ledger, which is
+// where to check the mapping without rerunning it in your head.
+//
+//forge:map
+type ApplicantWire forge.Map[Applicant, forge.Json[Person]]

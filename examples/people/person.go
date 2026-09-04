@@ -32,7 +32,10 @@ type Person struct {
 	// The redact tag keeps it out of logs, and is what asks for a LogValue at
 	// all. Without one slog reaches for the fields of a Person and prints every
 	// address it finds.
-	Email string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:""`
+	//
+	// The from tag serves the mapping alone: an [Applicant] spells this member
+	// Contact, and the tag says so where the member is declared.
+	Email string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:"" from:"Applicant.Contact"`
 
 	// Age is the second declared sort key, so that the example has a sorted
 	// view over something that is not a string.

@@ -64,6 +64,13 @@ github.com/okian/forge/examples/people  IndexByHand            5  180304
 # leaving both lines green.
 github.com/okian/forge/examples/people  JSONEncode                0      0
 github.com/okian/forge/examples/people  JSONEncodeReflectively    2     48
+
+# The fused writer beside the two-step way of getting the same bytes. Both are
+# zero once the buffer is warm — the Person the fusion skips was stack-built —
+# so what the pair documents is that fusing costs nothing, not that the two-step
+# form allocates. The zero on the fused row is the declaration's promise.
+github.com/okian/forge/examples/people  FusedJSONEncode           0      0
+github.com/okian/forge/examples/people  ConstructThenEncode       0      0
 github.com/okian/forge/examples/people  JSONDecode             2000  39920
 github.com/okian/forge/examples/people  JSONDecodeBorrowed        0      0
 github.com/okian/forge/examples/people  JSONDecodeReflectively 2000  39920
@@ -105,9 +112,13 @@ github.com/okian/forge/internal/shared/jsonwire/tmpl  ScanString/escaped        
 # So a rule set with a pattern in it is a rule set whose cost is the pattern.
 # The comparison against go-playground/validator lives in its own module — see
 # scripts/budget-against.txt — and says the same thing from the other side.
-github.com/okian/forge/examples/people  Validate                       0  0
+# The one byte on the pattern rows is regexp's own: MatchString borrows a
+# machine from an internal pool, and the pool's rare refill amortizes to a
+# byte per operation at this run length — zero allocations, one accounted
+# byte. Generated and by-hand carry it alike, which is the comparison holding.
+github.com/okian/forge/examples/people  Validate                       0  1
 github.com/okian/forge/examples/people  ValidateByHand                 0  0
-github.com/okian/forge/examples/people  ValidateByHandWithThePattern   0  0
+github.com/okian/forge/examples/people  ValidateByHandWithThePattern   0  1
 
 # The generated copy, and the same copy written by hand beside it.
 #

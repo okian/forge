@@ -83,6 +83,13 @@ var theBound = []bound{
 	// when a hint is respelled, and this case carries none — it asserts the
 	// allocation moves the name anyway.
 	{layer: "map", stack: []string{"Map"}, names: []string{"src", "dst", "held"}},
+
+	// The fused stack binds the constructor's names and the fused writers':
+	// the codec's own bodies are covered by the json row, and these are the
+	// ones the fusion adds in scope where the two types are spelled.
+	{layer: "map", stack: []string{"Map", "Json"}, names: []string{
+		"src", "dst", "held", "err", "w", "scratch", "n",
+	}},
 }
 
 // A subject named after something a layer's bodies bind still generates code

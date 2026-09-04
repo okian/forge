@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.1
-// inputs e1adbd4484ad970e
+// inputs 9072330789e4797c
 
 //go:build !forgespec
 
@@ -1597,6 +1597,25 @@ var (
 // initialise it.
 var _ func(*Credentials) iter.Seq[Credential] = (*Credentials).All
 
+// ApplicantWire is the mapping's declaration; the constructor beside it is what it
+// produces. It holds nothing.
+type ApplicantWire struct{}
+
+// PersonFromApplicant builds one Person from what one Applicant holds.
+//
+// Matched by field: ID, Name, Age, Aliases; pinned by tag: Email (from
+// Contact).
+func PersonFromApplicant(src *Applicant) Person {
+	held := Person{
+		ID:      src.ID,
+		Name:    src.Name,
+		Email:   src.Contact,
+		Age:     src.Age,
+		Aliases: src.Aliases,
+	}
+	return held
+}
+
 // PersonBuilder builds one Person, a field at a time.
 //
 // Each setter answers with the builder, so the fields may be written in
@@ -2691,6 +2710,58 @@ func (v Person) LogValue() slog.Value {
 	)
 }
 
+// AppendPersonJSONFromApplicant appends Person's JSON document read straight from one Applicant,
+// with no Person built.
+//
+// Byte-identical to building the value and appending it: members, order,
+// names and escaping are the codec's own, driven by the target's tags.
+func AppendPersonJSONFromApplicant(dst []byte, src *Applicant) ([]byte, error) {
+	var err error
+	dst = append(dst, `{"ID":`...)
+	dst = strconv.AppendInt(dst, int64(src.ID), 10)
+	dst = append(dst, `,"Name":`...)
+	if dst, err = jsonAppendString(dst, string(src.Name)); err != nil {
+		return dst, err
+	}
+	dst = append(dst, `,"Email":`...)
+	if dst, err = jsonAppendString(dst, string(src.Contact)); err != nil {
+		return dst, err
+	}
+	dst = append(dst, `,"Age":`...)
+	dst = strconv.AppendInt(dst, int64(src.Age), 10)
+	dst = append(dst, `,"Aliases":`...)
+	{
+		mark := len(dst)
+		for _, one := range src.Aliases {
+			dst = append(dst, ',')
+			if dst, err = jsonAppendString(dst, string(one)); err != nil {
+				return dst, err
+			}
+		}
+		if len(dst) == mark {
+			dst = append(dst, '[', ']')
+		} else {
+			dst[mark] = '['
+			dst = append(dst, ']')
+		}
+	}
+	return append(dst, '}'), nil
+}
+
+// WritePersonJSONFromApplicant writes what AppendPersonJSONFromApplicant appends to w, in one call.
+func WritePersonJSONFromApplicant(w io.Writer, src *Applicant) (int64, error) {
+	scratch := jsonTakeScratch()
+	held, err := AppendPersonJSONFromApplicant((*scratch)[:0], src)
+	*scratch = held
+	if err != nil {
+		jsonDropScratch(scratch)
+		return 0, err
+	}
+	n, err := w.Write(held)
+	jsonDropScratch(scratch)
+	return int64(n), err
+}
+
 // PersonPatch is a partial Person: the fields it is asked to change, and
 // nothing about the rest.
 //
@@ -2709,7 +2780,7 @@ type PersonPatch struct {
 
 	// Email is what to set the Email to, and is nil where the patch says nothing
 	// about it.
-	Email *string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:""`
+	Email *string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:"" from:"Applicant.Contact"`
 
 	// Age is what to set the Age to, and is nil where the patch says nothing about
 	// it.

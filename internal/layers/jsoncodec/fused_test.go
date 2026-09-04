@@ -58,8 +58,8 @@ func TestFusedWritesFromTheGivenReads(t *testing.T) {
 	for _, want := range []string{
 		"func AppendAddressJSONFromFeed(dst []byte, src *Feed) ([]byte, error)",
 		"func WriteAddressJSONFromFeed(w io.Writer, src *Feed) (int64, error)",
-		"(src.XCity())",
-		"(src.XPost())",
+		"src.XCity()",
+		"src.XPost()",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the fused unit does not contain %q:\n%s", want, text)

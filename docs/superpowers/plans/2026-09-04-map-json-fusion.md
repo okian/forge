@@ -54,7 +54,7 @@ jsonwire runtime, the temp-module compile-and-run harness.
   `{model.MarkerPkg, "Json"}` innermost) with no diagnostics; every other
   arrangement containing a bridge still reports FRG1009.
 
-- [ ] **Step 1: Write the failing tests.** Append to
+- [x] **Step 1: Write the failing tests.** Append to
   `internal/compose/rules_test.go` (the real registry now claims both markers,
   so no stub is needed for the passing case; the failing cases reuse the
   `spanning` stub already in the file):
@@ -103,13 +103,13 @@ also fires; the assertion only requires FRG1009 to be among the output.
 `{"Json", "Map"}` puts the bridge innermost — the subject beneath a bridge is
 fine, the company above it is not.
 
-- [ ] **Step 2: Run to verify failure.**
+- [x] **Step 2: Run to verify failure.**
 
 Run: `go test ./internal/compose/ -run 'Bridge' -count=1`
 Expected: `TestABridgeAdmitsTheCodecAlone` FAILS with FRG1009 in the render;
 the refusal table may partially pass (most rows already refuse).
 
-- [ ] **Step 3: Implement.** In `internal/compose/rules.go`, replace the
+- [x] **Step 3: Implement.** In `internal/compose/rules.go`, replace the
   `bridges` function body:
 
 ```go
@@ -153,8 +153,8 @@ with nothing" phrasing in `internal/layers/mapping/mapping.go` (`Kind`'s
 comment), `internal/layers/mapping/doc.go`, and `forge.go`'s `Map` footer to
 say the codec is the one exception.
 
-- [ ] **Step 4: Run** `go test ./internal/compose/ ./internal/model/ . -count=1` → PASS.
-- [ ] **Step 5: Commit** `git commit -m "feat: let a bridge stand over the codec it feeds"`.
+- [x] **Step 4: Run** `go test ./internal/compose/ ./internal/model/ . -count=1` → PASS.
+- [x] **Step 5: Commit** `git commit -m "feat: let a bridge stand over the codec it feeds"`.
 
 ---
 
@@ -184,7 +184,7 @@ func (w *writer) read(path string) string {
 }
 ```
 
-- [ ] **Step 1: Introduce `read` and route every top-level member read
+- [x] **Step 1: Introduce `read` and route every top-level member read
   through it.** In `appendBody`: `plans[i] = w.omitted(one, w.read(one.path))`.
   In `writeMember`: the two `w.appendValue(v+"."+one.path, ...)` calls become
   `w.appendValue(w.read(one.path), ...)`, and the guard line
@@ -196,14 +196,14 @@ func (w *writer) read(path string) string {
   other `v.`-rooted read exists at the top level; `w.n("v")` used for the
   receiver declaration itself stays.
 
-- [ ] **Step 2: Prove nothing changed.**
+- [x] **Step 2: Prove nothing changed.**
 
 Run: `go test ./internal/layers/jsoncodec/ ./internal/generate/ -count=1 && make fresh`
 Expected: PASS, and `make fresh` reports every declaration up to date (the
 refactor emitted identical bytes). If any golden or freshness check moves,
 the refactor changed behavior — fix it, do not regenerate.
 
-- [ ] **Step 3: Commit** `git commit -m "refactor: let the codec say where a member's value comes from"`.
+- [x] **Step 3: Commit** `git commit -m "refactor: let the codec say where a member's value comes from"`.
 
 ---
 
@@ -240,7 +240,7 @@ via `plugin.Upper` on `ctx.Model.Subject.Named.Obj().Name()` and the source's
 a struct source, `src <S>` for an interface — derive from
 `ctx.Model.Source.Underlying()` exactly as mapping's `body()` does.
 
-- [ ] **Step 1: Write the failing test:**
+- [x] **Step 1: Write the failing test:**
 
 ```go
 // The fused writers read the mapping's expressions where the codec reads the
@@ -298,9 +298,9 @@ reads complicate the substring assertions — any struct subject from the
 fixture works; read `fixture_test.go` for what `modelPkg` declares. Write the
 small `rendered` helper in the test file.)
 
-- [ ] **Step 2: Run to verify failure** (`go test ./internal/layers/jsoncodec/ -run Fused -count=1` — undefined: jsoncodec.Fused).
+- [x] **Step 2: Run to verify failure** (`go test ./internal/layers/jsoncodec/ -run Fused -count=1` — undefined: jsoncodec.Fused).
 
-- [ ] **Step 3: Implement `fused.go`.** Shape:
+- [x] **Step 3: Implement `fused.go`.** Shape:
 
 ```go
 func Fused(ctx *plugin.Context, reads func(src string) map[string]string) (plugin.Unit, error) {
@@ -346,9 +346,9 @@ appender body under different reads and a different signature, not a new
 emitter. Where `Generate` emits methods on the subject, `Fused` emits two
 free functions and nothing else.
 
-- [ ] **Step 4: Run** `go test ./internal/layers/jsoncodec/ -count=1` → PASS
+- [x] **Step 4: Run** `go test ./internal/layers/jsoncodec/ -count=1` → PASS
   (including the codec's own suite: the refactor is additive).
-- [ ] **Step 5: Commit** `git commit -m "feat: teach the codec to write a document from somebody else's reads"`.
+- [x] **Step 5: Commit** `git commit -m "feat: teach the codec to write a document from somebody else's reads"`.
 
 ---
 
@@ -377,7 +377,7 @@ free functions and nothing else.
   the three together. This decision is the task's one real judgement call;
   everything downstream (the emitter) already handles both mechanisms.
 
-- [ ] **Step 1: Failing test** (in `plan_test.go`; add a `json bool` field to
+- [x] **Step 1: Failing test** (in `plan_test.go`; add a `json bool` field to
   `pair` and, in `contextFor`, append
   `model.LayerRef{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Json"}}`
   to a `Stack` field on the built Model when set — stage-1 contexts carried no
@@ -421,8 +421,8 @@ func TestABridgeAloneStillOnlyConstructs(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure.**
-- [ ] **Step 3: Implement `fuse.go`:**
+- [x] **Step 2: Run to verify failure.**
+- [x] **Step 3: Implement `fuse.go`:**
 
 ```go
 // fusedInStack reports whether the declaration writes the codec beneath the
@@ -490,8 +490,8 @@ In `mapping.go`'s `Generate`, after `written(ctx, built)`:
 (`targetSpelled` is the same spelling `written` computes — thread it out of
 `written` or recompute with the same `SubjectSpelling` call.)
 
-- [ ] **Step 4: Run** `go test ./internal/layers/mapping/ ./internal/layers/ -count=1` → PASS (surface test row updated).
-- [ ] **Step 5: Commit** `git commit -m "feat: write the document straight from the source"`.
+- [x] **Step 4: Run** `go test ./internal/layers/mapping/ ./internal/layers/ -count=1` → PASS (surface test row updated).
+- [x] **Step 5: Commit** `git commit -m "feat: write the document straight from the source"`.
 
 ---
 
@@ -509,7 +509,7 @@ In `mapping.go`'s `Generate`, after `written(ctx, built)`:
   the Provides/jsonwire handling — the temp module needs the wire runtime
   exactly as that test provides it).
 
-- [ ] **Step 1: Extend the gate.** In `mapping_test.go`: add fused pairs —
+- [x] **Step 1: Extend the gate.** In `mapping_test.go`: add fused pairs —
   `{source: "User", target: "Person", json: true}`,
   `{source: "Account", target: "Rolodex", json: true}` (a tag pin),
   `{source: "User", target: "Renamed", hint: "renamedFromUser", json: true}`
@@ -522,7 +522,7 @@ In `mapping.go`'s `Generate`, after `written(ctx, built)`:
   `contextFor`; a plain and a fused pair over one (S, T) would collide — keep
   either the plain or the fused variant of each pair in the gate, not both.
 
-- [ ] **Step 2: Equality tests in the reference file.** Append to
+- [x] **Step 2: Equality tests in the reference file.** Append to
   `reference.go.txt`, one per fused pair (bytes and error verdict):
 
 ```go
@@ -553,9 +553,9 @@ full; the Sparse one asserts the ignored member's zero appears exactly as
 construct-then-encode writes it). Add `"bytes"` to the reference file's
 imports.
 
-- [ ] **Step 3: Run** `go test ./internal/layers/mapping/ -count=1` →
+- [x] **Step 3: Run** `go test ./internal/layers/mapping/ -count=1` →
   the temp module compiles and every equality holds.
-- [ ] **Step 4: Commit** `git commit -m "test: hold the fused writer to construct-then-encode, byte for byte"`.
+- [x] **Step 4: Commit** `git commit -m "test: hold the fused writer to construct-then-encode, byte for byte"`.
 
 ---
 
@@ -579,14 +579,14 @@ imports.
 - Modify: `docs/diagnostics.md` only if FRG1009's summary changed in Task 1
 - Test: the full gate
 
-- [ ] **Step 1: The example.** Add `Applicant`, the spec declaration and
+- [x] **Step 1: The example.** Add `Applicant`, the spec declaration and
   regen: `make example`. Read the generated `forge.gen.go` diff — it should
   gain the constructor, the fused pair, and nothing unrelated. Write a small
   example test asserting `ApplicantWire`-adjacent behavior through the public
   functions (equality against construct-then-encode, one case) in
   `examples/people/map_test.go` — the example package's tests run in CI.
 
-- [ ] **Step 2: The benchmarks.** Mirror `BenchmarkJSONEncode`'s warmed-buffer
+- [x] **Step 2: The benchmarks.** Mirror `BenchmarkJSONEncode`'s warmed-buffer
   pattern (`codec_bench_test.go:51-70`) exactly:
 
 ```go
@@ -616,7 +616,7 @@ and `BenchmarkConstructThenEncode` doing `PersonFromApplicant` +
 `./scripts/bench.sh` (or the make target that wraps it — read the Makefile)
 once to measure, then write both budget rows; the fused row must be `0 0`.
 
-- [ ] **Step 3: The shadow row.** Add the `["Map", "Json"]` row; the
+- [x] **Step 3: The shadow row.** Add the `["Map", "Json"]` row; the
   `shadowing` helper already builds a source for `layer == "map"` — it keys
   the stack from `of.stack`, so no change beyond the row unless the json
   entry needs the fixture subject's `Name string` field renamed (it does not:
@@ -624,7 +624,7 @@ once to measure, then write both budget rows; the fused row must be `0 0`.
   `go test ./internal/generate/ -run Shadow -count=1` and prune names that
   fail to generate for unrelated reasons; every surviving name must compile.
 
-- [ ] **Step 4: The whole gate.**
+- [x] **Step 4: The whole gate.**
 
 ```bash
 go test ./... -count=1
@@ -637,9 +637,9 @@ git status --short   # only intended files
 Coverage note: if the global floor complains, the uncovered lines are refusal
 branches in `fused.go`/`fuse.go` — extend the refused fixtures, not filler.
 
-- [ ] **Step 5: Commit** `git commit -m "feat: show the fusion in the example and hold it to its budgets"`.
+- [x] **Step 5: Commit** `git commit -m "feat: show the fusion in the example and hold it to its budgets"`.
 
-- [ ] **Step 6: Tick this plan's boxes and stop.** Integration is the
+- [x] **Step 6: Tick this plan's boxes and stop.** Integration is the
   finishing-a-development-branch skill's business.
 
 ---

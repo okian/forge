@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.1
-// inputs e1adbd4484ad970e
+// inputs 9072330789e4797c
 
 //go:build forgespec
 
@@ -312,6 +312,8 @@ var (
 
 var _ func(*Credentials) iter.Seq[Credential] = (*Credentials).All
 
+func PersonFromApplicant(src *Applicant) Person { panic("forge stub") }
+
 type PersonBuilder struct {
 	// held is the value being built, which every setter writes one field of.
 	held Person
@@ -455,6 +457,10 @@ func decodePeopleSecretJSON(b []byte, i, depth int, v *Secret, borrow bool) (int
 
 func (v Person) LogValue() slog.Value { panic("forge stub") }
 
+func AppendPersonJSONFromApplicant(dst []byte, src *Applicant) ([]byte, error) { panic("forge stub") }
+
+func WritePersonJSONFromApplicant(w io.Writer, src *Applicant) (int64, error) { panic("forge stub") }
+
 type PersonPatch struct {
 	// ID is what to set the ID to, and is nil where the patch says nothing about
 	// it.
@@ -466,7 +472,7 @@ type PersonPatch struct {
 
 	// Email is what to set the Email to, and is nil where the patch says nothing
 	// about it.
-	Email *string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:""`
+	Email *string `validate:"required,regexp=^[^@[:space:]]+@[^@[:space:]]+$" redact:"" from:"Applicant.Contact"`
 
 	// Age is what to set the Age to, and is nil where the patch says nothing about
 	// it.
