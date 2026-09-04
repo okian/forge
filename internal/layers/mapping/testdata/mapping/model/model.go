@@ -112,6 +112,31 @@ type Sticker struct {
 	Email string `from:"User.Email"`
 }
 
+// Rooted promotes Base's Core, which a tag may name even though the ladder
+// stays with what the source declares.
+type Rooted struct {
+	Base
+	Label string
+}
+
+// Cored reads the promoted member through its tag.
+type Cored struct {
+	Core  int `from:"Rooted.Core"`
+	Label string
+}
+
+// Rich offers two members, so a tag can displace the one the ladder would
+// have picked.
+type Rich struct {
+	Email   string
+	Contact string
+}
+
+// Poached pins Email to Contact, displacing the ladder's exact match.
+type Poached struct {
+	Email string `from:"Rich.Contact"`
+}
+
 // Terse offers less than Sparse asks for, which is what ignore is for.
 type Terse struct {
 	ID int

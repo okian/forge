@@ -366,7 +366,7 @@ func tagged(ctx *plugin.Context, field plugin.Field, all []candidate,
 			WithHint("drop %s from ignore, or drop the tag", field.Name)
 	}
 
-	member, err := pin(field, held, all)
+	member, err := pin(field, held, all, ctx.Model.Source)
 	return member, true, err
 }
 

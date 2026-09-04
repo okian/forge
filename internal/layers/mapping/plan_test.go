@@ -562,3 +562,60 @@ func TestIgnoreOfATaggedMemberIsRefused(t *testing.T) {
 		t.Errorf("reported as %s, want FRG3031: %s", got, reported.Message)
 	}
 }
+
+// A tag may name a promoted member — the author wrote the name and Go
+// resolves it — and a tag displaces the exact match the ladder would have
+// made.
+func TestATagReachesPromotedAndDisplacesTheLadder(t *testing.T) {
+	rooted, err := planFor(t, pair{pkg: modelPkg, source: "Rooted", target: "Cored"})
+	if err != nil {
+		t.Fatalf("the promoted pair was refused: %v", err)
+	}
+	if want := (settlement{via: settledField, from: "Core", tagged: true}); settlements(rooted)["Core"] != want {
+		t.Errorf("Core settled as %+v, want %+v", settlements(rooted)["Core"], want)
+	}
+
+	poached, err := planFor(t, pair{pkg: modelPkg, source: "Rich", target: "Poached"})
+	if err != nil {
+		t.Fatalf("the displacing pair was refused: %v", err)
+	}
+	if want := (settlement{via: settledField, from: "Contact", tagged: true}); settlements(poached)["Email"] != want {
+		t.Errorf("Email settled as %+v, want %+v", settlements(poached)["Email"], want)
+	}
+}
+
+// The shapes a from tag is refused in, wherever in the tag they hide: a
+// contradiction is refused whichever entry would have answered, and an entry
+// that is not two identifiers is never mistaken for a sibling mapping's.
+func TestAFromTagIsHeldToItsShape(t *testing.T) {
+	cases := map[string]struct {
+		target string
+		says   string
+	}{
+		"parens in the qualifier":        {target: "QualifierGarbled", says: "Src().A"},
+		"a leading dot":                  {target: "LeadingDot", says: ".A"},
+		"a tag that says nothing":        {target: "BlankTag", says: "nothing"},
+		"bare entries masked by a match": {target: "MaskedBare", says: "X"},
+		"a member no declaration could":  {target: "NonIdentifier", says: "Src.-"},
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := planFor(t, pair{pkg: refusedPkg, source: "Src", target: want.target})
+			if err == nil {
+				t.Fatalf("a constructor was planned for %s", want.target)
+			}
+
+			reported, ok := plugin.From(err)
+			if !ok {
+				t.Fatalf("%v is not a diagnostic", err)
+			}
+			if got := reported.Code.String(); got != "FRG3034" {
+				t.Errorf("reported as %s, want FRG3034: %s", got, reported.Message)
+			}
+			if !strings.Contains(reported.Message, want.says) {
+				t.Errorf("the complaint does not mention %q:\n%s", want.says, reported.Message)
+			}
+		})
+	}
+}

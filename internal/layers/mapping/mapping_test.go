@@ -23,8 +23,9 @@ import (
 var reference []byte
 
 // gate lists the pairs the compiled module exercises: every rung of the
-// ladder, both source kinds, both hints, the ignore, and the local unexported
-// member.
+// ladder, both source kinds, both hints, the ignore, the local unexported
+// member, and every way a from tag pins — per source, by method, bare,
+// promoted, and displacing the ladder's own match.
 var gate = []pair{
 	{pkg: modelPkg, source: "User", target: "Person"},
 	{pkg: modelPkg, source: "Reader", target: "Card"},
@@ -35,6 +36,8 @@ var gate = []pair{
 	{pkg: modelPkg, source: "Account", target: "Rolodex"},
 	{pkg: modelPkg, source: "Company", target: "Rolodex"},
 	{pkg: modelPkg, source: "User", target: "Badge"},
+	{pkg: modelPkg, source: "Rooted", target: "Cored"},
+	{pkg: modelPkg, source: "Rich", target: "Poached"},
 }
 
 // What the generated constructors are checked against is the mapping a person

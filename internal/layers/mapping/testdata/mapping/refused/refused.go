@@ -69,3 +69,32 @@ type TaggedTwice struct {
 type AgedTag struct {
 	A string `from:"Src.A"`
 }
+
+// QualifierGarbled writes parens into the qualifier, which is not a source's
+// name and must not be mistaken for a sibling mapping's entry.
+type QualifierGarbled struct {
+	A int `from:"Src().A"`
+}
+
+// LeadingDot opens an entry with the separator, which names no source and is
+// not the bare form either.
+type LeadingDot struct {
+	A int `from:".A"`
+}
+
+// BlankTag carries a from tag that says nothing.
+type BlankTag struct {
+	A int `from:" , "`
+}
+
+// MaskedBare pairs a qualified entry that answers with bare entries that
+// contradict each other: the contradiction is refused whichever entry would
+// have answered.
+type MaskedBare struct {
+	A int `from:"Src.A, X, X"`
+}
+
+// NonIdentifier names a member no Go declaration could.
+type NonIdentifier struct {
+	A int `from:"Src.-"`
+}

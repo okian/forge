@@ -121,3 +121,25 @@ func TestTheTagPinsAMethodAndABareMember(t *testing.T) {
 		t.Errorf("the constructor built %+v, want %+v", got, want)
 	}
 }
+
+func byHandCored(src *Rooted) Cored {
+	return Cored{Core: src.Core, Label: src.Label}
+}
+
+func TestTheTagReachesAPromotedMember(t *testing.T) {
+	src := Rooted{Base: Base{Core: 12}, Label: "root"}
+	if got, want := CoredFromRooted(&src), byHandCored(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
+
+func byHandPoached(src *Rich) Poached {
+	return Poached{Email: src.Contact}
+}
+
+func TestTheTagDisplacesTheExactMatch(t *testing.T) {
+	src := Rich{Email: "no", Contact: "yes"}
+	if got, want := PoachedFromRich(&src), byHandPoached(&src); got != want {
+		t.Errorf("the constructor built %+v, want %+v", got, want)
+	}
+}
