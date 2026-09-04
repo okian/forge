@@ -89,6 +89,10 @@ github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/long-escaped/
 github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/long-escaped/jsontext  0  0
 github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/multibyte/ours         0  0
 github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendString/multibyte/jsontext     0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  CloseText/plain/close               0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  CloseText/plain/escaper             0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  CloseText/escaped/close             0  0
+github.com/okian/forge/internal/shared/jsonwire/tmpl  CloseText/escaped/escaper           0  0
 github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/fixed/ours              0  0
 github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/fixed/jsontext          0  0
 github.com/okian/forge/internal/shared/jsonwire/tmpl  AppendFloat/exponent/ours           0  0

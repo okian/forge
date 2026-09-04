@@ -46,6 +46,79 @@ func TestAppendStringIsTheStandardOneForEveryByte(t *testing.T) {
 	}
 }
 
+// TestCloseTextIsAppendStringAfterTheFact holds the settle to the escaper it
+// stands in for: for every one-byte and every two-byte text, appending the raw
+// bytes and closing must produce what jsonAppendString produces from the same
+// text — the same bytes where both accept, and a refusal exactly where the
+// escaper refuses. The prefix is part of the claim, since closing rewrites the
+// buffer in place when the text turns out to need the detour.
+func TestCloseTextIsAppendStringAfterTheFact(t *testing.T) {
+	check := func(text string) {
+		t.Helper()
+
+		dst := append([]byte(`{"key":`), '"')
+		mark := len(dst) - 1
+		dst = append(dst, text...)
+		got, gotErr := jsonCloseText(dst, mark)
+
+		want, wantErr := jsonAppendString([]byte(`{"key":`), text)
+
+		if (gotErr == nil) != (wantErr == nil) {
+			t.Errorf("text %q: closing says %v, the escaper says %v", text, gotErr, wantErr)
+			return
+		}
+		if gotErr != nil {
+			return
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("text %q: closing wrote %s, the escaper writes %s", text, got, want)
+		}
+	}
+
+	for c := range 256 {
+		check(string([]byte{byte(c)}))
+	}
+	var pair [2]byte
+	for hi := range 256 {
+		for lo := range 256 {
+			pair[0], pair[1] = byte(hi), byte(lo)
+			check(string(pair[:]))
+		}
+	}
+}
+
+// TestCloseTextOverTheShapesTextComesIn walks the texts a codec actually
+// appends: nothing at all, the ordinary run the fast path exists for, dense
+// escaping, multi-byte text, and the two ways UTF-8 goes wrong in the middle
+// of something long enough to have a middle.
+func TestCloseTextOverTheShapesTextComesIn(t *testing.T) {
+	for _, text := range []string{
+		"",
+		"0192aefb-74a0-7000-8000-1234567890ab",
+		"2026-09-04T12:30:45.123456789Z",
+		strings.Repeat("abcdefgh", 64),
+		strings.Repeat("a\"b\\c\td", 51),
+		strings.Repeat("日本語テキスト", 12),
+		"plain until it is not\xff",
+		"a lead with nothing after it \xe3\x81",
+	} {
+		dst := append([]byte("held:"), '"')
+		mark := len(dst) - 1
+		dst = append(dst, text...)
+		got, gotErr := jsonCloseText(dst, mark)
+
+		want, wantErr := jsonAppendString([]byte("held:"), text)
+
+		if (gotErr == nil) != (wantErr == nil) {
+			t.Errorf("text %q: closing says %v, the escaper says %v", text, gotErr, wantErr)
+			continue
+		}
+		if gotErr == nil && !bytes.Equal(got, want) {
+			t.Errorf("text %q: closing wrote %s, the escaper writes %s", text, got, want)
+		}
+	}
+}
+
 // TestAppendStringIsTheStandardOneForEveryTwoBytes walks all sixty-five
 // thousand two-byte strings, which is where a truncated multi-byte sequence
 // and a continuation byte with no lead live.

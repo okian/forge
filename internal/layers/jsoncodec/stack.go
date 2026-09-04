@@ -167,7 +167,10 @@ func streaming(ctx *plugin.Context, of *form) (stack, error) {
 	default:
 		// The subject is a struct — the layer refuses a stack that is not
 		// structured — so it is written as one or delegated to. Anything else
-		// is this file having drifted from the one that decides forms.
+		// is this file having drifted from the one that decides forms. A
+		// subject that is time.Time itself lands here too, and lands where it
+		// landed before times were first-class: a subject has to be a type
+		// methods can be attached to, and time.Time never was one.
 		return stack{}, fmt.Errorf("json: %s is written in no form a container can call", of.spelled.Text)
 	}
 

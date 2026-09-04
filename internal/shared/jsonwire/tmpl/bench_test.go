@@ -47,6 +47,44 @@ func BenchmarkAppendString(bm *testing.B) {
 	}
 }
 
+// BenchmarkCloseText measures what appending text in place and settling it
+// saves over escaping it on the way in, which is the whole reason the settle
+// exists. The plain case is the one the fast path was built for — a text an
+// appender wrote that needs nothing done to it — and the escaped case is the
+// detour, which must stay affordable rather than fast.
+func BenchmarkCloseText(bm *testing.B) {
+	for _, c := range []struct {
+		name string
+		held string
+	}{
+		{"plain", "0192aefb-74a0-7000-8000-1234567890ab"},
+		{"escaped", "he said \"hi\"\n"},
+	} {
+		bm.Run(c.name+"/close", func(bm *testing.B) {
+			buf := make([]byte, 0, 1024)
+			bm.SetBytes(int64(len(c.held)))
+			for bm.Loop() {
+				var err error
+				buf = append(buf[:0], '"')
+				buf = append(buf, c.held...)
+				if buf, err = jsonCloseText(buf, 0); err != nil {
+					bm.Fatal(err)
+				}
+			}
+		})
+		bm.Run(c.name+"/escaper", func(bm *testing.B) {
+			buf := make([]byte, 0, 1024)
+			bm.SetBytes(int64(len(c.held)))
+			for bm.Loop() {
+				var err error
+				if buf, err = jsonAppendString(buf[:0], c.held); err != nil {
+					bm.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkAppendFloat(bm *testing.B) {
 	for _, c := range []struct {
 		name string

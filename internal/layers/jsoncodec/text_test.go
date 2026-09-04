@@ -73,34 +73,44 @@ func TestOneHalfOfATextCodecIsNotOne(t *testing.T) {
 	}
 }
 
-// The appender is taken where it is the only writing half there is.
+// The appender writes into the document itself, and the write is settled
+// afterwards.
 //
-// encoding.TextAppender is the newer of the two and a type may carry it alone.
-// It is passed nothing to append to, because nothing here holds a buffer worth
-// appending into — the byte slice that comes back becomes a token either way.
-func TestTheAppenderIsTakenWhenItIsTheOnlyWriter(t *testing.T) {
+// encoding.TextAppender is handed the caller's buffer with the opening quote
+// already in place, and jsonCloseText looks at what landed: ordinary text gets
+// its closing quote and nothing more, and text the escaper would have touched
+// takes the one detour back through it. That is what the half exists to save,
+// and MarshalText's answer — a slice made just to be copied from — is what it
+// saves.
+func TestTheAppenderWritesIntoTheDocument(t *testing.T) {
 	held := texting(t, "Named", "Counter", appendText, unmarshalText)
 
-	if !strings.Contains(held, "held.AppendText(nil)") {
-		t.Errorf("the appender was not called, or not called with nothing:\n%s", held)
+	if !strings.Contains(held, "held.AppendText(dst)") {
+		t.Errorf("the appender was not handed the document:\n%s", held)
+	}
+	if !strings.Contains(held, "jsonCloseText(dst, mark)") {
+		t.Errorf("what the appender wrote was not settled:\n%s", held)
 	}
 	if strings.Contains(held, "MarshalText") {
 		t.Errorf("a half the type does not have was called:\n%s", held)
 	}
 }
 
-// MarshalText is preferred where the type has both writing halves.
+// AppendText is preferred where the type has both writing halves.
 //
-// The standard library prefers the appender, having a buffer of its own to
-// append into. This has none, so there is nothing to prefer it for — and the
-// half that reads plainly in a file somebody will open is the one to write.
+// The standard library's own preference, and now for the standard library's
+// own reason: there is a buffer to append into, so the appender's answer lands
+// where it is going and the other half's is a slice made just to be copied
+// from. It is also the only order the two agree under — a type whose halves
+// answer differently is written by the appender wherever the library encodes
+// it, and a codec that took the other half would be the one writer disagreeing.
 func TestWhichWritingHalfIsCalled(t *testing.T) {
 	held := texting(t, "Named", "Counter", marshalText, appendText, unmarshalText)
 
-	if !strings.Contains(held, "held.MarshalText()") {
-		t.Errorf("MarshalText was not preferred:\n%s", held)
+	if !strings.Contains(held, "held.AppendText(dst)") {
+		t.Errorf("AppendText was not preferred:\n%s", held)
 	}
-	if strings.Contains(held, "AppendText") {
+	if strings.Contains(held, "MarshalText") {
 		t.Errorf("both writing halves were called:\n%s", held)
 	}
 }

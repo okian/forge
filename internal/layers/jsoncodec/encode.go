@@ -226,7 +226,7 @@ func fallible(of *form, asking map[*form]bool) bool {
 	defer delete(asking, of)
 
 	switch of.how {
-	case writtenString, writtenFloat, writtenText, writtenStruct, writtenMap:
+	case writtenString, writtenFloat, writtenText, writtenTime, writtenStruct, writtenMap:
 		return true
 
 	case writtenDelegate:
@@ -382,7 +382,7 @@ func (w *writer) nonZeroScalar(held string, of *form) (string, bool) {
 	case writtenInt, writtenUint, writtenFloat:
 		return held + " != 0", true
 
-	case writtenStruct, writtenArray, writtenFallback, writtenDelegate, writtenText, writtenInvalid:
+	case writtenStruct, writtenArray, writtenFallback, writtenDelegate, writtenText, writtenTime, writtenInvalid:
 		return "", false
 	}
 
@@ -410,10 +410,12 @@ func (w *writer) nonZeroComposite(held string, of *form) (string, bool) {
 	case writtenArray:
 		return w.someElement(held, of)
 
-	case writtenDelegate, writtenFallback, writtenText:
+	case writtenDelegate, writtenFallback, writtenText, writtenTime:
 		// A type that writes itself, one handed to the reflective encoder, or
 		// one written through its text codec. None is comparable — the case
 		// above would have taken it — and none has parts this may look at.
+		// A time never reaches here at all: it declares IsZero, which
+		// [zeroable] answered before any of this was asked.
 		return "", false
 
 	case writtenInvalid, writtenBool, writtenString, writtenInt, writtenUint,
@@ -608,7 +610,10 @@ func (w *writer) nonEmpty(held string, of *form) when {
 		}
 		return always
 
-	case writtenBool, writtenInt, writtenUint, writtenFloat, writtenInvalid:
+	case writtenBool, writtenInt, writtenUint, writtenFloat, writtenTime, writtenInvalid:
+		// A number is never empty, and neither is a time: RFC 3339 is twenty
+		// characters of string before the identity even asks about
+		// nanoseconds.
 		return always
 
 	case writtenDelegate, writtenFallback, writtenText:
@@ -695,6 +700,9 @@ func (w *writer) appendValue(held string, of *form, depth int) {
 
 	case writtenText:
 		w.appendText(held, of, depth)
+
+	case writtenTime:
+		w.appendTime(held)
 
 	case writtenStruct:
 		w.line("if %s, %s = %s(%s, %s); %s != nil {", dst, err, encoderFor(of.typ), dst, held, err)
@@ -859,15 +867,41 @@ func (w *writer) appendDelegate(held string, of *form, depth int) {
 // itself on alternate builds. A local is right for either receiver — a method
 // on the pointer needs something addressable and a method on the value will
 // take one — so the question is not worth the way it has to be asked.
+//
+// Which half the plan chose decides the shape. AppendText writes into the
+// caller's buffer where the JSON string's content will sit, and jsonCloseText
+// settles what was appended afterwards — closing the quote where the text was
+// already a JSON string's worth of ordinary bytes, escaping in place where it
+// was not — so the ordinary value costs no allocation at all. MarshalText has
+// only an answer to hand back, so its bytes go through the escaper on the way
+// into the buffer, at the cost of the slice the method allocates.
 func (w *writer) appendText(held string, of *form, depth int) {
 	dst, err := w.n("dst"), w.n("err")
 	one := w.at("held", depth)
+
+	if of.text == textAppendMethod {
+		mark := w.at("mark", depth)
+
+		w.line("{")
+		w.line("%s := %s", one, held)
+		w.line("%s := len(%s)", mark, dst)
+		w.line(`%s = append(%s, '"')`, dst, dst)
+		w.line("if %s, %s = %s.%s(%s); %s != nil {", dst, err, one, textAppendMethod, dst, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+		w.line("if %s, %s = jsonCloseText(%s, %s); %s != nil {", dst, err, dst, mark, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+		w.line("}")
+		return
+	}
+
 	text := w.at("text", depth)
 	failed := w.at("failed", depth)
 
 	w.line("{")
 	w.line("%s := %s", one, held)
-	w.line("%s, %s := %s.%s(%s)", text, failed, one, of.text, appended(of.text))
+	w.line("%s, %s := %s.%s()", text, failed, one, of.text)
 	w.line("if %s != nil {", failed)
 	w.line("return %s, %s", dst, failed)
 	w.line("}")
@@ -877,13 +911,27 @@ func (w *writer) appendText(held string, of *form, depth int) {
 	w.line("}")
 }
 
-// appended is the argument a text writer takes: nothing for MarshalText, and
-// the buffer to append to for AppendText, which here is none.
-func appended(method string) string {
-	if method == textAppendMethod {
-		return "nil"
-	}
-	return ""
+// appendTime writes a time.Time straight into the buffer, quoted.
+//
+// No local and no scan, and both are the identity's to skip. AppendText is
+// declared on the value, so any expression can carry the call — a map's
+// element included — and what it appends is strict RFC 3339, an alphabet with
+// nothing JSON asks to have escaped. The quotes around it are what MarshalJSON
+// adds to the same bytes, so this is that method's answer without the
+// allocation or the trip through the standard library that validates answers
+// nobody here has read.
+//
+// A failed append may leave the opening quote and part of the text behind,
+// which is the contract every writer here already has: dst is returned as far
+// as it got, and a caller that cannot use a partial buffer discards it.
+func (w *writer) appendTime(held string) {
+	dst, err := w.n("dst"), w.n("err")
+
+	w.line(`%s = append(%s, '"')`, dst, dst)
+	w.line("if %s, %s = %s.%s(%s); %s != nil {", dst, err, held, textAppendMethod, dst, err)
+	w.line("return %s, %s", dst, err)
+	w.line("}")
+	w.line(`%s = append(%s, '"')`, dst, dst)
 }
 
 // appendArray writes a slice or an array as a JSON array.

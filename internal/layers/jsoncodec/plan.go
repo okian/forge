@@ -85,6 +85,20 @@ const (
 	// the text codec was written to do.
 	writtenText
 
+	// writtenTime is time.Time itself, recognised by identity the way a
+	// duration is and written first-class rather than through the boundary its
+	// own codec would otherwise cross.
+	//
+	// The identity is what buys the shortcut. Its MarshalJSON and AppendText
+	// produce the same bytes — one strict RFC 3339 formatter behind both, with
+	// the quotes the only difference — so the value can be appended straight
+	// into the caller's buffer instead of being handed to the standard library
+	// and spliced, which is where every other MarshalJSON writer goes because
+	// nothing else about such a method promises its answer is valid JSON.
+	// Reading stays with UnmarshalJSON over the value's own span, exactly as a
+	// delegate reads, so the verdicts on the way in are the method's own.
+	writtenTime
+
 	// The composites, each written in terms of what it holds.
 	writtenPointer
 	writtenSlice
@@ -128,7 +142,9 @@ type form struct {
 
 	// writes and reads name the methods a delegate is written and read
 	// through, and borrows records that it offers the borrowing reader as
-	// well. Set only where [form.how] is [writtenDelegate].
+	// well. Set only where [form.how] is [writtenDelegate] — except reads,
+	// which [writtenTime] sets too, because a time is read exactly as a
+	// delegate is: its own UnmarshalJSON over the value's span.
 	//
 	// AppendJSON and UnmarshalJSON are called straight. Either name from the
 	// streaming pair means the call goes through the standard library instead,
@@ -405,6 +421,22 @@ func isDuration(t types.Type) bool {
 		obj.Pkg() != nil && obj.Pkg().Path() == "time"
 }
 
+// isTime reports whether a type is time.Time itself.
+//
+// By identity for the reason [isDuration] is: what is known about the type is
+// known about that one type, not about every struct that resembles it. A type
+// defined over time.Time carries none of its methods and is decided the way
+// any other struct is.
+func isTime(t types.Type) bool {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj != nil && obj.Name() == "Time" &&
+		obj.Pkg() != nil && obj.Pkg().Path() == "time"
+}
+
 // named returns what a complaint about a type should call it: the field's name
 // where the type was reached through one, and the type's own where the subject
 // itself is what is wrong.
@@ -433,6 +465,19 @@ func (p *planner) fill(out *form, where blamed) {
 			WithHint("say which form the document carries: format:units for \"1h30m\", " +
 				"or format:sec, format:milli, format:micro or format:nano for a number"))
 		out.how = writtenInvalid
+		return
+	}
+
+	// A time is asked about next, and by identity for the same reason. Asked
+	// before [planner.owned] because owned would answer: time.Time declares
+	// MarshalJSON, and the general rule sends every such type through the
+	// standard library, which validates what a method nobody here has read
+	// returns. This one has been read — its MarshalJSON is its AppendText in
+	// quotes — so the value goes straight into the buffer, and reading keeps
+	// the method's own verdicts by delegating the span to UnmarshalJSON.
+	if isTime(out.typ) {
+		out.how = writtenTime
+		out.reads = unmarshalMethod
 		return
 	}
 

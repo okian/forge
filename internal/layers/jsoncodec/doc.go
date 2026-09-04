@@ -84,10 +84,25 @@
 // generating the missing half would redeclare the one that is there under a
 // reader that never consults it.
 //
+// One kind of delegate is not reached that way, and it is known by name
+// rather than by shape. time.Time's MarshalJSON is its AppendText between
+// quotes — one strict RFC 3339 formatter behind both — so a time is appended
+// straight into the caller's buffer instead of being handed over and spliced,
+// and is read back through its own UnmarshalJSON so the verdicts on the way in
+// stay the method's own. The identity is what buys the shortcut, the same way
+// it buys time.Duration its refusal: what is known here is known about that
+// one type, and a type defined over it carries none of its methods and is
+// decided like any other struct.
+//
 // A type carrying a text codec goes onto the wire as the string that codec
 // writes, which is what the standard library does with one and for the same
 // reason: the text is what its author said the value means, and the form
-// underneath is a detail no document can explain. A closed set is the case that
+// underneath is a detail no document can explain. The appender is the half
+// taken where the type carries both, which is the standard library's own
+// preference and here for the same reason it is there: a buffer is waiting, so
+// the text is appended where it will sit and settled after the fact — its
+// closing quote where it was ordinary, one detour back through the escaper
+// where it was not — and the ordinary value costs no allocation at all. A closed set is the case that
 // makes it matter, and the declaration giving the type its text codec is
 // usually a different declaration — so what the run will write is asked of the
 // layers rather than read off the package, which would answer differently on a

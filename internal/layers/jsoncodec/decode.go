@@ -209,7 +209,11 @@ func (w *writer) readValue(held string, of *form, depth, nested int) {
 	case writtenBytes:
 		w.readBytes(held, of, depth)
 
-	case writtenDelegate, writtenFallback:
+	case writtenDelegate, writtenFallback, writtenTime:
+		// A time reads as a delegate on purpose: UnmarshalJSON is the verdict
+		// its author wrote — what a null leaves alone, which layouts are
+		// refused — and the identity that let encoding skip the method is no
+		// reason to second-guess it on the way in.
 		w.readSpan(held, of, depth, nested)
 
 	case writtenText:
@@ -428,7 +432,12 @@ func (w *writer) readBytes(held string, of *form, depth int) {
 func (w *writer) readSpan(held string, of *form, depth, nested int) {
 	b, i, err := w.n("b"), w.n("i"), w.n("err")
 	start := w.at("start", depth)
-	next := w.at("next", depth)
+
+	// One deeper than this read's own depth, which is the convention every
+	// scanning read follows and the difference that matters inside a slice: the
+	// loop's own scaffolding binds this read's depth, so a span bound beside it
+	// would redeclare nothing and fail to compile.
+	next := w.at("next", depth+1)
 
 	w.line("%s := %s", start, i)
 	w.line("%s, %s := jsonSkipValue(%s, %s, %s%s)", next, err, b, i, w.n("depth"), plus(nested))

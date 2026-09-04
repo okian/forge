@@ -242,6 +242,10 @@ func jsonDropScratch(b *[]byte) { panic("forge stub") }
 
 func jsonAppendString(dst []byte, s string) ([]byte, error) { panic("forge stub") }
 
+func jsonCloseText(dst []byte, mark int) ([]byte, error) { panic("forge stub") }
+
+func jsonEscapeBehind(dst []byte, mark, from int) ([]byte, error) { panic("forge stub") }
+
 const (
 	jsonOnes    = 0x0101010101010101
 	jsonHighs   = 0x8080808080808080

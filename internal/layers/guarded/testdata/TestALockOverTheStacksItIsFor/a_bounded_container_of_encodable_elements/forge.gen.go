@@ -692,6 +692,114 @@ func jsonAppendString(dst []byte, s string) ([]byte, error) {
 	return append(dst, '"'), nil
 }
 
+// jsonCloseText settles a JSON string whose content was appended in place.
+//
+// The caller wrote an opening quote at mark and let a value's own AppendText
+// put its bytes straight after it, which is the append-shaped half of a text
+// codec doing what it is for: the ordinary value — a UUID, an address, a
+// member's name — lands in the document without ever existing anywhere else.
+// What is left is the question the escaper usually answers on the way in, so
+// it is answered on what was written: text that is all ordinary bytes gets its
+// closing quote and nothing more, and text that is not is rewritten where it
+// sits. Either way the verdicts are exactly [jsonAppendString]'s — invalid
+// UTF-8 included — which the tests beside this hold byte for byte.
+func jsonCloseText(dst []byte, mark int) ([]byte, error) {
+	text := dst[mark+1:]
+	if len(text) == 0 {
+		return append(dst, '"'), nil
+	}
+	s := unsafe.String(&text[0], len(text)) //nolint:gosec // The view lasts for the scan below, and nothing writes dst while it does.
+
+	// The scan [jsonAppendString] runs, minus the copying: eight bytes at a
+	// time while they are ordinary, a byte at a time where they are not, and
+	// the same two questions of each — a rune where it is multi-byte, the
+	// escaper's detour where it is one of the escaper's bytes.
+	wordly := 0
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case c >= utf8.RuneSelf:
+			// Multi-byte and so nothing to escape, but it does have to be a
+			// rune, and the continuation bytes are stepped over rather than
+			// asked about — a malformed sequence is found at its leading byte.
+			_, size := utf8.DecodeRuneInString(s[i:])
+			if size == 1 {
+				return dst, errJSONUTF8
+			}
+			i += size
+
+		case c < ' ' || c == '"' || c == '\\':
+			return jsonEscapeBehind(dst, mark, i)
+
+		case i >= wordly:
+			if next := jsonPlainWords(s, i); next > i {
+				i = next
+				continue
+			}
+			wordly, i = i+8, i+1
+
+		default:
+			i++
+		}
+	}
+
+	return append(dst, '"'), nil
+}
+
+// jsonEscapeBehind rewrites a string's content with its escapes in, having
+// found at from the first byte that needs one.
+//
+// In place rather than through a borrowed buffer, so what the settle costs
+// does not depend on a pool's luck: the rest of the text is validated and
+// measured first, the buffer is grown once, and then every byte is written at
+// its final place, last byte first. Escaping only ever pushes a byte to the
+// right, so a cell is read before anything can land on it — which is the whole
+// of why the walk runs backwards.
+func jsonEscapeBehind(dst []byte, mark, from int) ([]byte, error) {
+	length := len(dst) - mark - 1
+
+	// Validated and measured before anything moves, because a refusal must
+	// leave the buffer growable rather than half-rewritten, and because the
+	// final place of every byte is a function of how much the escapes add.
+	var esc [8]byte
+	extra := 0
+	for i := from; i < length; {
+		c := dst[mark+1+i]
+		switch {
+		case c >= utf8.RuneSelf:
+			_, size := utf8.DecodeRune(dst[mark+1+i:])
+			if size == 1 {
+				return dst, errJSONUTF8
+			}
+			i += size
+
+		case c < ' ' || c == '"' || c == '\\':
+			extra += len(jsonAppendEscape(esc[:0], c)) - 1
+			i++
+
+		default:
+			i++
+		}
+	}
+
+	// One growth for the escapes and the closing quote both, then the walk.
+	out := slices.Grow(dst, extra+1)[:len(dst)+extra]
+	w := len(out)
+	for r := length - 1; r >= 0; r-- {
+		c := out[mark+1+r]
+		if c < ' ' || c == '"' || c == '\\' {
+			held := jsonAppendEscape(esc[:0], c)
+			w -= len(held)
+			copy(out[w:], held)
+			continue
+		}
+		w--
+		out[w] = c
+	}
+
+	return append(out, '"'), nil
+}
+
 // The bytes of a word, for asking about eight at once.
 const (
 	jsonOnes    = 0x0101010101010101

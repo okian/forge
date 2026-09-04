@@ -3,6 +3,8 @@ package model
 import (
 	"encoding/json/v2"
 	"testing"
+	"time"
+	"uuid"
 
 	"codecfixture/other"
 )
@@ -57,6 +59,17 @@ type (
 	AgedTwin     Aged
 	OddlyTwin    Oddly
 	VariedTwin   Varied
+
+	// Timed keeps its time.Time fields, which is the comparison the identity
+	// asks for: the standard library reaches the type's own formatter through
+	// its methods, forge writes it straight into the buffer, and the wire is
+	// where the two claims meet. Identified keeps its uuid.UUID for the text
+	// codec both sides reach; Preferred and Escaping keep their scalars so the
+	// half taken and the escaping detour are each held against the library.
+	TimedTwin      Timed
+	IdentifiedTwin Identified
+	PreferredTwin  Preferred
+	EscapingTwin   Escaping
 )
 
 type NestedTwin struct {
@@ -815,5 +828,73 @@ func TestNilable(t *testing.T) {
 
 	for _, held := range []Nilable{{}, {At: &at, Name: "n"}, {At: &zero}, {Name: "only"}} {
 		agree(t, held, NilableTwin(held))
+	}
+}
+
+// A time goes onto the wire by identity, and the wire cannot tell.
+//
+// Forge appends the value straight into the buffer where the standard library
+// calls the type's own MarshalJSON; the two are one formatter, and this is the
+// comparison that keeps them so. The zone with an offset is here because the
+// offset is part of what RFC 3339 writes, and the nanoseconds because trailing
+// zeros are dropped and both sides have to drop them alike.
+func TestTimed(t *testing.T) {
+	at := time.Date(2026, 9, 4, 12, 30, 45, 123456789, time.UTC)
+	shifted := time.Date(2001, 2, 3, 4, 5, 6, 700000000, time.FixedZone("", 3*3600+30*60))
+	for _, held := range []Timed{
+		{},
+		{At: at, Started: at},
+		{At: shifted, Maybe: &at, Seen: []time.Time{at, shifted, {}}},
+	} {
+		agree(t, held, TimedTwin(held))
+	}
+}
+
+// A year RFC 3339 cannot carry is refused on the way out, from both sides.
+//
+// The formatter's verdict is part of what the identity borrowed, so the value
+// the standard library refuses to write is refused here too rather than
+// arriving somewhere as a document nothing can read back.
+func TestTimedRefusals(t *testing.T) {
+	held := Timed{At: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)}
+	if _, err := json.Marshal(held); err == nil {
+		t.Error("forge wrote a year RFC 3339 cannot carry")
+	}
+	if _, err := json.Marshal(TimedTwin(held)); err == nil {
+		t.Error("the standard library wrote a year RFC 3339 cannot carry")
+	}
+}
+
+// An identifier goes out as its hyphenated text, from both sides.
+func TestIdentified(t *testing.T) {
+	one := uuid.MustParse("0192aefb-74a0-7000-8000-1234567890ab")
+	two := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+	for _, held := range []Identified{
+		{},
+		{ID: one, Maybe: &two, Batch: []uuid.UUID{one, two, {}}},
+	} {
+		agree(t, held, IdentifiedTwin(held))
+	}
+}
+
+// Where a type carries both writing halves, the appender's answer is the one
+// on the wire.
+//
+// The two halves here disagree on purpose and the reader accepts only the
+// appender's answer, so this test fails twice over for a codec that took the
+// other half: the bytes differ from the standard library's, and what was
+// written cannot come back.
+func TestPreferred(t *testing.T) {
+	for _, held := range []Preferred{{}, {Held: 1}} {
+		agree(t, held, PreferredTwin(held))
+	}
+}
+
+// Text the appender writes straight into the document is escaped as though it
+// had gone through the escaper from the start, because on this path it does —
+// after the fact, and only when the scan says it must.
+func TestEscaping(t *testing.T) {
+	for _, held := range []Escaping{{}, {Held: 1}} {
+		agree(t, held, EscapingTwin(held))
 	}
 }

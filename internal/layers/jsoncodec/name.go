@@ -264,17 +264,19 @@ func (p *planner) declaresText(t types.Type) bool {
 // textWriter names the half of a text codec that writes, or nothing where the
 // type has neither.
 //
-// MarshalText where the type has it, because it is the half everything has and
-// the one that reads plainly in generated code. AppendText is taken where it is
-// the only half there is: the standard library prefers it, having a buffer of
-// its own to append into, and this has none — a token is written from whatever
-// comes back either way, so there is nothing to prefer it for here.
+// AppendText where the type has it, which is the standard library's own
+// preference and now for the same reason: there is a buffer to append into.
+// Generated code writes the text straight into the document where the JSON
+// string's content belongs and settles it afterwards — see jsonCloseText in
+// the wire runtime — so the ordinary value costs no allocation, where
+// MarshalText hands back a slice made just to be copied from. MarshalText
+// remains for the type that declares only it.
 func (p *planner) textWriter(t types.Type) string {
 	switch {
-	case p.has(t, textMarshalMethod):
-		return textMarshalMethod
 	case p.has(t, textAppendMethod):
 		return textAppendMethod
+	case p.has(t, textMarshalMethod):
+		return textMarshalMethod
 	default:
 		return ""
 	}

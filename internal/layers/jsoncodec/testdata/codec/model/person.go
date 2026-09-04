@@ -10,6 +10,8 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"strconv"
+	"time"
+	"uuid"
 
 	"codecfixture/other"
 )
@@ -302,9 +304,10 @@ type Coloured struct {
 
 // Appending is a named scalar whose only writing half is the appender.
 //
-// encoding.TextAppender is the newer of the two and a type may carry it alone.
-// Nothing here has a buffer to append into, so the half is taken for the text
-// it produces rather than for what it was added to save.
+// encoding.TextAppender is the newer of the two and a type may carry it alone,
+// so a reader that asked only for MarshalText would write the number for a
+// type that had said how it reads. It is also the half with a buffer waiting
+// for it: the text is appended into the document where it will sit.
 type Appending int
 
 // AppendText writes the value onto the end of a buffer.
@@ -681,4 +684,93 @@ type Hollowed struct {
 	Ptr  *Hollow `json:"ptr,omitempty"`
 	Text *string `json:"text,omitempty"`
 	Name string  `json:"name,omitempty"`
+}
+
+// Timed holds the one struct the codec knows by identity.
+//
+// A time carries MarshalJSON, so the general rule would send every one of
+// these through the standard library and splice what came back. The identity
+// is what earns the exception: its MarshalJSON and its AppendText are one
+// strict RFC 3339 formatter with the quotes the only difference, so the value
+// is appended straight into the document. What this fixture holds against the
+// standard library is that the shortcut is invisible on the wire.
+type Timed struct {
+	At    time.Time
+	Maybe *time.Time
+	Seen  []time.Time
+
+	// Started asks to be left out at its zero value, which for a time is the
+	// question its own IsZero answers rather than a comparison.
+	Started time.Time `json:"started,omitzero"`
+}
+
+// Identified holds the identifier this Go release ships, whose text codec is
+// what carries it: sixteen bytes underneath, and the hyphenated form on the
+// wire, with the appender preferred now that there is a buffer to append into.
+type Identified struct {
+	ID    uuid.UUID
+	Maybe *uuid.UUID
+	Batch []uuid.UUID
+}
+
+// Preferring is a named scalar whose two writing halves disagree on purpose.
+//
+// The standard library prefers the appender where a type carries both, so the
+// half taken is visible on the wire — and the reader below accepts only the
+// appender's answer, so a codec that took the other half writes a document
+// that cannot come back. That is the preference pinned from both directions.
+type Preferring int
+
+// AppendText writes the answer the standard library would take.
+func (p Preferring) AppendText(b []byte) ([]byte, error) {
+	return append(b, "appended"...), nil
+}
+
+// MarshalText writes the answer nothing should take while the appender is
+// there.
+func (p Preferring) MarshalText() ([]byte, error) {
+	return []byte("marshalled"), nil
+}
+
+// UnmarshalText accepts the appender's answer alone.
+func (p *Preferring) UnmarshalText(text []byte) error {
+	if string(text) != "appended" {
+		return errors.New("the wrong writing half was taken: " + string(text))
+	}
+	*p = 1
+	return nil
+}
+
+// Preferred holds one.
+type Preferred struct {
+	Held Preferring
+}
+
+// Fancy is a named scalar whose appender writes text a JSON string cannot
+// carry as it is: a quote, a backslash, a tab, and a rune past ASCII.
+//
+// It is the case that decides what appending straight into the document costs.
+// Ordinary text gets its closing quote and nothing more; this is the text that
+// is copied aside once and re-appended through the escaper, and what the
+// fixture holds against the standard library is that the detour writes the
+// same bytes the escaper writes for everything else.
+type Fancy int
+
+// AppendText writes text that needs the escaper.
+func (f Fancy) AppendText(b []byte) ([]byte, error) {
+	return append(b, "a \"quoted\"\tvalue\\with ünïcode"...), nil
+}
+
+// UnmarshalText accepts exactly that text back.
+func (f *Fancy) UnmarshalText(text []byte) error {
+	if string(text) != "a \"quoted\"\tvalue\\with ünïcode" {
+		return errors.New("the text arrived changed: " + string(text))
+	}
+	*f = 1
+	return nil
+}
+
+// Escaping holds one.
+type Escaping struct {
+	Held Fancy
 }
