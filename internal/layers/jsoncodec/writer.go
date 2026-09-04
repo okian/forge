@@ -41,6 +41,13 @@ type writer struct {
 	// names are the identifiers the bodies bind, each allocated out of the way
 	// of the types the codec spells. See [locals].
 	names locals
+
+	// reads says where a top-level member's value comes from, when somebody
+	// other than the encoded value holds it. Nil for the codec's own bodies,
+	// which read the value being encoded; the fused writer a mapping asks for
+	// reads the mapping's bindings instead, and this is the seam between the
+	// two.
+	reads func(path string) string
 }
 
 // newWriter returns a writer ready to assemble one codec.
@@ -52,6 +59,15 @@ func newWriter(names locals) *writer {
 // earned by how often it is asked: nearly every emitted line binds or reads
 // one.
 func (w *writer) n(base string) string { return w.names.name(base) }
+
+// read spells where a top-level member's value comes from: the value being
+// encoded, unless [writer.reads] says otherwise.
+func (w *writer) read(path string) string {
+	if w.reads != nil {
+		return w.reads(path)
+	}
+	return w.n("v") + "." + path
+}
 
 // at returns the loop-depth variant of an identifier, allocated the same way:
 // the inner binding of a nested composite must dodge the subject's names as

@@ -84,7 +84,7 @@ func (w *writer) appendBody(of *form) {
 	plans := make([]when, len(of.members))
 	needErr := false
 	for i, one := range of.members {
-		plans[i] = w.omitted(one, w.n("v")+"."+one.path)
+		plans[i] = w.omitted(one, w.read(one.path))
 		held := one.of
 		if fallible(&held, make(map[*form]bool)) {
 			needErr = true
@@ -142,14 +142,14 @@ func (w *writer) fusedOpen(of *form, plans []when) bool {
 // writeMember writes one member of an object: its name fused with the byte
 // before it, then its value, under whatever conditions leave it out.
 func (w *writer) writeMember(one member, held when, lead string) {
-	dst, v := w.n("dst"), w.n("v")
+	dst := w.n("dst")
 	closing := 0
 
 	// An embedded pointer contributes nothing when it is nil, which is the rule
 	// for a promoted member rather than a choice. The guards nest, because an
 	// inner one cannot be read before the outer one is known to be there.
 	for _, guard := range one.guards {
-		w.line("if %s.%s != nil {", v, guard.path)
+		w.line("if %s != nil {", w.read(guard.path))
 		closing++
 	}
 
@@ -167,13 +167,13 @@ func (w *writer) writeMember(one member, held when, lead string) {
 		w.marks++
 		w.line("%s := len(%s)", mark, dst)
 		w.line("%s = append(%s, %s...)", dst, dst, goString(prefix))
-		w.appendValue(v+"."+one.path, &one.of, 0)
+		w.appendValue(w.read(one.path), &one.of, 0)
 		w.line("if jsonWroteEmpty(%s, %s+%d) {", dst, mark, len(prefix))
 		w.line("%s = %s[:%s]", dst, dst, mark)
 		w.line("}")
 	} else {
 		w.line("%s = append(%s, %s...)", dst, dst, goString(prefix))
-		w.appendValue(v+"."+one.path, &one.of, 0)
+		w.appendValue(w.read(one.path), &one.of, 0)
 	}
 
 	for range closing {
