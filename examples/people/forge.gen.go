@@ -21,6 +21,7 @@ import (
 	"iter"
 	"log/slog"
 	"math"
+	"math/bits"
 	"regexp"
 	"slices"
 	"sort"
@@ -3256,15 +3257,18 @@ func jsonAppendString(dst []byte, s string) ([]byte, error) {
 			last = i
 
 		case i >= wordly:
-			// Worth asking about eight at once. A word that is all ordinary
-			// bytes skips them; one that is not moves the next ask eight bytes
-			// along, so that a string escaping something every second byte
-			// stops paying for the ask.
+			// Worth asking about eight at once. One ask walks every word of
+			// ordinary bytes and answers with the byte that stopped it, so
+			// text that is one long run costs one ask and one leap. The next
+			// ask is moved eight bytes along whatever the answer was: an
+			// answer nearby means the text is escaping densely, and the bytes
+			// after the escape are cheaper to walk than to ask about again.
+			wordly = i + 8
 			if next := jsonPlainWords(s, i); next > i {
 				i = next
 				continue
 			}
-			wordly, i = i+8, i+1
+			i++
 
 		default:
 			i++
@@ -3315,11 +3319,12 @@ func jsonCloseText(dst []byte, mark int) ([]byte, error) {
 			return jsonEscapeBehind(dst, mark, i)
 
 		case i >= wordly:
+			wordly = i + 8
 			if next := jsonPlainWords(s, i); next > i {
 				i = next
 				continue
 			}
-			wordly, i = i+8, i+1
+			i++
 
 		default:
 			i++
@@ -3391,13 +3396,14 @@ const (
 	jsonSlashes = 0x5c5c5c5c5c5c5c5c // '\\' in every byte
 )
 
-// jsonPlainWords advances past whole words of bytes a string carries as they
-// are written, and returns where it stopped.
+// jsonPlainWords advances past bytes a string carries as they are written,
+// and returns the index of the first byte that needs attention — as far as
+// whole words can say.
 //
-// It returns i unchanged when the next eight bytes are not all like that,
-// which is how the caller learns to go a byte at a time instead — the whole
-// point being that a word is asked about once and either skips eight bytes or
-// costs nothing more than the ask.
+// It returns i unchanged when the byte at i itself needs attention, or when
+// fewer than eight bytes remain; either way the caller learns to go a byte at
+// a time — the whole point being that a word is asked about once and either
+// clears eight bytes or costs nothing more than the ask.
 //
 // Eight at a time because the ordinary string is one long run of bytes that
 // need nothing done to them, and asking about each one separately is what
@@ -3407,10 +3413,14 @@ const (
 // dependency on the machine's byte order.
 //
 // A byte needs attention when it is a control byte, a quote, a backslash, or
-// the start of something multi-byte. The tests below find each of those across
-// a whole word: subtracting from every byte and looking at the borrow finds a
+// part of something multi-byte. The tests below find each of those across a
+// whole word: subtracting from every byte and looking at the borrow finds a
 // byte below a bound, and exclusive-or against a repeated byte turns a match
-// into a zero, which the same trick then finds.
+// into a zero, which the same trick then finds. Where a word holds one, the
+// lowest set bit names the earliest — a borrow can smear a test's answer, but
+// only past the first genuine hit, so the position the trailing zeros give is
+// exact. Answering with that position instead of the word it sits in is what
+// spares the caller a walk back over the bytes the word already cleared.
 func jsonPlainWords(s string, i int) int {
 	for i+8 <= len(s) {
 		chunk := s[i : i+8]
@@ -3418,8 +3428,8 @@ func jsonPlainWords(s string, i int) int {
 			uint64(chunk[3])<<24 | uint64(chunk[4])<<32 | uint64(chunk[5])<<40 |
 			uint64(chunk[6])<<48 | uint64(chunk[7])<<56
 
-		if jsonBelow(w, ' ')|w&jsonHighs|jsonAnyZero(w^jsonQuotes)|jsonAnyZero(w^jsonSlashes) != 0 {
-			return i
+		if mask := jsonBelow(w, ' ') | w&jsonHighs | jsonAnyZero(w^jsonQuotes) | jsonAnyZero(w^jsonSlashes); mask != 0 {
+			return i + bits.TrailingZeros64(mask)/8
 		}
 		i += 8
 	}
@@ -3469,10 +3479,10 @@ func jsonAppendEscape(dst []byte, c byte) []byte {
 // is dropping the zero out of a two-digit negative exponent, so that 1e-9
 // comes out as it is written here rather than as 1e-09.
 //
-// bits is 32 for a float32 widened to be passed, and 64 for a float64. It
+// width is 32 for a float32 widened to be passed, and 64 for a float64. It
 // decides which value the shortest representation has to read back as.
-func jsonAppendFloat(dst []byte, f float64, bits int) []byte {
-	if bits == 32 {
+func jsonAppendFloat(dst []byte, f float64, width int) []byte {
+	if width == 32 {
 		f = float64(float32(f))
 	}
 
@@ -3484,13 +3494,13 @@ func jsonAppendFloat(dst []byte, f float64, bits int) []byte {
 	abs := math.Abs(f)
 	verb := byte('f')
 	if abs != 0 {
-		if bits == 32 && (float32(abs) < 1e-6 || float32(abs) >= 1e21) ||
-			bits == 64 && (abs < 1e-6 || abs >= 1e21) {
+		if width == 32 && (float32(abs) < 1e-6 || float32(abs) >= 1e21) ||
+			width == 64 && (abs < 1e-6 || abs >= 1e21) {
 			verb = 'e'
 		}
 	}
 
-	dst = strconv.AppendFloat(dst, f, verb, -1, bits)
+	dst = strconv.AppendFloat(dst, f, verb, -1, width)
 	if verb != 'e' {
 		return dst
 	}
@@ -3511,15 +3521,23 @@ func jsonAppendFloat(dst []byte, f float64, bits int) []byte {
 // JSON has no NaN and no infinities, and the standard library errors on all
 // three unless a caller asks for something else — which generated code has no
 // caller to be asked by.
-func jsonAppendFinite(dst []byte, f float64, bits int) ([]byte, error) {
+func jsonAppendFinite(dst []byte, f float64, width int) ([]byte, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return dst, errJSONNonfinite
 	}
-	return jsonAppendFloat(dst, f, bits), nil
+	return jsonAppendFloat(dst, f, width), nil
 }
 
 // jsonSkipSpace steps over the whitespace JSON allows between values.
 func jsonSkipSpace(b []byte, i int) int {
+	// Answered in one comparison for the document every encoder writes: a
+	// compact one has no whitespace anywhere this is asked, and every byte of
+	// JSON's own alphabet sits above the four space bytes. Only a byte at or
+	// below the space is worth asking which one it is.
+	if i < len(b) && b[i] > ' ' {
+		return i
+	}
+
 	for i < len(b) {
 		switch b[i] {
 		case ' ', '\t', '\n', '\r':
@@ -3587,11 +3605,11 @@ func jsonScanString(b []byte, i int) (lo, hi, next int, esc bool, err error) {
 
 		case c < utf8.RuneSelf:
 			if i >= wordly {
+				wordly = i + 8
 				if next := jsonPlainBytes(b, i); next > i {
 					i = next
 					continue
 				}
-				wordly = i + 8
 			}
 			i++
 
@@ -3607,9 +3625,11 @@ func jsonScanString(b []byte, i int) (lo, hi, next int, esc bool, err error) {
 	return 0, 0, 0, false, errJSONTruncated
 }
 
-// jsonPlainBytes advances past whole words of bytes a string carries as they
-// are written, and returns where it stopped. The byte-slice twin of
-// [jsonPlainWords], for the reading side.
+// jsonPlainBytes advances past bytes a string carries as they are written,
+// and returns the index of the first byte that needs attention — as far as
+// whole words can say. The byte-slice twin of [jsonPlainWords], for the
+// reading side, where the byte it names is most often the closing quote: a
+// short name or address is cleared in one ask and one leap.
 func jsonPlainBytes(b []byte, i int) int {
 	for i+8 <= len(b) {
 		chunk := b[i : i+8]
@@ -3617,8 +3637,8 @@ func jsonPlainBytes(b []byte, i int) int {
 			uint64(chunk[3])<<24 | uint64(chunk[4])<<32 | uint64(chunk[5])<<40 |
 			uint64(chunk[6])<<48 | uint64(chunk[7])<<56
 
-		if jsonBelow(w, ' ')|w&jsonHighs|jsonAnyZero(w^jsonQuotes)|jsonAnyZero(w^jsonSlashes) != 0 {
-			return i
+		if mask := jsonBelow(w, ' ') | w&jsonHighs | jsonAnyZero(w^jsonQuotes) | jsonAnyZero(w^jsonSlashes); mask != 0 {
+			return i + bits.TrailingZeros64(mask)/8
 		}
 		i += 8
 	}
@@ -3895,7 +3915,7 @@ func jsonIsDigit(c byte) bool { return c >= '0' && c <= '9' }
 // is the hottest scan a numeric document has and the grammar was already being
 // walked to find where the number ends — parsing it again would read every
 // digit twice.
-func jsonScanInt(b []byte, i, bits int) (int64, int, error) {
+func jsonScanInt(b []byte, i, width int) (int64, int, error) {
 	neg := i < len(b) && b[i] == '-'
 	if neg {
 		i++
@@ -3906,7 +3926,7 @@ func jsonScanInt(b []byte, i, bits int) (int64, int, error) {
 		return 0, 0, err
 	}
 
-	limit := uint64(1) << (bits - 1)
+	limit := uint64(1) << (width - 1)
 	if !neg {
 		limit--
 	}
@@ -3914,14 +3934,14 @@ func jsonScanInt(b []byte, i, bits int) (int64, int, error) {
 		return 0, 0, errJSONRange
 	}
 	if neg {
-		return -int64(held), next, nil //nolint:gosec // held is at most 1<<(bits-1), checked above, and negating carries the last unit.
+		return -int64(held), next, nil //nolint:gosec // held is at most 1<<(width-1), checked above, and negating carries the last unit.
 	}
-	return int64(held), next, nil //nolint:gosec // held is at most 1<<(bits-1)-1, checked above.
+	return int64(held), next, nil //nolint:gosec // held is at most 1<<(width-1)-1, checked above.
 }
 
 // jsonScanUint reads a JSON number into an unsigned integer of the given
 // width.
-func jsonScanUint(b []byte, i, bits int) (uint64, int, error) {
+func jsonScanUint(b []byte, i, width int) (uint64, int, error) {
 	if i < len(b) && b[i] == '-' {
 		return 0, 0, errJSONRange
 	}
@@ -3930,7 +3950,7 @@ func jsonScanUint(b []byte, i, bits int) (uint64, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	if bits < 64 && held >= uint64(1)<<bits {
+	if width < 64 && held >= uint64(1)<<width {
 		return 0, 0, errJSONRange
 	}
 	return held, next, nil
@@ -3974,13 +3994,13 @@ func jsonDigits(b []byte, i int) (uint64, int, error) {
 }
 
 // jsonScanFloat reads a JSON number into a float of the given width.
-func jsonScanFloat(b []byte, i, bits int) (float64, int, error) {
+func jsonScanFloat(b []byte, i, width int) (float64, int, error) {
 	lo, hi, err := jsonScanNumber(b, i)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	held, err := strconv.ParseFloat(string(b[lo:hi]), bits)
+	held, err := strconv.ParseFloat(string(b[lo:hi]), width)
 	if err != nil {
 		// Out of range is the only way this fails on a number the grammar
 		// above accepted, and it is refused rather than kept: ParseFloat
@@ -4520,7 +4540,7 @@ func jsonSortedUintKeys[K ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintpt
 // A key that is not finite has no name to sort by — writing it is refused
 // where the member is written — so any pair involving one is ordered by bits,
 // which is an order the refusal keeps anybody from observing.
-func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, bits int) *[]uint64 {
+func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, width int) *[]uint64 {
 	keys := jsonTakeNums()
 	held := (*keys)[:0]
 	for k := range m {
@@ -4532,7 +4552,7 @@ func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, bits int) *[]u
 			return int(a>>32) - int(b>>32)
 		}
 		var ab, bb [32]byte
-		return bytes.Compare(jsonAppendFloat(ab[:0], fa, bits), jsonAppendFloat(bb[:0], fb, bits))
+		return bytes.Compare(jsonAppendFloat(ab[:0], fa, width), jsonAppendFloat(bb[:0], fb, width))
 	})
 	*keys = held
 	return keys
@@ -4544,8 +4564,8 @@ func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, bits int) *[]u
 // The whole name and nothing but: "03", "+3" and "3.0" are refused here for
 // the reason they are refused as values, since a name that parses differently
 // from the value it stands for is two numbers under one spelling.
-func jsonNameInt(name []byte, bits int) (int64, error) {
-	held, next, err := jsonScanInt(name, 0, bits)
+func jsonNameInt(name []byte, width int) (int64, error) {
+	held, next, err := jsonScanInt(name, 0, width)
 	if err != nil {
 		return 0, err
 	}
@@ -4556,8 +4576,8 @@ func jsonNameInt(name []byte, bits int) (int64, error) {
 }
 
 // jsonNameUint is [jsonNameInt] for the unsigned kinds.
-func jsonNameUint(name []byte, bits int) (uint64, error) {
-	held, next, err := jsonScanUint(name, 0, bits)
+func jsonNameUint(name []byte, width int) (uint64, error) {
+	held, next, err := jsonScanUint(name, 0, width)
 	if err != nil {
 		return 0, err
 	}
@@ -4568,8 +4588,8 @@ func jsonNameUint(name []byte, bits int) (uint64, error) {
 }
 
 // jsonNameFloat is [jsonNameInt] for the float kinds.
-func jsonNameFloat(name []byte, bits int) (float64, error) {
-	held, next, err := jsonScanFloat(name, 0, bits)
+func jsonNameFloat(name []byte, width int) (float64, error) {
+	held, next, err := jsonScanFloat(name, 0, width)
 	if err != nil {
 		return 0, err
 	}

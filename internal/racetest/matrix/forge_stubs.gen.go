@@ -275,9 +275,9 @@ func jsonBelow(w uint64, n byte) uint64 { panic("forge stub") }
 
 func jsonAppendEscape(dst []byte, c byte) []byte { panic("forge stub") }
 
-func jsonAppendFloat(dst []byte, f float64, bits int) []byte { panic("forge stub") }
+func jsonAppendFloat(dst []byte, f float64, width int) []byte { panic("forge stub") }
 
-func jsonAppendFinite(dst []byte, f float64, bits int) ([]byte, error) { panic("forge stub") }
+func jsonAppendFinite(dst []byte, f float64, width int) ([]byte, error) { panic("forge stub") }
 
 func jsonSkipSpace(b []byte, i int) int { panic("forge stub") }
 
@@ -307,13 +307,13 @@ func jsonScanExponent(b []byte, i int) (int, error) { panic("forge stub") }
 
 func jsonIsDigit(c byte) bool { panic("forge stub") }
 
-func jsonScanInt(b []byte, i, bits int) (int64, int, error) { panic("forge stub") }
+func jsonScanInt(b []byte, i, width int) (int64, int, error) { panic("forge stub") }
 
-func jsonScanUint(b []byte, i, bits int) (uint64, int, error) { panic("forge stub") }
+func jsonScanUint(b []byte, i, width int) (uint64, int, error) { panic("forge stub") }
 
 func jsonDigits(b []byte, i int) (uint64, int, error) { panic("forge stub") }
 
-func jsonScanFloat(b []byte, i, bits int) (float64, int, error) { panic("forge stub") }
+func jsonScanFloat(b []byte, i, width int) (float64, int, error) { panic("forge stub") }
 
 func jsonScanBool(b []byte, i int) (bool, int, error) { panic("forge stub") }
 
@@ -384,15 +384,15 @@ func jsonSortedUintKeys[K ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintpt
 	panic("forge stub")
 }
 
-func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, bits int) *[]uint64 {
+func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, width int) *[]uint64 {
 	panic("forge stub")
 }
 
-func jsonNameInt(name []byte, bits int) (int64, error) { panic("forge stub") }
+func jsonNameInt(name []byte, width int) (int64, error) { panic("forge stub") }
 
-func jsonNameUint(name []byte, bits int) (uint64, error) { panic("forge stub") }
+func jsonNameUint(name []byte, width int) (uint64, error) { panic("forge stub") }
 
-func jsonNameFloat(name []byte, bits int) (float64, error) { panic("forge stub") }
+func jsonNameFloat(name []byte, width int) (float64, error) { panic("forge stub") }
 
 func jsonFinish(scratch *[]byte, b []byte, err error) ([]byte, error) { panic("forge stub") }
 
