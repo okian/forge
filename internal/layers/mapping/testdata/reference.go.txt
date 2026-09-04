@@ -1,6 +1,9 @@
 package model
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 // Every constructor is compared against the mapping a person would have
 // written, member for member. Not a golden file: a golden file says the output
@@ -142,4 +145,79 @@ func TestTheTagDisplacesTheExactMatch(t *testing.T) {
 	if got, want := PoachedFromRich(&src), byHandPoached(&src); got != want {
 		t.Errorf("the constructor built %+v, want %+v", got, want)
 	}
+}
+
+// The fused writers are held to construct-then-encode, byte for byte and
+// verdict for verdict: whatever AppendJSON writes for the built value is what
+// the fusion must write with no value built.
+
+func fusedAgainst(t *testing.T, name string, got []byte, gotErr error, want []byte, wantErr error) {
+	t.Helper()
+
+	if (gotErr == nil) != (wantErr == nil) {
+		t.Fatalf("%s: fused err = %v, construct-then-encode err = %v", name, gotErr, wantErr)
+	}
+	if string(got) != string(want) {
+		t.Errorf("%s: fused wrote %s, want %s", name, got, want)
+	}
+}
+
+func writtenAgainst(t *testing.T, name string, n int64, err error, buf *bytes.Buffer, want []byte) {
+	t.Helper()
+
+	if err != nil || n != int64(len(want)) || buf.String() != string(want) {
+		t.Errorf("%s: Write wrote %q (%d, %v), want %q", name, buf.String(), n, err, want)
+	}
+}
+
+func TestFusedPersonEqualsConstructThenEncode(t *testing.T) {
+	src := User{ID: 7, Email: "a@b", Age: 40}
+
+	held := PersonFromUser(&src)
+	want, wantErr := held.AppendJSON(nil)
+	got, gotErr := AppendPersonJSONFromUser(nil, &src)
+	fusedAgainst(t, "Person", got, gotErr, want, wantErr)
+
+	var buf bytes.Buffer
+	n, err := WritePersonJSONFromUser(&buf, &src)
+	writtenAgainst(t, "Person", n, err, &buf, want)
+}
+
+func TestFusedRolodexEqualsConstructThenEncode(t *testing.T) {
+	src := Account{ID: 4, Contact: "c@d"}
+
+	held := RolodexFromAccount(&src)
+	want, wantErr := held.AppendJSON(nil)
+	got, gotErr := AppendRolodexJSONFromAccount(nil, &src)
+	fusedAgainst(t, "Rolodex", got, gotErr, want, wantErr)
+
+	var buf bytes.Buffer
+	n, err := WriteRolodexJSONFromAccount(&buf, &src)
+	writtenAgainst(t, "Rolodex", n, err, &buf, want)
+}
+
+func TestFusedRenamedEqualsConstructThenEncode(t *testing.T) {
+	src := User{ID: 5, Email: "m@n", Age: 1}
+
+	held := RenamedFromUser(&src)
+	want, wantErr := held.AppendJSON(nil)
+	got, gotErr := AppendRenamedJSONFromUser(nil, &src)
+	fusedAgainst(t, "Renamed", got, gotErr, want, wantErr)
+
+	var buf bytes.Buffer
+	n, err := WriteRenamedJSONFromUser(&buf, &src)
+	writtenAgainst(t, "Renamed", n, err, &buf, want)
+}
+
+func TestFusedSparseEqualsConstructThenEncode(t *testing.T) {
+	src := Terse{ID: 9}
+
+	held := SparseFromTerse(&src)
+	want, wantErr := held.AppendJSON(nil)
+	got, gotErr := AppendSparseJSONFromTerse(nil, &src)
+	fusedAgainst(t, "Sparse", got, gotErr, want, wantErr)
+
+	var buf bytes.Buffer
+	n, err := WriteSparseJSONFromTerse(&buf, &src)
+	writtenAgainst(t, "Sparse", n, err, &buf, want)
 }

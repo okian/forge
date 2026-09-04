@@ -2,6 +2,7 @@ package mapping
 
 import (
 	_ "embed"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/okian/forge/internal/emit"
+	"github.com/okian/forge/internal/layers/jsoncodec"
+	"github.com/okian/forge/internal/shared/jsonwire"
 	"github.com/okian/forge/plugin"
 )
 
@@ -24,16 +27,17 @@ var reference []byte
 
 // gate lists the pairs the compiled module exercises: every rung of the
 // ladder, both source kinds, both hints, the ignore, the local unexported
-// member, and every way a from tag pins — per source, by method, bare,
-// promoted, and displacing the ladder's own match.
+// member, every way a from tag pins — per source, by method, bare, promoted,
+// and displacing the ladder's own match — and the fused writers over a plain
+// match, a tag pin, a hint, and an ignored member.
 var gate = []pair{
-	{pkg: modelPkg, source: "User", target: "Person"},
+	{pkg: modelPkg, source: "User", target: "Person", json: true},
 	{pkg: modelPkg, source: "Reader", target: "Card"},
-	{pkg: modelPkg, source: "User", target: "Renamed", hint: "renamedFromUser"},
+	{pkg: modelPkg, source: "User", target: "Renamed", hint: "renamedFromUser", json: true},
 	{pkg: modelPkg, source: "User", target: "Converted", hint: "convertedFromUser"},
 	{pkg: modelPkg, source: "Entitled", target: "Titled"},
-	{pkg: modelPkg, source: "Terse", target: "Sparse", ignore: "Note"},
-	{pkg: modelPkg, source: "Account", target: "Rolodex"},
+	{pkg: modelPkg, source: "Terse", target: "Sparse", ignore: "Note", json: true},
+	{pkg: modelPkg, source: "Account", target: "Rolodex", json: true},
 	{pkg: modelPkg, source: "Company", target: "Rolodex"},
 	{pkg: modelPkg, source: "User", target: "Badge"},
 	{pkg: modelPkg, source: "Rooted", target: "Cored"},
@@ -68,23 +72,60 @@ func TestTheConstructorsAgreeWithTheHandWrittenOnes(t *testing.T) {
 	}
 }
 
-// generated returns the file forge writes for every pair in the gate.
+// generated returns the file forge writes for every pair in the gate: the
+// constructors, and for the fused pairs the writers, the targets' own codecs
+// and the wire runtime — exactly the company the emitter would assemble.
 func generated(t *testing.T) []byte {
 	t.Helper()
 
 	loaded := loadFixture(t)
 	file := emit.File{Package: "model"}
+	seen := make(map[string]bool)
+	wired := false
 
-	for _, p := range gate {
-		unit, err := New().Generate(contextFor(t, loaded, p), plugin.Shape{})
-		if err != nil {
-			t.Fatalf("generating the constructor for %s: %v", p.target, err)
-		}
-
+	keep := func(unit plugin.Unit) {
 		file.Sections = append(file.Sections, emit.Section{
 			Decls: unit.Decls, Comments: unit.Comments, Fset: unit.Fset,
 		})
 		file.Imports = append(file.Imports, unit.Imports...)
+		for key, held := range unit.Provides {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			file.Sections = append(file.Sections, emit.Section{
+				Decls: held.Decls, Comments: held.Comments, Fset: held.Fset,
+			})
+			file.Imports = append(file.Imports, held.Imports...)
+		}
+	}
+
+	for _, p := range gate {
+		ctx := contextFor(t, loaded, p)
+		unit, err := New().Generate(ctx, plugin.Shape{})
+		if err != nil {
+			t.Fatalf("generating the constructor for %s: %v", p.target, err)
+		}
+		keep(unit)
+
+		if !p.json {
+			continue
+		}
+
+		codec, err := jsoncodec.New().Generate(ctx, plugin.Shape{})
+		if err != nil {
+			t.Fatalf("generating the codec for %s: %v", p.target, err)
+		}
+		keep(codec)
+		wired = true
+	}
+
+	if wired {
+		shared, err := jsonwire.Unit(token.Position{})
+		if err != nil {
+			t.Fatalf("providing the wire runtime: %v", err)
+		}
+		keep(shared)
 	}
 
 	out, err := file.Render()
