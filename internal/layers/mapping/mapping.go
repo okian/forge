@@ -77,5 +77,20 @@ func (Layer) Generate(ctx *plugin.Context, _ plugin.Shape) (plugin.Unit, error) 
 		return plugin.Unit{}, err
 	}
 
-	return written(ctx, built)
+	unit, err := written(ctx, built)
+	if err != nil || !fusedInStack(ctx) {
+		return unit, err
+	}
+
+	// The codec beneath the bridge asks for the fused writers. They travel as
+	// a provided unit rather than appended declarations, because they carry
+	// their own file set and the three — decls, comments, fset — may not be
+	// mixed across two parses.
+	writers, err := fused(ctx, built)
+	if err != nil {
+		return plugin.Unit{}, err
+	}
+	unit.Provides = map[string]plugin.Unit{"map fused: " + ctx.Model.Name: writers}
+
+	return unit, nil
 }

@@ -36,8 +36,9 @@ var against = map[string]string{
 	"clone":    "",
 	"embedded": "",
 	"enum":     "",
-	"mapping":  "",
 	"patch":    "",
+
+	"mapping": "the fused writer the codec builds from a mapping's bindings",
 
 	"jsoncodec": "the shared JSON wire runtime the generated codecs call into",
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/okian/forge/internal/emit"
 	"github.com/okian/forge/internal/load"
 	"github.com/okian/forge/internal/model"
 	"github.com/okian/forge/internal/subject"
@@ -37,6 +38,10 @@ type pair struct {
 	// hint names a fixture function to attach, as the pipeline's matcher
 	// would.
 	hint string
+
+	// json writes the codec beneath the bridge, which asks for the fused
+	// writers.
+	json bool
 }
 
 // loadFixture loads the fixture module once per call.
@@ -121,12 +126,18 @@ func contextFor(t *testing.T, loaded *load.Session, p pair) *plugin.Context {
 		hints = append(hints, hintNamed(t, loaded, p.pkg, p.hint))
 	}
 
+	stack := []model.LayerRef{{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Map"}}}
+	if p.json {
+		stack = append(stack, model.LayerRef{Origin: model.TypeRef{Pkg: model.MarkerPkg, Name: "Json"}})
+	}
+
 	return &plugin.Context{
 		Model: &plugin.Model{
 			Name:    p.source + "To" + p.target,
 			Form:    plugin.FormSpec,
 			Subject: built,
 			Source:  source,
+			Stack:   stack,
 			Pkg:     pkg,
 			Pos:     token.Position{Filename: "spec.go", Line: 1, Column: 1},
 			Hints:   hints,
@@ -617,5 +628,95 @@ func TestAFromTagIsHeldToItsShape(t *testing.T) {
 				t.Errorf("the complaint does not mention %q:\n%s", want.says, reported.Message)
 			}
 		})
+	}
+}
+
+// renderedUnit prints a unit and everything it provides, the way the emitter
+// would, so a test can read the whole of what a declaration generates.
+func renderedUnit(t *testing.T, unit plugin.Unit) string {
+	t.Helper()
+
+	file := emit.File{Package: "model"}
+	file.Sections = append(file.Sections, emit.Section{
+		Decls: unit.Decls, Comments: unit.Comments, Fset: unit.Fset,
+	})
+	file.Imports = append(file.Imports, unit.Imports...)
+	for _, held := range unit.Provides {
+		file.Sections = append(file.Sections, emit.Section{
+			Decls: held.Decls, Comments: held.Comments, Fset: held.Fset,
+		})
+		file.Imports = append(file.Imports, held.Imports...)
+	}
+
+	out, err := file.Render()
+	if err != nil {
+		t.Fatalf("rendering the unit: %v", err)
+	}
+	return string(out)
+}
+
+// A bridge over the codec generates the fused writers beside the constructor.
+func TestABridgeOverTheCodecFuses(t *testing.T) {
+	loaded := loadFixture(t)
+	unit, err := New().Generate(contextFor(t, loaded, pair{
+		pkg: modelPkg, source: "User", target: "Person", json: true,
+	}), plugin.Shape{})
+	if err != nil {
+		t.Fatalf("fusing was refused: %v", err)
+	}
+
+	text := renderedUnit(t, unit)
+	for _, want := range []string{
+		"func PersonFromUser(src *User) Person",
+		"func AppendPersonJSONFromUser(dst []byte, src *User) ([]byte, error)",
+		"func WritePersonJSONFromUser(w io.Writer, src *User) (int64, error)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the fused unit does not contain %q:\n%s", want, text)
+		}
+	}
+}
+
+// Without the codec beneath it, nothing changes: stage 1's output, no writers.
+func TestABridgeAloneStillOnlyConstructs(t *testing.T) {
+	loaded := loadFixture(t)
+	unit, err := New().Generate(contextFor(t, loaded, pair{
+		pkg: modelPkg, source: "User", target: "Person",
+	}), plugin.Shape{})
+	if err != nil {
+		t.Fatalf("the plain pair was refused: %v", err)
+	}
+	if text := renderedUnit(t, unit); strings.Contains(text, "AppendPersonJSONFromUser") {
+		t.Error("a bridge with no codec beneath it grew writers")
+	}
+}
+
+// A hint that reads the value under construction is fine in a constructor —
+// the literal exists by then — and refused under fusion, where no target value
+// ever does.
+func TestAFusedHintCannotReadDst(t *testing.T) {
+	loaded := loadFixture(t)
+
+	if _, err := planned(contextFor(t, loaded, pair{
+		pkg: modelPkg, source: "User", target: "Renamed", hint: "echoes",
+	})); err != nil {
+		t.Fatalf("a constructor-only hint reading dst was refused: %v", err)
+	}
+
+	_, err := New().Generate(contextFor(t, loaded, pair{
+		pkg: modelPkg, source: "User", target: "Renamed", hint: "echoes", json: true,
+	}), plugin.Shape{})
+	if err == nil {
+		t.Fatal("a fused hint reading dst was accepted")
+	}
+	reported, ok := plugin.From(err)
+	if !ok {
+		t.Fatalf("%v is not a diagnostic", err)
+	}
+	if got := reported.Code.String(); got != "FRG3032" {
+		t.Errorf("reported as %s, want FRG3032: %s", got, reported.Message)
+	}
+	if !strings.Contains(reported.Message, "echoes") {
+		t.Errorf("the complaint does not name the hint:\n%s", reported.Message)
 	}
 }

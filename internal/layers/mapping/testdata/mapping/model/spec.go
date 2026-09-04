@@ -77,3 +77,13 @@ func imported(src *User, dst *Renamed) {
 func stickerFromUser(src *User, dst *Sticker) {
 	dst.Email = src.Email
 }
+
+// echoes reads the value under construction, which the constructor allows —
+// the literal is already built when the hint runs — and a fused mapping must
+// refuse: there is no target value while the document is written.
+//
+//forge:map hint
+func echoes(src *User, dst *Renamed) {
+	dst.ID = src.ID
+	dst.Moniker = dst.Moniker + src.Email
+}
