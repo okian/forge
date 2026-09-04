@@ -57,6 +57,18 @@ func TestALockOverTheStacksItIsFor(t *testing.T) {
 		"a container with a query API under it": {
 			markers: []string{"Guarded", "Collection", "Slice"}, subject: timestamped(),
 		},
+
+		// A keyed container beneath the lock — the composition the storage
+		// exists to end at: shared state with point lookups, made safe by
+		// scoping rather than by a mutex of its own. The scope hands over
+		// lookups whose answers do not survive it (a pointer, a lazy walk),
+		// the append the harness writes through returns the storage's own
+		// refusal, and the container needs no way in, its zero value being
+		// ready.
+		"a keyed container of plain elements": {
+			markers:    []string{"Guarded", "Index"},
+			directives: []string{"//forge:index key=ID index=Name"},
+		},
 	}
 
 	for name, held := range cases {
