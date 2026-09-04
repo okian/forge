@@ -147,6 +147,44 @@ type Statuses forge.Enum[Status]
 //forge:collection sort=Owner index=Owner
 type Credentials forge.Collection[forge.Json[forge.Redact[Credential]]]
 
+// Directory is the people by their IDs, with a second way in by name.
+//
+// The storage this declaration asks for is the pair everybody writes by hand:
+// a slice for walking and a map for finding, kept in agreement at every add
+// and every removal by generated code rather than by attention.
+// [Directory.ByID] answers a pointer to the element itself — stable while
+// neighbours come and go, meaningless once the element it names is removed —
+// and [Directory.ByName] walks everyone sharing a name, resolving through the
+// primary map so that removal never repairs more than the removed element's
+// own buckets.
+//
+// The keys are unique and checked: an add whose ID is already held comes back
+// as [ErrDirectoryDuplicate] rather than quietly replacing someone, because a
+// key that has to be unique is a thing to check. A declaration that wants the
+// other answer writes conflict=replace and gets an upsert, still in place, so
+// what a lookup answered before the replacement still names the element under
+// that key. Removal is by ID and swaps the last entry into the hole it
+// leaves, so a directory that churns does not shuffle.
+//
+//forge:index key=ID index=Name
+type Directory forge.Index[Person]
+
+// Registry is a keyed directory behind a read-write lock.
+//
+// The pairing the storage was built toward: shared state with point lookups.
+// Everything the index offers moves behind [Registry.Do] and [Registry.RDo],
+// and two of its answers are exactly why scoped access exists — the primary
+// lookup hands back a pointer into the container, the secondary a lazy walk,
+// and neither means anything once the lock is gone. The scope is what makes
+// "find someone and edit them in place" a sentence with no race in it.
+//
+// Json beneath the storage gives [Person] its codec, and the lock — having
+// taken the walk away — writes the container's own, over a copy taken under
+// the read lock.
+//
+//forge:index key=ID
+type Registry forge.Guarded[forge.Index[forge.Json[Person]]]
+
 // ApplicantWire is the bridge and the fusion in one declaration: a
 // constructor that builds a [Person] from an [Applicant], and — because the
 // codec sits beneath the bridge — writers that put Person's document on the

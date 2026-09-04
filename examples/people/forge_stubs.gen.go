@@ -3,7 +3,7 @@
 // forge (devel)
 // markers github.com/okian/forge (devel)
 // go go1.27.1
-// inputs 9072330789e4797c
+// inputs cc11383826c69db2
 
 //go:build forgespec
 
@@ -311,6 +311,141 @@ var (
 )
 
 var _ func(*Credentials) iter.Seq[Credential] = (*Credentials).All
+
+var ErrDirectoryDuplicate = errors.New("the key is already held")
+
+type directoryEntry struct {
+	elem Person
+	at   int
+}
+
+func NewDirectory(elems ...Person) *Directory { panic("forge stub") }
+
+func (r *Directory) Len() int { panic("forge stub") }
+
+func (r *Directory) All() iter.Seq[Person] { panic("forge stub") }
+
+func (r *Directory) AppendSeq(seq iter.Seq[Person]) error { panic("forge stub") }
+
+func (r *Directory) pick[K comparable](m map[K]*directoryEntry, k K) (*Person, bool) {
+	panic("forge stub")
+}
+
+func (r *Directory) found[K comparable](keys []K, of map[K]*directoryEntry) iter.Seq[Person] {
+	panic("forge stub")
+}
+
+func (r *Directory) noted[K comparable](m map[K]*directoryEntry, k K, e *directoryEntry) map[K]*directoryEntry {
+	panic("forge stub")
+}
+
+func (r *Directory) listed[K comparable, P comparable](m map[K][]P, k K, p P) map[K][]P {
+	panic("forge stub")
+}
+
+func (r *Directory) delisted[K comparable, P comparable](m map[K][]P, k K, p P) map[K][]P {
+	panic("forge stub")
+}
+
+func (r *Directory) cut(at int) { panic("forge stub") }
+
+func (r *Directory) ByID(k int) (*Person, bool) {
+	panic("forge stub")
+}
+
+func (r *Directory) ByName(k string) iter.Seq[Person] {
+	panic("forge stub")
+}
+
+func (r *Directory) Remove(k int) bool {
+	panic("forge stub")
+}
+
+func (r *Directory) Reset() {
+	panic("forge stub")
+}
+
+func (r *Directory) placeChecked(v Person) error {
+	panic("forge stub")
+}
+
+var _ func(*Directory) iter.Seq[Person] = (*Directory).All
+
+func (g *Registry) Do(f func(v RegistryView)) { panic("forge stub") }
+
+func (g *Registry) RDo(f func(v RegistryView)) { panic("forge stub") }
+
+func (g *Registry) Snapshot() []Person { panic("forge stub") }
+
+func (g *Registry) Len() int { panic("forge stub") }
+
+func (g *Registry) AppendJSON(dst []byte) ([]byte, error) { panic("forge stub") }
+
+func (g *Registry) MarshalJSON() ([]byte, error) { panic("forge stub") }
+
+type RegistryView struct {
+	held *registryHeld
+}
+
+func (v RegistryView) Len() int { panic("forge stub") }
+
+func (v RegistryView) All() iter.Seq[Person] { panic("forge stub") }
+
+func (v RegistryView) AppendSeq(a0 iter.Seq[Person]) error { panic("forge stub") }
+
+func (v RegistryView) Reset() { panic("forge stub") }
+
+func (v RegistryView) Remove(a0 int) bool { panic("forge stub") }
+
+func (v RegistryView) ByID(a0 int) (*Person, bool) { panic("forge stub") }
+
+type registryHeld struct {
+	order []*registryHeldEntry
+	byID  map[int]*registryHeldEntry
+}
+
+var errRegistryHeldDuplicate = errors.New("the key is already held")
+
+type registryHeldEntry struct {
+	elem Person
+	at   int
+}
+
+func newRegistryHeld(elems ...Person) *registryHeld { panic("forge stub") }
+
+func (r *registryHeld) Len() int { panic("forge stub") }
+
+func (r *registryHeld) All() iter.Seq[Person] { panic("forge stub") }
+
+func (r *registryHeld) AppendSeq(seq iter.Seq[Person]) error { panic("forge stub") }
+
+func (r *registryHeld) pick[K comparable](m map[K]*registryHeldEntry, k K) (*Person, bool) {
+	panic("forge stub")
+}
+
+func (r *registryHeld) noted[K comparable](m map[K]*registryHeldEntry, k K, e *registryHeldEntry) map[K]*registryHeldEntry {
+	panic("forge stub")
+}
+
+func (r *registryHeld) cut(at int) { panic("forge stub") }
+
+func (r *registryHeld) ByID(k int) (*Person, bool) {
+	panic("forge stub")
+}
+
+func (r *registryHeld) Remove(k int) bool {
+	panic("forge stub")
+}
+
+func (r *registryHeld) Reset() {
+	panic("forge stub")
+}
+
+func (r *registryHeld) placeChecked(v Person) error {
+	panic("forge stub")
+}
+
+var _ json.Marshaler = (*Registry)(nil)
 
 func PersonFromApplicant(src *Applicant) Person { panic("forge stub") }
 

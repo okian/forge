@@ -44,6 +44,28 @@ github.com/okian/forge/examples/people  SortedViewByHand       1   73728
 github.com/okian/forge/examples/people  Index                 22  362666
 github.com/okian/forge/examples/people  IndexByHand            5  180304
 
+# The keyed storage against the same pair of structures written by hand, over
+# a thousand people. The reads are the point and are free: the primary lookup
+# answers a pointer with no allocation and beats the hand-written value map,
+# which copies the struct out; the secondary walks the one percent sharing a
+# name in a twentieth of the scan's time, nothing allocated either way.
+#
+# Building pays for the pointer stability. One entry allocation per element is
+# what lets a lookup's answer survive its neighbours' removal, and the maps
+# are made on first use by the same bodies that serve the zero value, so the
+# constructor cannot size them ahead the way the by-hand loop does. Churn is
+# an add and a removal per operation: the generated pair costs one entry and
+# the sequence wrapping the element; the hand-written one, appending into a
+# bucket it just emptied, one.
+github.com/okian/forge/examples/people  DirectoryLookup        0       0
+github.com/okian/forge/examples/people  DirectoryLookupByHand  0       0
+github.com/okian/forge/examples/people  DirectoryByName        0       0
+github.com/okian/forge/examples/people  DirectoryByNameByHand  0       0
+github.com/okian/forge/examples/people  DirectoryBuild      1066  196984
+github.com/okian/forge/examples/people  DirectoryBuildByHand  36  278584
+github.com/okian/forge/examples/people  DirectoryChurn         2      88
+github.com/okian/forge/examples/people  DirectoryChurnByHand   1      61
+
 # The generated JSON codec over a thousand elements, and the reflective encoder
 # over the same elements beside it. Every one of these is warmed before it is
 # measured: a buffer grows once to fit the largest document it has written, and
