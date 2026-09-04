@@ -540,6 +540,56 @@ func TestAMissingNameWhereForgeWritesNothing(t *testing.T) {
 	}
 }
 
+// A build error inside forge's own output names the way out.
+//
+// The one deadlock forge itself creates. Delete a declaration and the stubs
+// the last run wrote still name its type: the package stops type-checking, the
+// type-check stops generation, and generation is the only thing that would
+// have rewritten the stubs. The compiler's message — undefined, a name the
+// author just deleted on purpose — says none of that, so the hint carries the
+// whole of the recovery.
+func TestAStaleNameInForgesOwnOutput(t *testing.T) {
+	session := loadFixture(t, "stale", "./model")
+
+	all := session.Diagnostics.All()
+	if len(all) == 0 {
+		t.Fatal("a package with stale stubs reported nothing")
+	}
+
+	for _, held := range all {
+		if !strings.Contains(held.Hint, "forge's own output") {
+			t.Errorf("%q was not explained as forge's own stale output:\n  hint: %s",
+				held.Message, held.Hint)
+		}
+	}
+}
+
+// The same staleness in another generator's file is not answered with advice
+// to delete forge's.
+//
+// The control, and what keeps the recovery honest: the header is what is
+// asked, not the fact of being generated, because the hint names forge's files
+// and forge's verb — offered against somebody else's output it is advice to
+// break their build and then run a tool that will not repair it.
+func TestAStaleNameInSomebodyElsesOutput(t *testing.T) {
+	session := loadFixture(t, "stale", "./foreign")
+
+	all := session.Diagnostics.All()
+	if len(all) == 0 {
+		t.Fatal("a package with somebody else's stale output reported nothing")
+	}
+
+	for _, held := range all {
+		if strings.Contains(held.Hint, "forge's own output") {
+			t.Errorf("%q blamed forge for somebody else's file:\n  hint: %s",
+				held.Message, held.Hint)
+		}
+		if held.Hint == "" {
+			t.Errorf("%q arrived with no hint at all", held.Message)
+		}
+	}
+}
+
 // A function carrying a forge directive keeps its body, because a stage reads
 // it: a hint's statements are the input, and a stripped hint is no input at
 // all. Everything else is stripped exactly as before — bodies are bulk the
