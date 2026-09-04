@@ -39,8 +39,19 @@ type Channelled struct {
 }
 
 // Keyed is a map a JSON object member cannot be named by.
+//
+// A bool, because the standard library refuses to spell one as a name. The
+// numeric kinds stopped being this case when the library took them: an integer
+// or a float key is a quoted number, written and read first-class.
 type Keyed struct {
-	Lookup map[int]string
+	Lookup map[bool]string
+}
+
+// Clocked is keyed by a duration, which has no one JSON form as a name any
+// more than it has one as a value — and whose int64 underneath must not be
+// allowed to answer for it.
+type Clocked struct {
+	Ages map[time.Duration]int
 }
 
 // Formatted asks for a format this Go release withdrew support for, which

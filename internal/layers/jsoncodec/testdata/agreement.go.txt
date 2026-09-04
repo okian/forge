@@ -70,6 +70,11 @@ type (
 	IdentifiedTwin Identified
 	PreferredTwin  Preferred
 	EscapingTwin   Escaping
+
+	// Keyed keeps its map types: a map type carries no methods to lose, so
+	// the twin is the same maps reflected over, and the comparison is about
+	// what a numeric key becomes as a name and the order the members take.
+	KeyedTwin Keyed
 )
 
 type NestedTwin struct {
@@ -896,5 +901,61 @@ func TestPreferred(t *testing.T) {
 func TestEscaping(t *testing.T) {
 	for _, held := range []Escaping{{}, {Held: 1}} {
 		agree(t, held, EscapingTwin(held))
+	}
+}
+
+// A numeric key goes out as the quoted number a member name has to be, and the
+// members come out in the order the names sort — "10" before "3" — which is
+// the standard library's order and the reason the key sets here mix signs,
+// widths and magnitudes.
+func TestKeyed(t *testing.T) {
+	for _, held := range []Keyed{
+		{},
+		{
+			Ints:   map[int]string{10: "a", 3: "b", -2: "c", 21: "d", 0: "e"},
+			Narrow: map[int8]int{-128: 1, 127: 2, 0: 3},
+			Wide:   map[uint64]int{0: 1, 18446744073709551615: 2, 7: 3},
+			Counts: map[Counter]int{5: 1, 40: 2},
+			Floats: map[float64]int{1.5: 1, -2.25: 2, 10: 3, 3: 4},
+			Halves: map[float32]int{0.1: 1, 2: 2},
+		},
+	} {
+		agree(t, held, KeyedTwin(held))
+	}
+}
+
+// A name is read back with the verdicts a number of that width gets as a
+// value, from both sides: the spellings JSON does not give a number are
+// refused, the widths are held, and a name past the grammar never reaches the
+// map.
+func TestKeyedRefusals(t *testing.T) {
+	for _, doc := range []string{
+		`{"ints":{"03":1}}`,
+		`{"ints":{"+3":1}}`,
+		`{"ints":{"3.0":1}}`,
+		`{"ints":{" 3":1}}`,
+		`{"narrow":{"200":1}}`,
+		`{"wide":{"-1":1}}`,
+		`{"ints":{"3":"a","3":"b"}}`,
+	} {
+		var forged Keyed
+		if err := json.Unmarshal([]byte(doc), &forged); err == nil {
+			t.Errorf("forge read %s", doc)
+		}
+		var reflected KeyedTwin
+		if err := json.Unmarshal([]byte(doc), &reflected); err == nil {
+			t.Errorf("the standard library read %s", doc)
+		}
+	}
+
+	// And the spelling that looks refusable and is not: a JSON number may be
+	// "-0", so a name may be too.
+	var forged Keyed
+	if err := json.Unmarshal([]byte(`{"ints":{"-0":"z"}}`), &forged); err != nil {
+		t.Errorf("forge refused a -0 name: %v", err)
+	}
+	var reflected KeyedTwin
+	if err := json.Unmarshal([]byte(`{"ints":{"-0":"z"}}`), &reflected); err != nil {
+		t.Errorf("the standard library refused a -0 name: %v", err)
 	}
 }

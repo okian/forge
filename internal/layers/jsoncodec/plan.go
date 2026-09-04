@@ -619,8 +619,21 @@ func anyTagged(held *plugin.Struct) bool {
 
 // fillMap decides a map, which JSON can carry only when its keys are strings.
 func (p *planner) fillMap(out *form, under *types.Map, where blamed) {
+	// A duration is refused as a key by identity, before its underlying kind
+	// can answer for it: an int64 underneath would write the count of
+	// nanoseconds as a member name, which is the choice the standard library
+	// refuses to make about a duration anywhere it appears.
+	if isDuration(under.Key()) {
+		p.refuse(where, "a %s, keyed by time.Duration, which has no one JSON form",
+			out.spelled.Text)
+		return
+	}
+
 	basic, ok := under.Key().Underlying().(*types.Basic)
-	if !ok || basic.Info()&types.IsString == 0 {
+	if !ok || basic.Info()&(types.IsString|types.IsInteger|types.IsFloat) == 0 {
+		// What is left out is deliberate as well as what is let in. A bool and
+		// a complex are refused because the standard library refuses them — a
+		// member name is text, and neither has a text the library will write.
 		p.refuse(where, "a %s, keyed by something a JSON object member cannot be named by",
 			out.spelled.Text)
 		return

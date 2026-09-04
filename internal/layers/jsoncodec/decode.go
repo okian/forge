@@ -343,6 +343,19 @@ func zeroLiteral(kind scalarKind) string {
 	}
 }
 
+// nameParser names the runtime helper that reads a member name as a number of
+// the key's form.
+func nameParser(key *form) string {
+	switch key.how {
+	case writtenInt:
+		return "jsonNameInt"
+	case writtenUint:
+		return "jsonNameUint"
+	default:
+		return "jsonNameFloat"
+	}
+}
+
 // bitsOf returns the width a number is held to, written as the constant the
 // generated file names.
 //
@@ -678,7 +691,24 @@ func (w *writer) readMapMembers(of *form, depth, nested int, built string) {
 	w.line("return 0, errJSONDuplicate")
 	w.line("}")
 	w.line("%s = %s", i, at)
-	w.line("%s := %s(jsonString(%s, %s, %s, %s, %s))", key, of.key.spelled.Text, b, lo, hi, esc, w.n("borrow"))
+
+	// A numeric name is parsed with the verdicts a number of that width gets
+	// as a value — "03", "+3" and "3.0" are refused for a key exactly as they
+	// are for a value — and through jsonName rather than the raw span, since a
+	// name may arrive escaped and still spell a number.
+	switch of.key.how {
+	case writtenInt, writtenUint, writtenFloat:
+		raw := w.at("raw", depth)
+		w.line("%s, %s := %s(jsonName(%s, %s, %s, %s, &%s), %s)",
+			raw, err, nameParser(of.key), b, lo, hi, esc, w.n("scratch"), bitsOf(of.key))
+		w.line("if %s != nil {", err)
+		w.line("return 0, %s", err)
+		w.line("}")
+		w.line("%s := %s(%s)", key, of.key.spelled.Text, raw)
+	default:
+		w.line("%s := %s(jsonString(%s, %s, %s, %s, %s))", key, of.key.spelled.Text, b, lo, hi, esc, w.n("borrow"))
+	}
+
 	w.line("var %s %s", value, of.elem.spelled.Text)
 	w.readValue(value, of.elem, depth+1, nested+1)
 	w.line("%s[%s] = %s", built, key, value)

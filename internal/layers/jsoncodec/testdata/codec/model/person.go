@@ -774,3 +774,22 @@ func (f *Fancy) UnmarshalText(text []byte) error {
 type Escaping struct {
 	Held Fancy
 }
+
+// Keyed holds maps whose keys are numbers, which JSON carries as the quoted
+// number a member name has to be.
+//
+// Every width is here because the width is part of the verdict — a name that
+// reads back into an int8 is refused past 127 exactly as a value is — and the
+// float widths are here because the shortest form of a float32 is not the
+// shortest form of the float64 it widens to. What the twin comparison pins
+// hardest is the order: members come out sorted by name, "10" before "3",
+// which is the standard library's order under Deterministic and not the
+// numeric one.
+type Keyed struct {
+	Ints   map[int]string  `json:"ints"`
+	Narrow map[int8]int    `json:"narrow"`
+	Wide   map[uint64]int  `json:"wide"`
+	Counts map[Counter]int `json:"counts"`
+	Floats map[float64]int `json:"floats"`
+	Halves map[float32]int `json:"halves"`
+}

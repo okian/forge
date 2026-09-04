@@ -1347,6 +1347,131 @@ func jsonDropKeys(keys *[]string) {
 	jsonKeysScratch.Put(keys)
 }
 
+// jsonNumsScratch lends the slices a numeric-keyed map's keys are gathered and
+// sorted in. One pool for every numeric kind, because every kind's bits fit a
+// uint64 and a pool cannot lend a slice of a type parameter.
+var jsonNumsScratch = sync.Pool{New: func() any { held := make([]uint64, 0, 16); return &held }}
+
+// jsonTakeNums borrows a numeric key slice.
+func jsonTakeNums() *[]uint64 {
+	if held, ok := jsonNumsScratch.Get().(*[]uint64); ok {
+		return held
+	}
+	fresh := make([]uint64, 0, 16)
+	return &fresh
+}
+
+// jsonDropNums returns a numeric key slice, unless it has grown past what is
+// worth keeping. Numbers keep nothing alive, so nothing is cleared.
+func jsonDropNums(keys *[]uint64) {
+	if cap(*keys) > 1<<12 {
+		return
+	}
+	jsonNumsScratch.Put(keys)
+}
+
+// jsonSortedIntKeys gathers a signed-keyed map's keys, in the bits of a
+// uint64, sorted the way the members must come out: by the bytes of the name
+// each key becomes. That order is the standard library's under
+// Deterministic(true), and it is not the numeric one — "10" sorts before "3" —
+// so the keys are compared as the decimals they will be written as.
+func jsonSortedIntKeys[K ~int | ~int8 | ~int16 | ~int32 | ~int64, V any](m map[K]V) *[]uint64 {
+	keys := jsonTakeNums()
+	held := (*keys)[:0]
+	for k := range m {
+		held = append(held, uint64(int64(k))) //nolint:gosec // The bits carry the value; the emission converts back through int64.
+	}
+	slices.SortFunc(held, func(a, b uint64) int {
+		var ab, bb [24]byte
+		return bytes.Compare(
+			strconv.AppendInt(ab[:0], int64(a), 10), //nolint:gosec // The bits went in from an int64 above.
+			strconv.AppendInt(bb[:0], int64(b), 10), //nolint:gosec // Likewise.
+		)
+	})
+	*keys = held
+	return keys
+}
+
+// jsonSortedUintKeys is [jsonSortedIntKeys] for the unsigned kinds.
+func jsonSortedUintKeys[K ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr, V any](m map[K]V) *[]uint64 {
+	keys := jsonTakeNums()
+	held := (*keys)[:0]
+	for k := range m {
+		held = append(held, uint64(k))
+	}
+	slices.SortFunc(held, func(a, b uint64) int {
+		var ab, bb [24]byte
+		return bytes.Compare(strconv.AppendUint(ab[:0], a, 10), strconv.AppendUint(bb[:0], b, 10))
+	})
+	*keys = held
+	return keys
+}
+
+// jsonSortedFloatKeys is [jsonSortedIntKeys] for the float kinds, carrying
+// each key as its bit pattern so one pool serves every kind.
+//
+// A key that is not finite has no name to sort by — writing it is refused
+// where the member is written — so any pair involving one is ordered by bits,
+// which is an order the refusal keeps anybody from observing.
+func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, bits int) *[]uint64 {
+	keys := jsonTakeNums()
+	held := (*keys)[:0]
+	for k := range m {
+		held = append(held, math.Float64bits(float64(k)))
+	}
+	slices.SortFunc(held, func(a, b uint64) int {
+		fa, fb := math.Float64frombits(a), math.Float64frombits(b)
+		if math.IsNaN(fa) || math.IsInf(fa, 0) || math.IsNaN(fb) || math.IsInf(fb, 0) {
+			return int(a>>32) - int(b>>32)
+		}
+		var ab, bb [32]byte
+		return bytes.Compare(jsonAppendFloat(ab[:0], fa, bits), jsonAppendFloat(bb[:0], fb, bits))
+	})
+	*keys = held
+	return keys
+}
+
+// jsonNameInt reads a member name as a signed integer, holding it to the
+// grammar and range a number of that width is held to as a value.
+//
+// The whole name and nothing but: "03", "+3" and "3.0" are refused here for
+// the reason they are refused as values, since a name that parses differently
+// from the value it stands for is two numbers under one spelling.
+func jsonNameInt(name []byte, bits int) (int64, error) {
+	held, next, err := jsonScanInt(name, 0, bits)
+	if err != nil {
+		return 0, err
+	}
+	if next != len(name) {
+		return 0, errJSONSyntax
+	}
+	return held, nil
+}
+
+// jsonNameUint is [jsonNameInt] for the unsigned kinds.
+func jsonNameUint(name []byte, bits int) (uint64, error) {
+	held, next, err := jsonScanUint(name, 0, bits)
+	if err != nil {
+		return 0, err
+	}
+	if next != len(name) {
+		return 0, errJSONSyntax
+	}
+	return held, nil
+}
+
+// jsonNameFloat is [jsonNameInt] for the float kinds.
+func jsonNameFloat(name []byte, bits int) (float64, error) {
+	held, next, err := jsonScanFloat(name, 0, bits)
+	if err != nil {
+		return 0, err
+	}
+	if next != len(name) {
+		return 0, errJSONSyntax
+	}
+	return held, nil
+}
+
 // jsonFinish turns an appended document into the slice MarshalJSON answers
 // with: an exact copy, with the borrowed buffer handed back.
 //

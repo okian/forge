@@ -659,6 +659,30 @@ func jsonTakeKeys() *[]string { panic("forge stub") }
 
 func jsonDropKeys(keys *[]string) { panic("forge stub") }
 
+var jsonNumsScratch = sync.Pool{New: func() any { held := make([]uint64, 0, 16); return &held }}
+
+func jsonTakeNums() *[]uint64 { panic("forge stub") }
+
+func jsonDropNums(keys *[]uint64) { panic("forge stub") }
+
+func jsonSortedIntKeys[K ~int | ~int8 | ~int16 | ~int32 | ~int64, V any](m map[K]V) *[]uint64 {
+	panic("forge stub")
+}
+
+func jsonSortedUintKeys[K ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr, V any](m map[K]V) *[]uint64 {
+	panic("forge stub")
+}
+
+func jsonSortedFloatKeys[K ~float32 | ~float64, V any](m map[K]V, bits int) *[]uint64 {
+	panic("forge stub")
+}
+
+func jsonNameInt(name []byte, bits int) (int64, error) { panic("forge stub") }
+
+func jsonNameUint(name []byte, bits int) (uint64, error) { panic("forge stub") }
+
+func jsonNameFloat(name []byte, bits int) (float64, error) { panic("forge stub") }
+
 func jsonFinish(scratch *[]byte, b []byte, err error) ([]byte, error) { panic("forge stub") }
 
 func jsonCannotRead(what string, b []byte, i int) error { panic("forge stub") }

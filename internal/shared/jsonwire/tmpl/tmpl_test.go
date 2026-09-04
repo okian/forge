@@ -24,6 +24,163 @@ import (
 // and must not depend on jsontext, and the tests are where that dependency is
 // allowed to live.
 
+// TestNameNumbersCarryTheValueVerdicts holds the name parsers to the standard
+// library reading the same spelling as a member name: a document whose one
+// member is the candidate name, unmarshalled into a numerically keyed map, is
+// refused exactly when the parser refuses the name — and where both accept,
+// they hold the same number.
+func TestNameNumbersCarryTheValueVerdicts(t *testing.T) {
+	names := []string{
+		"0", "3", "-2", "10", "-0", "127", "128", "-128", "-129", "200", "255", "256",
+		"9223372036854775807", "9223372036854775808", "-9223372036854775808",
+		"18446744073709551615", "18446744073709551616",
+		"03", "+3", "3.0", " 3", "3 ", "3e2", "1.5", "-2.25", "0.1", "1e400", "-1",
+		"", "-", "x", "0x10", "Infinity", "NaN", "1.", ".5", "1e", "5e-1",
+	}
+
+	for _, name := range names {
+		doc := []byte(`{"` + name + `":7}`)
+
+		var i64 map[int64]int
+		wantErr := json.Unmarshal(doc, &i64) != nil
+		held, err := jsonNameInt([]byte(name), 64)
+		if gotErr := err != nil; gotErr != wantErr {
+			t.Errorf("int64 name %q: we say %v, the standard library says %v", name, gotErr, wantErr)
+		} else if !wantErr && i64[held] != 7 {
+			t.Errorf("int64 name %q: we read %d, the standard library filled %v", name, held, i64)
+		}
+
+		var i8 map[int8]int
+		wantErr = json.Unmarshal(doc, &i8) != nil
+		if _, err := jsonNameInt([]byte(name), 8); (err != nil) != wantErr {
+			t.Errorf("int8 name %q: we say %v, the standard library says %v", name, err, wantErr)
+		}
+
+		var u16 map[uint16]int
+		wantErr = json.Unmarshal(doc, &u16) != nil
+		if _, err := jsonNameUint([]byte(name), 16); (err != nil) != wantErr {
+			t.Errorf("uint16 name %q: we say %v, the standard library says %v", name, err, wantErr)
+		}
+
+		var f64 map[float64]int
+		wantErr = json.Unmarshal(doc, &f64) != nil
+		fheld, ferr := jsonNameFloat([]byte(name), 64)
+		if gotErr := ferr != nil; gotErr != wantErr {
+			t.Errorf("float64 name %q: we say %v, the standard library says %v", name, ferr, wantErr)
+		} else if !wantErr && f64[fheld] != 7 {
+			t.Errorf("float64 name %q: we read %v, the standard library filled %v", name, fheld, f64)
+		}
+	}
+}
+
+// TestSortedNumericKeysAreTheStandardOrder holds the gathered order to the
+// order the standard library writes the same map in under Deterministic: by
+// the bytes of the names, which is not the numeric order — "10" before "3" —
+// and for floats depends on the width the shortest form is chosen against.
+func TestSortedNumericKeysAreTheStandardOrder(t *testing.T) {
+	renderedInts := func() []string {
+		m := map[int64]int{10: 1, 3: 2, -2: 3, 21: 4, 0: 5, -128: 6, 127: 7}
+		keys := jsonSortedIntKeys(m)
+		defer jsonDropNums(keys)
+		out := make([]string, 0, len(*keys))
+		for _, k := range *keys {
+			out = append(out, strconv.FormatInt(int64(k), 10))
+		}
+		return out
+	}
+	standardOrder(t, "int64", map[int64]int{10: 1, 3: 2, -2: 3, 21: 4, 0: 5, -128: 6, 127: 7}, renderedInts())
+
+	renderedUints := func() []string {
+		m := map[uint64]int{0: 1, 18446744073709551615: 2, 7: 3, 10: 4}
+		keys := jsonSortedUintKeys(m)
+		defer jsonDropNums(keys)
+		out := make([]string, 0, len(*keys))
+		for _, k := range *keys {
+			out = append(out, strconv.FormatUint(k, 10))
+		}
+		return out
+	}
+	standardOrder(t, "uint64", map[uint64]int{0: 1, 18446744073709551615: 2, 7: 3, 10: 4}, renderedUints())
+
+	renderedFloats := func() []string {
+		m := map[float32]int{0.1: 1, 2: 2, -2.25: 3, 10: 4, 3: 5}
+		keys := jsonSortedFloatKeys(m, 32)
+		defer jsonDropNums(keys)
+		out := make([]string, 0, len(*keys))
+		for _, k := range *keys {
+			out = append(out, string(jsonAppendFloat(nil, math.Float64frombits(k), 32)))
+		}
+		return out
+	}
+	standardOrder(t, "float32", map[float32]int{0.1: 1, 2: 2, -2.25: 3, 10: 4, 3: 5}, renderedFloats())
+}
+
+// standardOrder marshals the map with the standard library and checks that its
+// member names arrive in exactly the order the sorted keys rendered to.
+func standardOrder[K comparable, V any](t *testing.T, kind string, m map[K]V, got []string) {
+	t.Helper()
+
+	doc, err := json.Marshal(m, json.Deterministic(true))
+	if err != nil {
+		t.Fatalf("%s: the standard library would not write %v: %v", kind, m, err)
+	}
+
+	// Every string token is a member name, because the values in every map
+	// this is asked about are numbers.
+	dec := jsontext.NewDecoder(bytes.NewReader(doc))
+	var want []string
+	for {
+		token, err := dec.ReadToken()
+		if err != nil {
+			break
+		}
+		if token.Kind() == '"' {
+			want = append(want, token.String())
+		}
+	}
+	if len(want) != len(got) {
+		t.Fatalf("%s: the standard library wrote %d names and we gathered %d: %v vs %v", kind, len(want), len(got), want, got)
+	}
+	for i := range want {
+		if want[i] != got[i] {
+			t.Errorf("%s: member %d is %q from us and %q from the standard library\nours: %v\ntheirs: %v",
+				kind, i, got[i], want[i], got, want)
+		}
+	}
+}
+
+// TestNumericKeySlicesComeBack holds the numeric key pool to the scratch
+// pool's bargain: a slice dropped comes back on the next take, and one grown
+// past what is worth keeping does not.
+func TestNumericKeySlicesComeBack(t *testing.T) {
+	first := jsonTakeNums()
+	*first = append((*first)[:0], 1, 2, 3)
+	jsonDropNums(first)
+	second := jsonTakeNums()
+	jsonDropNums(second)
+
+	grown := make([]uint64, 1<<12+1)
+	jsonDropNums(&grown)
+	if kept := jsonTakeNums(); cap(*kept) > 1<<12 {
+		t.Errorf("a slice of capacity %d was kept past the bound", cap(*kept))
+	}
+}
+
+// TestSortedFloatKeysHoldNonfiniteSomewhere asks the gatherer for an order
+// over keys that have no name to sort by. The order is not observable — a
+// nonfinite key is refused where its member is written — but the sort has to
+// terminate with every comparison answered, which is what this exercises.
+func TestSortedFloatKeysHoldNonfiniteSomewhere(t *testing.T) {
+	m := map[float64]int{
+		math.NaN(): 1, math.Inf(1): 2, math.Inf(-1): 3, 1.5: 4, -2.25: 5,
+	}
+	keys := jsonSortedFloatKeys(m, 64)
+	defer jsonDropNums(keys)
+	if len(*keys) != len(m) {
+		t.Errorf("gathered %d keys from a map of %d", len(*keys), len(m))
+	}
+}
+
 // TestAppendStringIsTheStandardOneForEveryByte walks every one-byte string, so
 // that the escape table has no gap in it. A gap is exactly the kind of defect
 // that survives a fixture: the byte nobody thought to write down.

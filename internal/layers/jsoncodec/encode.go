@@ -934,8 +934,64 @@ func (w *writer) appendTime(held string) {
 	w.line(`%s = append(%s, '"')`, dst, dst)
 }
 
-// appendArray writes a slice or an array as a JSON array.
+// appendMapName writes one member's name from the key the sorted slice
+// carries, colon included.
 //
+// A numeric name needs no escaper: its alphabet is digits, the sign, the point
+// and the exponent, and none of that is JSON's to escape. A string name goes
+// through the escaper the way every string does. A float's name can still be
+// refused, because a NaN or an infinity has no name — which is the standard
+// library's verdict for such a key.
+func (w *writer) appendMapName(key *form, held string) {
+	dst, err := w.n("dst"), w.n("err")
+
+	switch key.how {
+	case writtenInt:
+		w.line(`%s = append(%s, '"')`, dst, dst)
+		w.line("%s = strconv.AppendInt(%s, int64(%s), 10)", dst, dst, held)
+		w.line(`%s = append(%s, '"', ':')`, dst, dst)
+	case writtenUint:
+		w.line(`%s = append(%s, '"')`, dst, dst)
+		w.line("%s = strconv.AppendUint(%s, %s, 10)", dst, dst, held)
+		w.line(`%s = append(%s, '"', ':')`, dst, dst)
+	case writtenFloat:
+		w.line(`%s = append(%s, '"')`, dst, dst)
+		w.line("if %s, %s = jsonAppendFinite(%s, math.Float64frombits(%s), %d); %s != nil {",
+			dst, err, dst, held, floatBits(key), err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+		w.line(`%s = append(%s, '"', ':')`, dst, dst)
+	default:
+		w.line("if %s, %s = jsonAppendString(%s, %s); %s != nil {", dst, err, dst, held, err)
+		w.line("return %s, %s", dst, err)
+		w.line("}")
+		w.line("%s = append(%s, ':')", dst, dst)
+	}
+}
+
+// keyLookup spells the map index that reaches a value from the key the sorted
+// slice carries: the string itself, or the numeric kind rebuilt from the bits
+// the one shared slice holds every kind in.
+func keyLookup(key *form, held string) string {
+	switch key.how {
+	case writtenInt:
+		return key.spelled.Text + "(int64(" + held + "))"
+	case writtenFloat:
+		return key.spelled.Text + "(math.Float64frombits(" + held + "))"
+	default:
+		return key.spelled.Text + "(" + held + ")"
+	}
+}
+
+// floatBits is the width the shortest form of a float is chosen against,
+// which for a float32 is not the width of the float64 it widens to.
+func floatBits(of *form) int {
+	if basic, ok := of.typ.Underlying().(*types.Basic); ok && basic.Kind() == types.Float32 {
+		return 32
+	}
+	return 64
+}
+
 // Every element leads with a comma and the first one's comma is overwritten
 // with the bracket at the end, which is the same bargain the object writer
 // makes: no element needs to know whether it is first.
@@ -972,23 +1028,33 @@ func (w *writer) appendArray(held string, of *form, depth int) {
 // profile of writing a map. A failure inside the loop returns without handing
 // the slice back, which costs the pool one slice and nothing else.
 func (w *writer) appendMap(held string, of *form, depth int) {
-	dst, err := w.n("dst"), w.n("err")
+	dst := w.n("dst")
 	keys := w.at("keys", depth)
 	key := w.at("key", depth)
 	mark := w.at("mark", depth)
 
 	w.line("{")
-	w.line("%s := jsonSortedKeys(%s)", keys, held)
+	switch of.key.how {
+	case writtenString:
+		w.line("%s := jsonSortedKeys(%s)", keys, held)
+	case writtenFloat:
+		w.line("%s := jsonSortedFloatKeys(%s, %d)", keys, held, floatBits(of.key))
+	case writtenUint:
+		w.line("%s := jsonSortedUintKeys(%s)", keys, held)
+	default:
+		w.line("%s := jsonSortedIntKeys(%s)", keys, held)
+	}
 	w.line("%s := len(%s)", mark, dst)
 	w.line("for _, %s := range *%s {", key, keys)
 	w.line("%s = append(%s, ',')", dst, dst)
-	w.line("if %s, %s = jsonAppendString(%s, %s); %s != nil {", dst, err, dst, key, err)
-	w.line("return %s, %s", dst, err)
+	w.appendMapName(of.key, key)
+	w.appendValue(held+"["+keyLookup(of.key, key)+"]", of.elem, depth+1)
 	w.line("}")
-	w.line("%s = append(%s, ':')", dst, dst)
-	w.appendValue(held+"["+of.key.spelled.Text+"("+key+")]", of.elem, depth+1)
-	w.line("}")
-	w.line("jsonDropKeys(%s)", keys)
+	if of.key.how == writtenString {
+		w.line("jsonDropKeys(%s)", keys)
+	} else {
+		w.line("jsonDropNums(%s)", keys)
+	}
 	w.line("if len(%s) == %s {", dst, mark)
 	w.line("%s = append(%s, '{', '}')", dst, dst)
 	w.line("} else {")

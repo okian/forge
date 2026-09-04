@@ -68,11 +68,14 @@
 // # What a field may be
 //
 // The codec is written against types it can see through. A basic type, a named
-// type over one, a pointer, a slice, an array, a map with string keys, and a
-// struct whose own codec this layer also writes are all seen through. A slice
-// or array of bytes is base64 in a string, which is the standard library's
-// rule rather than a choice available here, and is written and read by the
-// wire runtime directly.
+// type over one, a pointer, a slice, an array, a map keyed by a string, an
+// integer or a float, and a struct whose own codec this layer also writes are
+// all seen through. A slice or array of bytes is base64 in a string, which is
+// the standard library's rule rather than a choice available here, and is
+// written and read by the wire runtime directly. A numeric key becomes the
+// quoted number a member name has to be, read back with the verdicts a number
+// of that width gets as a value — and a bool key is refused, because the
+// standard library refuses to spell one as a name.
 //
 // A type that declares a codec of its own — AppendJSON, or MarshalJSON and
 // UnmarshalJSON, or the streaming pair — is delegated to rather than
@@ -184,10 +187,13 @@
 // shallower one in its own place rather than the excluded one's, which is the
 // order the standard library writes too.
 //
-// A map this layer writes has its members in the order its keys sort, which the
-// standard library does only when asked. It is a choice in favour of output
-// that does not change between runs: generated code is committed, and a diff
-// that appears because a map iterated differently is a diff nobody can review.
+// A map this layer writes has its members in the order their names sort, which
+// the standard library does only when asked — and it is the names rather than
+// the keys, because that is the order the library sorts into: "10" comes
+// before "3", however the numbers behind them compare. It is a choice in
+// favour of output that does not change between runs: generated code is
+// committed, and a diff that appears because a map iterated differently is a
+// diff nobody can review.
 // A member this layer delegates to the standard library is written under
 // Deterministic(true) for the same reason, so one object never holds one map
 // sorted and another not.
