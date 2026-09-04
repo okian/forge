@@ -273,6 +273,20 @@ func jsonAnyZero(w uint64) uint64 { panic("forge stub") }
 
 func jsonBelow(w uint64, n byte) uint64 { panic("forge stub") }
 
+func jsonAppendRun(dst []byte, s string, last, i int, k byte) []byte { panic("forge stub") }
+
+var jsonEscapeKind = func() (t [256]byte) {
+	for c := range 0x20 {
+		t[c] = 1
+	}
+	for c := 0x80; c < 0x100; c++ {
+		t[c] = 2
+	}
+	t['"'], t['\\'] = '"', '\\'
+	t['\b'], t['\f'], t['\n'], t['\r'], t['\t'] = 'b', 'f', 'n', 'r', 't'
+	return t
+}()
+
 func jsonAppendEscape(dst []byte, c byte) []byte { panic("forge stub") }
 
 func jsonAppendFloat(dst []byte, f float64, width int) []byte { panic("forge stub") }

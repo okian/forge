@@ -673,39 +673,43 @@ func jsonAppendString(dst []byte, s string) ([]byte, error) {
 	last, wordly := 0, 0
 	for i := 0; i < len(s); {
 		c := s[i]
-		switch {
-		case c >= utf8.RuneSelf:
+		if c >= utf8.RuneSelf {
 			// Multi-byte, and so nothing to escape — but it does have to be a
 			// rune. DecodeRuneInString reports a byte that is not the start of
 			// one as U+FFFD of width one, which is the only way it reports it.
+			// Asked of the byte itself before the table is consulted, because
+			// text that is mostly runes would otherwise pay a load per rune
+			// for an answer one comparison already gives.
 			_, size := utf8.DecodeRuneInString(s[i:])
 			if size == 1 {
 				return dst, errJSONUTF8
 			}
 			i += size
+			continue
+		}
 
-		case c < ' ' || c == '"' || c == '\\':
-			dst = append(dst, s[last:i]...)
-			dst = jsonAppendEscape(dst, c)
-			i++
-			last = i
-
-		case i >= wordly:
-			// Worth asking about eight at once. One ask walks every word of
-			// ordinary bytes and answers with the byte that stopped it, so
-			// text that is one long run costs one ask and one leap. The next
-			// ask is moved eight bytes along whatever the answer was: an
-			// answer nearby means the text is escaping densely, and the bytes
-			// after the escape are cheaper to walk than to ask about again.
-			wordly = i + 8
-			if next := jsonPlainWords(s, i); next > i {
-				i = next
-				continue
+		switch k := jsonEscapeKind[c]; k {
+		case 0:
+			// Ordinary, and worth asking about eight at once. One ask walks
+			// every word of ordinary bytes and answers with the byte that
+			// stopped it, so text that is one long run costs one ask and one
+			// leap. The next ask is moved eight bytes along whatever the
+			// answer was: an answer nearby means the text is escaping densely,
+			// and the bytes after the escape are cheaper to walk than to ask
+			// about again.
+			if i >= wordly {
+				wordly = i + 8
+				if next := jsonPlainWords(s, i); next > i {
+					i = next
+					continue
+				}
 			}
 			i++
 
 		default:
+			dst = jsonAppendRun(dst, s, last, i, k)
 			i++
+			last = i
 		}
 	}
 
@@ -738,8 +742,7 @@ func jsonCloseText(dst []byte, mark int) ([]byte, error) {
 	wordly := 0
 	for i := 0; i < len(s); {
 		c := s[i]
-		switch {
-		case c >= utf8.RuneSelf:
+		if c >= utf8.RuneSelf {
 			// Multi-byte and so nothing to escape, but it does have to be a
 			// rune, and the continuation bytes are stepped over rather than
 			// asked about — a malformed sequence is found at its leading byte.
@@ -748,8 +751,11 @@ func jsonCloseText(dst []byte, mark int) ([]byte, error) {
 				return dst, errJSONUTF8
 			}
 			i += size
+			continue
+		}
 
-		case c < ' ' || c == '"' || c == '\\':
+		switch {
+		case jsonEscapeKind[c] != 0:
 			return jsonEscapeBehind(dst, mark, i)
 
 		case i >= wordly:
@@ -783,11 +789,10 @@ func jsonEscapeBehind(dst []byte, mark, from int) ([]byte, error) {
 	// Validated and measured before anything moves, because a refusal must
 	// leave the buffer growable rather than half-rewritten, and because the
 	// final place of every byte is a function of how much the escapes add.
-	var esc [8]byte
 	extra := 0
 	for i := from; i < length; {
 		c := dst[mark+1+i]
-		switch {
+		switch k := jsonEscapeKind[c]; {
 		case c >= utf8.RuneSelf:
 			_, size := utf8.DecodeRune(dst[mark+1+i:])
 			if size == 1 {
@@ -795,8 +800,13 @@ func jsonEscapeBehind(dst []byte, mark, from int) ([]byte, error) {
 			}
 			i += size
 
-		case c < ' ' || c == '"' || c == '\\':
-			extra += len(jsonAppendEscape(esc[:0], c)) - 1
+		case k == 1:
+			// The \u00XX form adds five bytes; a short escape adds one.
+			extra += 5
+			i++
+
+		case k != 0:
+			extra++
 			i++
 
 		default:
@@ -805,11 +815,12 @@ func jsonEscapeBehind(dst []byte, mark, from int) ([]byte, error) {
 	}
 
 	// One growth for the escapes and the closing quote both, then the walk.
+	var esc [8]byte
 	out := slices.Grow(dst, extra+1)[:len(dst)+extra]
 	w := len(out)
 	for r := length - 1; r >= 0; r-- {
 		c := out[mark+1+r]
-		if c < ' ' || c == '"' || c == '\\' {
+		if c < utf8.RuneSelf && jsonEscapeKind[c] != 0 {
 			held := jsonAppendEscape(esc[:0], c)
 			w -= len(held)
 			copy(out[w:], held)
@@ -882,25 +893,59 @@ func jsonBelow(w uint64, n byte) uint64 {
 	return (w - jsonOnes*uint64(n)) & ^w & jsonHighs
 }
 
+// jsonAppendRun appends the run of ordinary bytes since last and then the
+// escape for the byte at i, whose kind the caller already read off the table.
+//
+// A run of one byte is the shape escape-dense text is made of, and appending
+// it as a byte rather than a slice is a store rather than a copy — the run
+// between two escaped quotes is usually a letter or two, and a copy's setup
+// costs more than the letter.
+func jsonAppendRun(dst []byte, s string, last, i int, k byte) []byte {
+	if i == last+1 {
+		dst = append(dst, s[last])
+	} else if i > last {
+		dst = append(dst, s[last:i]...)
+	}
+	if k > 2 {
+		return append(dst, '\\', k)
+	}
+	const hex = "0123456789abcdef"
+	c := s[i]
+	return append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xf])
+}
+
+// jsonEscapeKind answers, in one load, both questions the escaper asks of a
+// byte: whether it needs attention, and what to do about it. A zero is a byte
+// a string carries as it is written. A 1 is a control byte with no short form,
+// spelled \u00XX. A 2 is part of something multi-byte, which is not escaped
+// but does have to be a rune. Anything else is the letter that follows the
+// backslash in the byte's two-character escape — the letters and the quote and
+// backslash themselves all sit above 2, so the one table serves without a
+// collision.
+//
+// A table rather than the comparisons it replaces, because the escaper's cost
+// on escape-dense text is the asking: several compares and a branch per byte
+// become a load and a switch, which is also how the standard library's own
+// escaper decides.
+var jsonEscapeKind = func() (t [256]byte) {
+	for c := range 0x20 {
+		t[c] = 1
+	}
+	for c := 0x80; c < 0x100; c++ {
+		t[c] = 2
+	}
+	t['"'], t['\\'] = '"', '\\'
+	t['\b'], t['\f'], t['\n'], t['\r'], t['\t'] = 'b', 'f', 'n', 'r', 't'
+	return t
+}()
+
 // jsonAppendEscape appends the escape for one byte that needs one.
 func jsonAppendEscape(dst []byte, c byte) []byte {
-	switch c {
-	case '"', '\\':
-		return append(dst, '\\', c)
-	case '\b':
-		return append(dst, `\b`...)
-	case '\f':
-		return append(dst, `\f`...)
-	case '\n':
-		return append(dst, `\n`...)
-	case '\r':
-		return append(dst, `\r`...)
-	case '\t':
-		return append(dst, `\t`...)
-	default:
-		const hex = "0123456789abcdef"
-		return append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xf])
+	if k := jsonEscapeKind[c]; k > 2 {
+		return append(dst, '\\', k)
 	}
+	const hex = "0123456789abcdef"
+	return append(dst, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xf])
 }
 
 // jsonAppendFloat appends a float as JSON writes one.
