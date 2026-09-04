@@ -157,12 +157,18 @@ type Set[T any] []T
 // Directive: //forge:lru.
 type LRU[T any] []T
 
-// Index stores elements alongside a lookup structure over a declared field,
-// unique or multi-valued, turning a scan into a map access.
+// Index stores elements beside lookup maps over declared fields, turning a
+// scan into a map access. The key is declared with key and is unique by
+// default: a lookup answers a stable pointer, removal is by the key, and
+// conflict chooses between refusing an add whose key is held and replacing
+// the element in place. Declared unique=false, a key files every element
+// sharing it in one bucket. index names further fields, each generating a
+// secondary lookup that resolves through the key.
 //
-// Kind: storage. Stage: v1.x. The marker is declared so that a declaration
-// naming it type-checks; generation reports it as not yet implemented.
-// Directive: //forge:index.
+// Because the maps and the walk order are invariants that raw access would
+// corrupt, a declaration using Index belongs in a spec file.
+//
+// Kind: storage. Stage: v1. Directive: //forge:index.
 type Index[T any] []T
 
 // Heap stores elements in priority order by a declared key, so the extreme

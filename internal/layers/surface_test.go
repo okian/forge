@@ -47,6 +47,7 @@ var against = map[string]string{
 	"contenthash": "the embedded-field walk",
 	"failures":    "the embedded-field walk",
 	"guarded":     "the locked view a decorator hands into a closure",
+	"index":       "the template rewriter",
 	"redact":      "the scalar helpers a display tag earns",
 	"ring":        "the template rewriter",
 	"slice":       "the template rewriter",

@@ -98,8 +98,8 @@ var catalog = map[string]entry{
 		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Bounded, shape.Streamable},
 	},
 	"Index": {
-		kind: model.KindStorage, stage: layer.StageStaged,
-		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Indexed, shape.Streamable},
+		kind: model.KindStorage, stage: layer.StageReady,
+		adds: []shape.Cap{shape.Sized, shape.Streamable},
 	},
 	"Heap": {
 		kind: model.KindStorage, stage: layer.StageStaged,

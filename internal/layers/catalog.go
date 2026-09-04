@@ -195,15 +195,6 @@ var declared = []*stub{
 		doc: "bounded map with recency eviction",
 	},
 	{
-		origin: marker("Index"), kind: model.KindStorage, stage: layer.StageStaged,
-		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Indexed, shape.Streamable},
-		options: []layer.OptionDef{
-			{Key: "key", Value: layer.ValueField, Doc: "field to look elements up by"},
-			{Key: "unique", Value: layer.ValueBool, Default: "true", Doc: "whether one key reaches at most one element"},
-		},
-		doc: "lookup structure over a declared field, turning a scan into a map access",
-	},
-	{
 		origin: marker("Heap"), kind: model.KindStorage, stage: layer.StageStaged,
 		requires: []shape.Cap{shape.Keyed}, adds: []shape.Cap{shape.Sized, shape.Streamable},
 		options: []layer.OptionDef{{Key: "key", Value: layer.ValueField, Doc: "field the priority order is taken from"}},
